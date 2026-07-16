@@ -176,6 +176,34 @@ def test_describe_key_unknown_segments_render_verbatim():
         'x-future-hdr | 48 fps | x-future-codec'
 
 
+def test_describe_key_shows_exact_rate_from_video_fps_metadata():
+    # E7 beta4 field feedback: '23 fps' is key identity, not a rate a user
+    # recognises — the entry's video_fps metadata renders the EXACT rate.
+    assert keys.describe_key('dolbyvision|23|eac3', video_fps=23.976) == \
+        'Dolby Vision | 23.976 fps | E-AC-3'
+    assert keys.describe_key('hdr10|59|ac3', video_fps=59.94) == \
+        'HDR10 | 59.94 fps | AC-3'
+    # Whole rates render clean (no trailing '.0').
+    assert keys.describe_key('hdr10|24|ac3', video_fps=24.0) == \
+        'HDR10 | 24 fps | AC-3'
+
+
+def test_describe_key_all_key_ignores_video_fps_metadata():
+    # 'all' is the identity: the entry's rate is just the last store
+    # instant's, not what the key matches.
+    assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976) == \
+        'Dolby Vision | All rates | TrueHD'
+
+
+def test_describe_key_degrades_to_segment_without_usable_metadata():
+    # Absent or malformed (hand-edited file) metadata falls back to the
+    # truncated segment rather than crashing or rendering garbage.
+    assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
+    for bad in ('23.976', True, float('nan'), float('inf'), None):
+        assert keys.describe_key('hdr10+|23|aac', video_fps=bad) == \
+            'HDR10+ | 23 fps | AAC'
+
+
 def test_truehd_atmos_display_name_is_field_observed():
     # E7 beta1 (Kodi 22 beta1/Windows): Atmos-flagged TrueHD reports
     # 'truehd_atmos' verbatim. The alias is DISPLAY-only — the key segment

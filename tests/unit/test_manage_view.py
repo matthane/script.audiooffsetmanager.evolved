@@ -134,6 +134,24 @@ def test_rows_sorted_by_label_with_clear_all_last():
     assert options[-1] == "#32126"
 
 
+def test_per_fps_rows_show_the_exact_reported_rate():
+    # E7 beta4 field feedback: a per-fps row must show the rate the user
+    # recognises (23.976), not the truncated key identity (23). The exact
+    # rate is the entry's video_fps metadata; entries without it (hand-
+    # edited) degrade to the segment.
+    entries = {
+        "dolbyvision|23|eac3": dict(_entry(-25), video_fps=23.976),
+        "hdr10|59|ac3": _entry(75),                # no metadata -> segment
+    }
+    view, gui, _ = _build(entries)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3 — "
+                          "-25 ms (user, 2026-07-15)")
+    assert options[1] == "HDR10 | 59 fps | AC-3 — +75 ms (user, 2026-07-15)"
+
+
 def test_malformed_updated_omits_date_without_crashing():
     entries = {DV: {"delay_ms": 42, "source": "user"}}  # no 'updated'
     view, gui, _ = _build(entries)

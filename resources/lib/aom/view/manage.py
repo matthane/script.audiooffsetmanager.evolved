@@ -142,7 +142,7 @@ class ManageView:
         """Rows for every entry, sorted deterministically by display label."""
         rows = []
         for key, entry in entries.items():
-            describe = self._describe(key)
+            describe = self._describe(key, entry)
             rows.append(_Row(self._label(describe, entry), describe, key))
         # (describe, key) makes the order total even if two keys ever share a
         # display label — the list must not shuffle between renders.
@@ -150,15 +150,17 @@ class ManageView:
         return rows
 
     @staticmethod
-    def _describe(key):
+    def _describe(key, entry):
         """describe_key with a verbatim fallback for a hand-edited key.
 
         A key that does not split into three segments would raise; the store
         doctrine is verbatim acceptance, so an unrecognised key is SHOWN as
-        itself rather than crashing the view on a scribbled file.
+        itself rather than crashing the view on a scribbled file. The entry's
+        ``video_fps`` metadata renders the EXACT reported rate for per-fps
+        keys (the truncated segment is identity, not display).
         """
         try:
-            return describe_key(key)
+            return describe_key(key, video_fps=entry.get("video_fps"))
         except ValueError:
             return key
 
