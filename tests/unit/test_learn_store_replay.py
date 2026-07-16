@@ -373,6 +373,52 @@ def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
     assert rig.saved == []
 
 
+def test_dial_then_delete_does_not_resurrect_the_entry(build, tmp_path):
+    # E7 review convergence (3 finders): the user dials a value and,
+    # inside the 2s quiescence window, deletes the playing profile's
+    # entry. The mutation drops the in-flight candidate SYNCHRONOUSLY at
+    # the handler — otherwise it quiesces against the deleted key and
+    # re-stores it (set() discards the fresh reset marker), resurrecting
+    # the row the view just reported deleted, with an 'Offset saved'
+    # toast on top.
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    rig = build()
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.115 s'
+    _play(rig)
+    _settle(rig)
+    assert rig.applied == [(1, -115)]
+    session = rig.runtime.session_tracker.current
+
+    # Baseline established (our echo), then the user dials to 0: a
+    # pending quiescence candidate opens.
+    rig.clock.advance(1.0)
+    rig.runtime.dispatcher.run_pending()
+    assert session.watch_baseline_ms == -115
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '0.000 s'
+    rig.clock.advance(1.0)
+    rig.runtime.dispatcher.run_pending()
+    assert session.watch_pending is not None
+
+    # Delete the playing profile's entry through the real channel while
+    # the candidate is still inside its quiescence window.
+    rig.runtime.dispatcher.post(events.StoreMutationRequested(
+        op='delete', key='dolbyvision|all|truehd', request_id='view-2'))
+    rig.runtime.dispatcher.run_pending()
+
+    assert session.watch_pending is None          # dropped at the delete
+    # The 0 reading contradicts applied (-115): stale-label doctrine
+    # forces the idempotent reset RPC rather than trusting the label.
+    assert rig.applied == [(1, -115), (1, 0)]
+    assert session.applied == (None, 0)
+
+    # Far past the quiescence horizon: nothing stores, nothing resurrects.
+    for _ in range(4):
+        rig.clock.advance(1.0)
+        rig.runtime.dispatcher.run_pending()
+    assert rig.saved == []
+    assert rig.runtime.store.get('dolbyvision|all|truehd') is None
+
+
 # --- Scenario 6: corrupt store at startup ------------------------------------
 
 def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,

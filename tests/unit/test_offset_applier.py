@@ -752,6 +752,26 @@ class TestDeletedReset:
         assert any('deleted-profile reset RPC failed' in line
                    for line in rig.warnings)
 
+    def test_stale_zero_label_still_forces_the_reset(self, rig):
+        # A 0 reading that contradicts a nonzero session.applied is a
+        # stale label (the infolabel can lag our apply RPC by a beat):
+        # the fast path must not consume the marker without the RPC —
+        # that would cancel the deletion permanently for this file once
+        # Kodi's per-file memory replays the old value (E7 review).
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-115)
+        rig.profile_changed()                            # applies -115
+        assert session.applied == (ALL_KEY, -115)
+        rig.gateway.infolabels[DELAY_LABEL] = '0.000 s'  # lagging label
+
+        del rig.offsets.offsets[ALL_KEY]
+        rig.offsets.resets = {ALL_KEY}
+        rig.post(events.StoreMutated(op='delete', key=ALL_KEY))
+
+        assert rig.gateway.applied == [(1, -0.115), (1, 0.0)]  # RPC forced
+        assert rig.offsets.consumed == [ALL_KEY]
+        assert session.applied == (None, 0)
+
     def test_forced_reset_posts_delay_reset(self, rig):
         # The marker-forced 0 is an automatic delay change like any other:
         # DelayReset fires so the watcher drops an in-flight observation

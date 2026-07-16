@@ -18,15 +18,20 @@ echoing ``request_id`` so the script process can match the reply; no ack
 within the script's timeout is its "service not running" signal (D5:
 report-only — there is no direct-write fallback).
 
-After a STORE-CHANGING mutation (a delete that removed an entry, a clear
-with entries to clear — not a missing-key delete, an empty clear, or a
-refused/failed op) the handler clears the current session's
-``miss_announced`` dedupe (same doctrine as the watcher's store path, E2
-review) and posts a typed ``StoreMutated``, which the applier consumes as
-a resolve moment for the live session (E7, user call 2026-07-16): deleting
-the PLAYING profile's offset takes effect immediately — the marked miss
-forces its promised 0 at the deletion itself. Nothing HERE touches Kodi's
-live delay; the applier owns that reaction, behind its standing gates.
+After a STORE-CHANGING mutation the handler runs ``_store_changed``:
+synchronous session-state invalidation (miss dedupe + watcher
+observation) plus a typed ``StoreMutated`` the applier consumes as a
+resolve moment for the live session (E7, user call 2026-07-16) — deleting
+the PLAYING profile's offset takes effect immediately, the marked miss
+forcing its promised 0 at the deletion itself. "Store-changing" means the
+IN-MEMORY store the live session resolves against: a delete that removed
+an entry or a clear with entries, INCLUDING their persist-failed variants
+(OffsetStore keeps the in-memory removal and markers when only the disk
+write failed — the ack reports the durability truth, the live session
+follows the in-memory truth). A missing-key delete, an empty clear, and
+refused ops changed nothing and trigger nothing. Nothing HERE touches
+Kodi's live delay; the applier owns that reaction, behind its standing
+gates.
 
 Protocol constants live here (pure Python) so the monitor bridge and the
 script-process client share one definition.
@@ -103,7 +108,11 @@ class StoreMutationHandler:
         if not self._store.delete(key):
             # Present, writable, but the persist failed: the entry would
             # resurrect from disk on the next load — the ack must not
-            # claim durability the store does not have.
+            # claim durability the store does not have. The IN-MEMORY
+            # removal stands, though (OffsetStore doctrine), so the live
+            # session's store DID change: reconcile it like any other
+            # mutation; only durability failed.
+            self._store_changed(op='delete', key=key)
             return {'ok': False, 'detail': 'persist_failed'}
         self._log(f"AOMe_StoreMutations: deleted stored offset {key}")
         self._store_changed(op='delete', key=key)
@@ -119,6 +128,9 @@ class StoreMutationHandler:
         if count != expected:
             # clear() reports 0 on a persist failure; with entries present
             # that means the file still holds them (see OffsetStore.clear).
+            # The in-memory removal stands regardless, so the live store
+            # changed: reconcile like any other mutation.
+            self._store_changed(op='clear')
             return {'ok': False, 'detail': 'persist_failed', 'count': count}
         self._log(f"AOMe_StoreMutations: cleared {count} stored offset(s)")
         if count:
@@ -131,15 +143,33 @@ class StoreMutationHandler:
     def _store_changed(self, op, key=None):
         """The store changed under the session: reconcile and re-log.
 
-        ``miss_announced`` is cleared (same rule as the watcher's store
-        path — E2 review finding, ledgered for these ops: it dedupes the
-        applier's "no stored offset" line per consulted chain, and a
-        mutation makes any remembered chain stale) and a typed
-        ``StoreMutated`` is posted so the applier re-runs its decision for
-        the live session — the deletion acts NOW when its profile is
-        playing (E7, user call).
+        Three consequences, the first two SYNCHRONOUS on purpose:
+
+        - ``miss_announced`` is cleared (same rule as the watcher's store
+          path — E2 review finding, ledgered for these ops: it dedupes the
+          applier's "no stored offset" line per consulted chain, and a
+          mutation makes any remembered chain stale).
+        - The watcher's observation state is cleared (the supersede
+          corollary at its root): an in-flight candidate was dialed
+          against the store that no longer exists. This CANNOT ride on a
+          queued event — the dispatcher fires due timers between queue
+          items, so a quiescence-deadline WatchTick can land between this
+          handler and any event it posts and store the stale candidate
+          under the just-deleted key (resurrecting it, marker discarded
+          by set()); and the applier's already-0/failed-RPC reset
+          branches deliberately post no DelayReset at all (E7 review,
+          cross-file finding). Synchronous assignment on the dispatcher
+          thread is race-free by construction.
+        - A typed ``StoreMutated`` is posted so the applier re-runs its
+          decision for the live session — the deletion acts NOW when its
+          profile is playing (E7, user call).
         """
         session = self._sessions.current
         if session is not None:
             session.miss_announced = None
+            # The watcher's _clear_observation doctrine, applied inline
+            # (baseline and pending fall together — a baseline from the
+            # pre-mutation store must not classify post-mutation readings).
+            session.watch_pending = None
+            session.watch_baseline_ms = None
         self._dispatcher.post(events.StoreMutated(op=op, key=key))

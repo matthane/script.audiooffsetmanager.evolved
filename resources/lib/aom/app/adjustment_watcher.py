@@ -55,12 +55,18 @@ quiescence window supersedes the candidate — the pending value was dialed
 against the resolution that just changed, so its target is ambiguous and
 dropping beats storing it under the wrong key (the legacy monitor did the
 latter — the adopt-vs-store interleaving this design closes). The
-corollary is enforced STRUCTURALLY by clearing the observation on
-``OffsetApplied`` (any apply trigger — adoption, retry, or the E7
-settings-save re-apply), not just implied by the echo comparison: the
-infolabel can lag an apply RPC by a beat, and a stale reading crossing
-quiescence right then would store the pre-apply value and then chase our
-own apply as a fresh adjustment (E7 review finding).
+corollary is enforced STRUCTURALLY, not just implied by the echo
+comparison — the infolabel can lag our RPC by a beat, and a stale reading
+crossing quiescence right then would store the pre-change value and then
+chase our own value as a fresh adjustment (E7 review findings). Three
+enforcement points: ``OffsetApplied`` (every apply trigger — adoption,
+retry, the E7 settings-save/mutation re-applies) and ``DelayReset``
+(every successful silent reset) both clear the observation here; and the
+StoreMutationHandler clears it SYNCHRONOUSLY at the mutation itself,
+because queued events leave timer-interleave windows and the
+already-0/failed-RPC reset branches post no event at all — without that,
+a candidate dialed just before a delete could quiesce and re-store the
+very entry the user deleted.
 
 The classic settings-dialog store deferral is DELETED, not ported: offsets
 live in the sparse store file now, not in settings.xml, so the dialog's

@@ -226,14 +226,23 @@ class OffsetApplier:
         BYPASSING the ``session.applied`` gate: the user's delete in the
         management view is the authorization P1 otherwise waits for. The
         forced 0 is one-shot — markers are consumed on success and on the
-        already-0 case; a failed RPC keeps them so the next stabilization
-        retries naturally. Silent by design: 0 is the implicit, expected
-        outcome of the deletion, so no toast fires (user call, E7).
+        CONFIRMED already-0 case; a failed RPC keeps them so the next
+        stabilization retries naturally. Silent by design: 0 is the
+        implicit, expected outcome of the deletion, so no toast fires
+        (user call, E7).
         """
         raw = self._gateway.infolabel(AdjustmentWatcher.INFOLABEL_AUDIO_DELAY)
         current_ms = policies.parse_delay_ms(raw)
-        if current_ms == 0:
-            # Nothing visible to do; the marker is spent all the same.
+        if current_ms == 0 and (session.applied is None
+                                or session.applied[1] == 0):
+            # Genuinely at baseline: the label agrees with our own
+            # bookkeeping. Nothing visible to do; the marker is spent all
+            # the same. A 0 reading that CONTRADICTS a nonzero
+            # session.applied is a stale label (the infolabel can lag our
+            # apply RPC by a beat — E7 review finding) and falls through
+            # to the idempotent reset RPC instead: consuming the marker on
+            # a stale 0 would cancel the deletion permanently for this
+            # file once Kodi's per-file memory replays the old value.
             self._consume_markers(reset_keys)
             return
 

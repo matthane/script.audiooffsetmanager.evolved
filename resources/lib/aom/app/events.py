@@ -144,17 +144,20 @@ class OffsetApplied:
 
 @dataclass(frozen=True)
 class DelayReset:
-    """A zero-reset RPC landed (baseline or deleted-profile, both silent).
+    """A zero-reset RPC landed (baseline or deleted-profile).
 
     Posted by the applier's reset paths on a SUCCESSFUL reset only — the
-    already-0 and preserve branches move nothing and post nothing. The
-    watcher consumes it to drop any in-flight observation: a reset is an
+    already-0, preserve, and failed-RPC branches move nothing and post
+    nothing (mutation-time observation invalidation is therefore handled
+    SYNCHRONOUSLY in the StoreMutationHandler, not here). The watcher
+    consumes it to drop any in-flight observation: a reset is an
     automatic delay change exactly like an apply, so the supersede
-    corollary applies (without it, a pending candidate dialed before a
-    marker-forced reset could quiesce against a lagging infolabel and
-    re-store the value the user just deleted). No OffsetApplied fires for
-    resets — that event drives the notifier, and resets are silent by
-    design (D3 second amendment).
+    corollary applies. No OffsetApplied fires for resets — that event
+    drives the notifier's apply toast, which resets never raise; note
+    the diverged-baseline reset is not otherwise silent (it posts
+    UnsavedOffsetDiscarded for the "Offset not saved" toast, D3
+    amendment), while the deleted-profile reset is fully silent (D3
+    second amendment).
     """
     session_id: int
 
@@ -253,12 +256,16 @@ class StoreMutationRequested:
 
 @dataclass(frozen=True)
 class StoreMutated:
-    """A whitelisted mutation actually changed the store (delete/clear).
+    """A whitelisted mutation changed the LIVE (in-memory) store.
 
-    Posted by the StoreMutationHandler AFTER a store-changing execution
-    only — a missing-key delete, an empty clear, or a refused/failed op
-    changed nothing and posts nothing. The applier consumes it exactly
-    like ``SettingsChanged``: a mutation is a resolve moment for the live
+    Posted by the StoreMutationHandler after a delete that removed an
+    entry or a clear with entries — INCLUDING their persist-failed
+    variants, because OffsetStore keeps the in-memory removal and reset
+    markers when only the disk write fails, and the live session resolves
+    against memory (the ack separately reports the durability truth). A
+    missing-key delete, an empty clear, and refused ops changed nothing
+    and post nothing. The applier consumes it exactly like
+    ``SettingsChanged``: a mutation is a resolve moment for the live
     session (E7, user call 2026-07-16 — deleting the playing profile's
     offset takes effect immediately, not at the next playback), and it
     changes no profile, so the same foreign-delay preservation applies.

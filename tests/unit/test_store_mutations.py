@@ -180,6 +180,21 @@ def test_persist_failure_acks_persist_failed(rig, monkeypatch):
     assert rig.acks[0]['detail'] == 'persist_failed'
 
 
+def test_persist_failure_still_reconciles_the_live_store(rig, monkeypatch):
+    # OffsetStore keeps the in-memory removal (and markers) when only the
+    # disk write fails, and the live session resolves against memory — so
+    # a persist-failed delete/clear IS store-changing for the live session
+    # and must fire the reconcile signal; the ack alone reports the
+    # durability failure (E7 review finding).
+    monkeypatch.setattr(rig.store, '_persist', lambda: False)
+
+    rig.request('delete', key=KEY_A)
+    rig.request('clear')                        # KEY_B still in memory
+
+    assert [(e.op, e.key) for e in rig.mutated] == [
+        ('delete', KEY_A), ('clear', None)]
+
+
 # --- miss_announced clearing (E2-review rule, ledgered for these ops) -----------
 
 def test_successful_delete_clears_miss_dedupe_of_live_session(rig):
@@ -190,6 +205,36 @@ def test_successful_delete_clears_miss_dedupe_of_live_session(rig):
     rig.request('delete', key=KEY_A)
 
     assert session.miss_announced is None
+
+
+def test_store_changing_ops_clear_watch_state_synchronously(rig):
+    # The supersede corollary at its root (E7 review, 3-finder
+    # convergence): an in-flight observation was dialed against the store
+    # that no longer exists. The clear cannot ride a queued event — the
+    # dispatcher fires due timers between queue items, and the applier's
+    # already-0 reset branch posts no event at all — so the handler
+    # clears it before returning.
+    rig.post(events.PlaybackStarted())
+    session = rig.tracker.current
+    session.watch_baseline_ms = -115
+    session.watch_pending = (0, 123.0)
+
+    rig.request('delete', key=KEY_A)
+
+    assert session.watch_pending is None
+    assert session.watch_baseline_ms is None
+
+
+def test_no_op_requests_leave_watch_state_alone(rig):
+    rig.post(events.PlaybackStarted())
+    session = rig.tracker.current
+    session.watch_baseline_ms = -115
+    session.watch_pending = (0, 123.0)
+
+    rig.request('delete', key='not|a|key')
+
+    assert session.watch_pending == (0, 123.0)
+    assert session.watch_baseline_ms == -115
 
 
 def test_successful_clear_clears_miss_dedupe_of_live_session(rig):
