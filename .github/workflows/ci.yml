@@ -51,11 +51,14 @@ jobs:
           # Package exactly what ships. `git archive` honors .gitattributes
           # export-ignore, so dev-only paths are absent. The extracted folder
           # MUST be named for the addon id — kodi-addon-checker keys its id
-          # checks off the directory name.
-          mkdir -p build/script.audiooffsetmanager
-          git archive --format=tar HEAD | tar -x -C build/script.audiooffsetmanager
+          # checks off the directory name. Derive it from addon.xml so the
+          # workflow can never drift from the id (this branch renamed it).
+          ADDON_ID=$(sed -n 's/.*<addon id="\([^"]*\)".*/\1/p' addon.xml)
+          echo "Addon id: $ADDON_ID"
+          mkdir -p "build/$ADDON_ID"
+          git archive --format=tar HEAD | tar -x -C "build/$ADDON_ID"
           echo "Extracted package contents:"
-          ls -la build/script.audiooffsetmanager
+          ls -la "build/$ADDON_ID"
 
       - name: Install kodi-addon-checker
         run: |
@@ -63,4 +66,4 @@ jobs:
           pip install kodi-addon-checker
 
       - name: Run kodi-addon-checker (nexus)
-        run: kodi-addon-checker --branch=nexus build/script.audiooffsetmanager
+        run: kodi-addon-checker --branch=nexus build/*/
