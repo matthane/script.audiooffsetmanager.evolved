@@ -87,6 +87,25 @@ def test_store_is_pure():
                     "{0} imports outside domain/store: {1}".format(path.name, name)
 
 
+def test_view_is_pure():
+    # The management view runs in the script process but is itself pure Python:
+    # every Kodi touch is an injected seam (gui, reader, mutation channel), so
+    # xbmc* never enters. It may lean on the domain and store layers (the
+    # read-only reader, key display helpers) and itself, nothing else.
+    allowed = (
+        "resources.lib.aom.domain",
+        "resources.lib.aom.store",
+        "resources.lib.aom.view",
+    )
+    for path in _py_files(AOM / "view"):
+        for name in _imports(path):
+            assert not name.startswith("xbmc"), \
+                "{0} imports Kodi module {1}".format(path.name, name)
+            if name.startswith("resources.lib."):
+                assert _in_packages(name, allowed), \
+                    "{0} imports outside domain/store/view: {1}".format(path.name, name)
+
+
 def test_kodi_adapters_import_only_aom_and_kodi():
     for path in _py_files(AOM / "kodi"):
         for name in _imports(path):
