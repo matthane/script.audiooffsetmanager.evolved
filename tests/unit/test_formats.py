@@ -1,74 +1,45 @@
-"""Unit tests for aom.domain.formats — the vocabulary's internal integrity.
+"""Unit tests for aom.domain.formats — now just the UNKNOWN sentinel.
 
-The settings.xml side of the vocabulary is guarded by the contract tests;
-these check the module's own invariants and that legacy consumers stay wired
-to it.
+The classic vocabulary tables (HDR/audio/fps tuples, display names,
+settings-id tables, the 315-key generator feed) died with the offset matrix
+in E3: Evolved accepts formats verbatim (D11), so there is no closed
+vocabulary to pin. What's left to protect is the sentinel's value (it
+appears verbatim inside store keys on disk), the demolition itself, and the
+detector's verbatim handling of the names the classic vocabulary used to
+gatekeep.
 """
 
 from resources.lib.aom.domain import formats
 
 
-def test_vocabulary_sizes():
-    assert len(formats.HDR_TYPES) == 5
-    assert len(formats.AUDIO_FORMATS) == 7
-    assert len(formats.FPS_BUCKETS) == 8
-    assert len(formats.all_setting_keys()) == 315
+def test_unknown_sentinel_value_is_frozen():
+    # UNKNOWN is not just a Python sentinel: keys.audio_segment/hdr_segment
+    # write it into on-disk store keys (the absence rule), so changing the
+    # string would orphan every stored '...|unknown' entry.
+    assert formats.UNKNOWN == 'unknown'
 
 
-def test_audio_match_order_eac3_before_ac3():
-    # 'ac3' is a substring of 'eac3'; substring matching must test eac3 first.
-    assert formats.AUDIO_FORMATS.index('eac3') < formats.AUDIO_FORMATS.index('ac3')
+def test_matrix_vocabulary_is_gone():
+    # D11 verbatim acceptance: any enumerated vocabulary reappearing here
+    # is design regression toward whitelist matching (EVOLVED.md edit
+    # required first).
+    for dead in ('HDR_TYPES', 'AUDIO_FORMATS', 'FPS_BUCKETS', 'FPS_ALL',
+                 'HDR_DISPLAY_NAMES', 'AUDIO_DISPLAY_NAMES',
+                 'FPS_DISPLAY_NAMES', 'AUDIO_STRING_IDS',
+                 'HDR_ENABLE_STRING_IDS', 'HDR_CATEGORY_LABELS',
+                 'HDR_GROUP_IDS', 'FPS_SPINNER_STRING_IDS',
+                 'FPS_OPTION_LABEL_IDS', 'setting_key', 'all_setting_keys'):
+        assert not hasattr(formats, dead)
 
 
-def test_display_maps_cover_vocabulary():
-    assert set(formats.HDR_DISPLAY_NAMES) == set(formats.HDR_TYPES)
-    assert set(formats.AUDIO_DISPLAY_NAMES) == set(formats.AUDIO_FORMATS) | {formats.UNKNOWN}
-    assert set(formats.FPS_DISPLAY_NAMES) == {str(b) for b in formats.FPS_BUCKETS}
-
-
-def test_string_id_tables_cover_vocabulary():
-    assert set(formats.AUDIO_STRING_IDS) == set(formats.AUDIO_FORMATS)
-    assert set(formats.FPS_OPTION_LABEL_IDS) == set(formats.FPS_BUCKETS)
-    # Every id is a 32xxx string (strings.po contract tests verify existence).
-    for label, help_id in formats.AUDIO_STRING_IDS.values():
-        assert label.startswith('32') and help_id.startswith('32')
-
-
-def test_per_hdr_ui_tables_cover_vocabulary():
-    # The settings generator indexes these by every HDR type; a missing key is
-    # a KeyError at generation time. Guard growth of HDR_TYPES here.
-    assert set(formats.HDR_ENABLE_STRING_IDS) == set(formats.HDR_TYPES)
-    assert set(formats.HDR_CATEGORY_LABELS) == set(formats.HDR_TYPES)
-    assert set(formats.HDR_GROUP_IDS) == set(formats.HDR_TYPES)
-
-
-def test_fps_buckets_are_ints():
-    # stream_detector.py membership-tests the player's INTEGER fps value
-    # against FPS_BUCKETS; redefining the buckets as strings would silently
-    # collapse every stream to fps 'unknown'. Pin the element type.
-    assert all(isinstance(b, int) and not isinstance(b, bool)
-               for b in formats.FPS_BUCKETS)
-
-
-def test_setting_key_format_is_frozen():
-    assert formats.setting_key('dolbyvision', 'all', 'truehd') == 'dolbyvision_all_truehd'
-    assert formats.setting_key('hdr10', 23, 'eac3') == 'hdr10_23_eac3'
-
-
-def test_all_setting_keys_unique_and_ordered_by_hdr():
-    keys = formats.all_setting_keys()
-    assert len(set(keys)) == 315
-    assert keys[0] == 'dolbyvision_all_truehd'
-    assert keys[-1] == 'sdr_60_pcm'
-
-
-def test_stream_detector_no_longer_consults_the_whitelists():
-    # E2 severed the detector<->vocabulary coupling (verbatim acceptance):
-    # the classic vocabulary still round-trips, and so does a codec/HDR
-    # string these tables never heard of — the tables are display/generator
-    # data now, not gatekeepers (formats.py dies with the matrix in E3).
+def test_classic_vocabulary_still_round_trips_verbatim():
+    # The classic closed vocabulary (inlined — the enumerating tuple is
+    # gone) plus strangers it used to reject: all pass through the detector
+    # verbatim now. The tables were gatekeepers; verbatim acceptance keeps
+    # their NAMES working without keeping the gate.
     from resources.lib.aom.app.stream_detector import derive_stream_facts
-    for audio in formats.AUDIO_FORMATS + ('x-future-codec', 'aac'):
+    classic = ('truehd', 'eac3', 'ac3', 'dtshd_ma', 'dtshd_hra', 'dca', 'pcm')
+    for audio in classic + ('x-future-codec', 'aac'):
         facts = derive_stream_facts(
             player_id=1, raw_codec=audio, raw_channels=6,
             raw_fps='23.976', raw_hdr='hdr10', raw_hdr_fallback='',
