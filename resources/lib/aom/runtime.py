@@ -18,15 +18,23 @@ Subscription order is load-bearing (dispatch follows it, per event type):
 2. detector — owns ``session.profile`` and the stream-state machine (its
    ``StreamProbed`` platform facts are log-only now; the PlatformRecorder
    dissolved with the stored capability flags — P3);
-3. applier — on ProfileChanged/StreamStabilized the offset is applied (and
-   ``session.applied`` recorded) before anything downstream reads it;
+3. applier — on ProfileChanged/StreamStabilized/SettingsChanged the offset
+   is applied (and ``session.applied`` recorded) before anything downstream
+   reads it;
 4. notifier — its StreamStabilized release runs after the applier's retry
    pass for the same stabilization;
 5. seek scheduler — seeks for a stabilization are planned only after the
    offset work for it is done;
-6. adjustment watcher — its ProfileChanged eligibility pass runs last, so
-   ``session.applied`` is already current when the first watch tick of a
-   profile episode is scheduled.
+6. adjustment watcher — its ProfileChanged AND SettingsChanged passes run
+   after the applier's for the same event, so ``session.applied`` is
+   already current when eligibility is (re)evaluated — and any apply also
+   posts ``OffsetApplied``, whose watcher pass drops an in-flight
+   observation (the supersede corollary, enforced structurally).
+
+One exception precedes the numbered order: the runtime's own
+``SettingsChanged`` debug-flag refresh subscribes before everything, so
+the passes for the very save that toggles debug logging already log at
+the fresh escalation level.
 """
 
 import xbmcvfs
@@ -84,6 +92,12 @@ class ServiceRuntime:
             log_error=self.logger.error,
             log_runtimes=self.logger.debug_escalation)
 
+        # Debug-flag refresh subscribes FIRST (before any component), so the
+        # applier/watcher passes for the very save that toggles debug
+        # logging already run at the fresh escalation level (E7 review).
+        self.dispatcher.subscribe(events.SettingsChanged,
+                                  self._on_settings_changed)
+
         # App components, in the load-bearing subscription order (docstring).
         self.session_tracker = SessionTracker(
             self.dispatcher, log_debug=self.logger.debug)
@@ -120,8 +134,6 @@ class ServiceRuntime:
 
         self.player_bridge = PlayerBridge(self.dispatcher)
         self.monitor = MonitorBridge(self.dispatcher)
-        self.dispatcher.subscribe(events.SettingsChanged,
-                                  self._on_settings_changed)
 
         # Surface the one-shot corruption flag through the graph: posted
         # here (queued until the dispatcher starts) so the Notifier — the

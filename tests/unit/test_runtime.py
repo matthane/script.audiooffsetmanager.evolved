@@ -79,6 +79,21 @@ def test_runtime_subscription_order_is_pinned(runtime):
     assert profile_changed.index(runtime.offset_applier) < \
         profile_changed.index(runtime.adjustment_watcher)
 
+    # SettingsChanged: the runtime's debug-flag refresh runs FIRST (the
+    # passes for the very save that toggles debug logging must log at the
+    # fresh escalation), then the applier's immediate-effect re-apply
+    # records session.applied before the watcher's eligibility pass (the
+    # same invariant ProfileChanged pins for a stream-change apply).
+    settings_changed = owners(events.SettingsChanged)
+    assert settings_changed[0] is runtime
+    assert settings_changed.index(runtime.offset_applier) < \
+        settings_changed.index(runtime.adjustment_watcher)
+
+    # OffsetApplied: the watcher's structural supersede subscribes — any
+    # apply, from any trigger, drops an in-flight observation chain.
+    applied_handlers = subs[events.OffsetApplied]
+    assert runtime.adjustment_watcher._on_offset_applied in applied_handlers
+
     # StreamStabilized: applier (retry pass) -> notifier (pending release)
     # -> seek scheduler (adjust request): offset work strictly precedes
     # seek planning for the same stabilization.

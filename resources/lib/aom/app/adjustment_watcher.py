@@ -52,9 +52,15 @@ the RPC precisely so ``observed == session.applied[1]`` here is always
 current; a match is our own value — baseline-refresh, never store. A
 corollary (reviewed, accepted): an automatic apply landing INSIDE a pending
 quiescence window supersedes the candidate — the pending value was dialed
-for the stream that just changed, so its target profile is ambiguous and
+against the resolution that just changed, so its target is ambiguous and
 dropping beats storing it under the wrong key (the legacy monitor did the
-latter — the adopt-vs-store interleaving this design closes).
+latter — the adopt-vs-store interleaving this design closes). The
+corollary is enforced STRUCTURALLY by clearing the observation on
+``OffsetApplied`` (any apply trigger — adoption, retry, or the E7
+settings-save re-apply), not just implied by the echo comparison: the
+infolabel can lag an apply RPC by a beat, and a stale reading crossing
+quiescence right then would store the pre-apply value and then chase our
+own apply as a fresh adjustment (E7 review finding).
 
 The classic settings-dialog store deferral is DELETED, not ported: offsets
 live in the sparse store file now, not in settings.xml, so the dialog's
@@ -112,6 +118,7 @@ class AdjustmentWatcher:
 
         dispatcher.subscribe(events.ProfileChanged, self._on_profile_changed)
         dispatcher.subscribe(events.SettingsChanged, self._on_settings_changed)
+        dispatcher.subscribe(events.OffsetApplied, self._on_offset_applied)
         dispatcher.subscribe(events.WatchTick, self._on_watch_tick)
         dispatcher.subscribe(events.PlaybackStopped, self._on_playback_ended)
         dispatcher.subscribe(events.PlaybackEnded, self._on_playback_ended)
@@ -157,6 +164,22 @@ class AdjustmentWatcher:
         if session is None:
             return
         self._evaluate(session)
+
+    def _on_offset_applied(self, event):
+        """The supersede corollary, enforced structurally (module docstring).
+
+        ANY automatic apply makes an in-flight observation ambiguous — the
+        pending candidate was dialed against the superseded resolution, and
+        the baseline belongs to it too. Relying on the next tick's echo
+        comparison instead would leave a hole: the infolabel can lag the
+        apply RPC by a beat, and a stale pre-apply reading crossing
+        quiescence at that tick would be stored, after which our own apply
+        reads as a fresh foreign change. Dropping the chain here makes the
+        first post-apply observation re-adopt (or echo-match) cleanly.
+        """
+        if not self._sessions.is_alive(event.session_id):
+            return
+        self._clear_observation(self._sessions.current)
 
     def _evaluate(self, session):
         if self._eligible(session.profile):

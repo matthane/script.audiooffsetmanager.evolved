@@ -404,6 +404,67 @@ def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
     assert saved == []
 
 
+def test_settings_save_reapply_reads_as_self_echo_not_adjustment(
+        rig, monkeypatch):
+    # The immediate-effect edge, end to end: flipping per-fps mid-playback
+    # re-applies the exact-level value at once, toasts it, and the watcher
+    # classifies the resulting delay change as OUR apply (self-echo) —
+    # never as a user adjustment to store. (The applier never reads the
+    # toggle itself — it lives inside OffsetTable.resolve — so the flip is
+    # modeled by re-pointing the rig's resolve, exactly what the real
+    # table's fresh read would produce.)
+    runtime, clock, gateway, applied, notified = rig
+    from resources.lib.aom.store import resolve as store_resolve
+
+    monkeypatch.setattr(runtime.settings, 'remember_adjustments_enabled',
+                        lambda: True)
+    stored = []
+    monkeypatch.setattr(runtime.offsets, 'store',
+                        lambda profile, ms: stored.append(ms) or 'stored-key')
+    saved = []
+    runtime.dispatcher.subscribe(events.UserOffsetSaved, saved.append)
+
+    runtime.dispatcher.post(events.PlaybackStarted())
+    runtime.dispatcher.run_pending()
+    _settle(runtime, clock)                            # STABLE; -125 in force
+    session = runtime.session_tracker.current
+    assert applied == [(1, -125)]
+
+    # Kodi echoes our apply; a watch tick adopts it as accounted-for.
+    gateway.infolabels['Player.AudioDelay'] = '-0.125 s'
+    clock.advance(1.0)
+    runtime.dispatcher.run_pending()
+    assert session.watch_baseline_ms == -125
+
+    # The user backgrounds the video, flips per-fps ON, saves the dialog:
+    # the fresh resolve now answers with the exact-level entry.
+    exact_key = 'dolbyvision|23|truehd'
+    monkeypatch.setattr(
+        runtime.offsets, 'resolve',
+        lambda profile: store_resolve.Resolution(
+            {'delay_ms': -25}, store_resolve.EXACT, exact_key, (exact_key,)))
+    runtime.dispatcher.post(events.SettingsChanged())
+    runtime.dispatcher.run_pending()
+
+    assert applied == [(1, -125), (1, -25)]            # applied at once
+    assert session.applied == ('dolbyvision|23|truehd', -25)
+    assert _applied_toasts(notified) == [              # and announced
+        (-125, 'dolbyvision|23|truehd'),
+        (-25, 'dolbyvision|23|truehd')]
+
+    # Kodi now echoes the NEW delay: ticks must classify it as self-echo
+    # (baseline refresh) — storing it would loop our own apply back into
+    # the store as a fake user adjustment.
+    gateway.infolabels['Player.AudioDelay'] = '-0.025 s'
+    for _ in range(5):                                 # beyond quiescence
+        clock.advance(1.0)
+        runtime.dispatcher.run_pending()
+
+    assert session.watch_baseline_ms == -25            # accounted as ours
+    assert stored == []
+    assert saved == []
+
+
 def test_user_offset_saved_notifies_live_session_only(rig):
     # The manual-offset toast consumes the watcher's typed event: it
     # describes the payload captured at store time, and a stamp from a

@@ -1,7 +1,7 @@
 """Offset application: gate via policy, resolve via the store, apply, announce.
 
 The apply half of the legacy OffsetManager (its notification half became the
-Notifier). One decision path, two triggers:
+Notifier). One decision path, three triggers:
 
 - ``ProfileChanged`` — the detector adopted a (new) complete profile: the
   apply trigger. NOT ``PlaybackStarted``: the profile is always None at AV
@@ -9,6 +9,22 @@ Notifier). One decision path, two triggers:
 - ``StreamStabilized`` — the retry edge: a failed apply RPC is retried on
   the next stabilization, and the ``session.applied`` dedupe makes the
   common already-applied case a no-op.
+- ``SettingsChanged`` — the immediate-effect edge (E7): every input to the
+  decision is already read fresh at decision instant (the ``per_fps``
+  toggle inside the OffsetTable's resolve, the pause gate in the policy),
+  so re-running the decision when the user saves the settings dialog makes
+  mid-playback edits act NOW instead of at the next stream event, through
+  the same gates as any other trigger (a paused addon still does nothing).
+  One deliberate divergence from the stream-change triggers: a settings
+  save does NOT change the profile, so a foreign delay (the user's hand)
+  still targets the stream in force — the miss path's baseline reset is
+  therefore withheld when the delay diverged from our last apply
+  (``from_settings``), where a stream change would reset it and toast.
+  Only our own orphaned residue (a toggle flip stranding the value WE
+  applied) is reset by a save. Corollary: an offset the user re-dialed
+  while the addon was paused survives un-pausing the same way — the
+  dedupe sees the stored value as already applied and leaves the user's
+  hand alone until the next stream event. No live session, no work.
 
 Contracts (both reviewed and pinned by tests):
 
@@ -80,6 +96,7 @@ class OffsetApplier:
 
         dispatcher.subscribe(events.ProfileChanged, self._on_profile_changed)
         dispatcher.subscribe(events.StreamStabilized, self._on_stream_stabilized)
+        dispatcher.subscribe(events.SettingsChanged, self._on_settings_changed)
 
     # -- triggers (dispatcher thread) --------------------------------------------
 
@@ -91,9 +108,20 @@ class OffsetApplier:
         """Retry edge: re-run the apply; the dedupe no-ops the common case."""
         self._apply(event.session_id)
 
+    def _on_settings_changed(self, _event):
+        """Immediate-effect edge: a settings save re-runs the decision.
+
+        The event carries no session stamp (it is not session work), so the
+        live session is fetched here; none live means nothing to reconcile.
+        """
+        session = self._sessions.current
+        if session is None:
+            return
+        self._apply(session.session_id, from_settings=True)
+
     # -- the apply -----------------------------------------------------------------
 
-    def _apply(self, session_id):
+    def _apply(self, session_id, *, from_settings=False):
         if not self._sessions.is_alive(session_id):
             return  # superseded session: the event is inert
         session = self._sessions.current
@@ -119,10 +147,15 @@ class OffsetApplier:
                 self._log(f"AOMe_OffsetApplier: no stored offset for "
                           f"{profile.describe()} (tried "
                           f"{', '.join(resolution.tried)})")
+            # A held provisional "applied X" toast cannot survive a miss
+            # resolution: whatever the reset paths decide, X is no longer
+            # the value this profile stands to announce.
+            session.pending_notification = None
             if resolution.reset_keys:
                 self._reset_deleted(session, profile, resolution.reset_keys)
             else:
-                self._reset_if_owned(session, profile)
+                self._reset_if_owned(session, profile,
+                                     from_settings=from_settings)
             return
 
         key = resolution.key
@@ -195,7 +228,7 @@ class OffsetApplier:
         for key in reset_keys:
             self._offsets.consume_reset(key)
 
-    def _reset_if_owned(self, session, profile):
+    def _reset_if_owned(self, session, profile, *, from_settings=False):
         """The miss policy's second half (D3 amendment, E7 field call).
 
         ``session.applied is None`` means the addon has not touched this
@@ -206,6 +239,16 @@ class OffsetApplier:
         an unlearned profile returns to Kodi's 0 baseline. The reset is
         idempotent: a delay already reading 0 is left alone, which also
         makes the retry pass on re-stabilization a no-op.
+
+        ``from_settings`` withholds the reset when the delay DIVERGED from
+        our last apply: a settings save changes no profile, so a foreign
+        value (the user's in-flight dial, or a deliberate session-local
+        value with remember off) still targets the stream in force —
+        wiping it because an unrelated knob was saved would clobber the
+        user's hand (P1's spirit). Only our own residue, orphaned by the
+        save itself (a per-fps flip stranding the value WE applied), is
+        reset. An unreadable delay is also left alone on this path —
+        never act on a hiccup when nothing changed underneath.
         """
         if session.applied is None:
             return
@@ -222,6 +265,14 @@ class OffsetApplier:
         discarded = None
         if current_ms is not None and current_ms != session.applied[1]:
             discarded = current_ms
+
+        if from_settings and (current_ms is None or discarded is not None):
+            shown = 'unreadable' if current_ms is None else f"{current_ms}ms"
+            self._log(f"AOMe_OffsetApplier: settings save leaves foreign "
+                      f"delay ({shown}) in place for unlearned "
+                      f"{profile.describe()} (profile unchanged; not ours "
+                      f"to reset)")
+            return
 
         previous_applied = session.applied
         session.applied = (None, 0)

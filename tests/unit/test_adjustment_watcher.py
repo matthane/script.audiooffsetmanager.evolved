@@ -310,6 +310,40 @@ class TestQuiescence:
         assert rig.session.watch_pending is None
         assert rig.session.watch_baseline_ms == -50
 
+    def test_offset_applied_supersedes_the_observation_chain(self, rig):
+        # The supersede corollary enforced structurally (E7 review): ANY
+        # automatic apply drops an in-flight observation — relying on the
+        # next tick's echo comparison alone leaves the stale-infolabel
+        # hole where a pre-apply reading crosses quiescence, stores, and
+        # then chases our own apply as a fresh foreign change.
+        profile = make_profile()
+        rig.begin(profile, baseline_delay='-0.125 s')
+        rig.observe_foreign('-0.050 s')
+        assert rig.session.watch_pending is not None
+
+        rig.post(events.OffsetApplied(
+            session_id=rig.session.session_id, profile=profile, ms=-25,
+            provisional=False))
+
+        assert rig.session.watch_pending is None      # candidate dropped
+        assert rig.session.watch_baseline_ms is None  # baseline too
+        # The stale pre-apply reading cannot store even if it crosses the
+        # quiescence horizon now: it re-adopts as a fresh baseline instead.
+        rig.hold_to_quiescence()
+        assert rig.offset_table.stored == []
+        assert rig.saved == []
+        assert rig.session.watch_baseline_ms == -50   # silently re-adopted
+
+    def test_stale_stamped_offset_applied_is_inert(self, rig):
+        profile = make_profile()
+        rig.begin(profile, baseline_delay='-0.125 s')
+        rig.observe_foreign('-0.050 s')
+
+        rig.post(events.OffsetApplied(
+            session_id=999999, profile=profile, ms=-25, provisional=False))
+
+        assert rig.session.watch_pending is not None  # untouched
+
     def test_observed_equals_already_stored_value_stores_nothing(self, rig):
         # The user dials to a value that is ALREADY stored at the write key:
         # no store call, no event — baseline simply adopts it.

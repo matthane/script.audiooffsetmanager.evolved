@@ -17,6 +17,7 @@ replaced by the single global pause (D9).
 import pytest
 
 from resources.lib.aom.app import events
+from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
 from resources.lib.aom.app.dispatcher import Dispatcher
 from resources.lib.aom.app.offset_applier import OffsetApplier
 from resources.lib.aom.app.session import SessionTracker
@@ -24,6 +25,11 @@ from resources.lib.aom.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeGateway, FakeOffsetTable
 
 ALL_KEY = 'dolbyvision|all|truehd'
+# make_profile()'s default 23.976 fps, integer-truncated by the key schema.
+EXACT_KEY = 'dolbyvision|23|truehd'
+# The label the applier's reset paths read — bound to the production
+# constant so a renamed infolabel cannot leave these tests green-but-wrong.
+DELAY_LABEL = AdjustmentWatcher.INFOLABEL_AUDIO_DELAY
 
 
 def make_profile(hdr_type='dolbyvision', audio_format='truehd',
@@ -84,6 +90,9 @@ class Rig:
 
     def profile_changed(self):
         self.post(events.ProfileChanged(session_id=self.session.session_id))
+
+    def settings_changed(self):
+        self.post(events.SettingsChanged())
 
     def logged(self, needle):
         return any(needle in line for line in self.debug)
@@ -275,8 +284,6 @@ class TestGating:
 class TestZeroReset:
     """D3 amendment (E7): miss = no-op until AOM acts, then zero-reset."""
 
-    DELAY_LABEL = 'Player.AudioDelay'
-
     def _switch_to_unlearned(self, rig, session):
         """Learned profile applied, then the stream becomes an unlearned one."""
         rig.profile_changed()                        # applies ALL_KEY value
@@ -289,7 +296,7 @@ class TestZeroReset:
         # per-file memory the user relies on) completely alone.
         profile = make_profile()
         rig.start(profile, offset_ms=None)           # empty store
-        rig.gateway.infolabels[self.DELAY_LABEL] = '0.175 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '0.175 s'
 
         rig.profile_changed()
 
@@ -302,7 +309,7 @@ class TestZeroReset:
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
         # Kodi echoes our own apply: pure AOM residue.
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
 
         self._switch_to_unlearned(rig, session)
 
@@ -321,7 +328,7 @@ class TestZeroReset:
                                  discarded.append)
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.050 s'  # user's hand
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.050 s'  # user's hand
 
         self._switch_to_unlearned(rig, session)
 
@@ -334,7 +341,7 @@ class TestZeroReset:
     def test_delay_already_at_baseline_is_left_alone(self, rig):
         profile = make_profile()
         session = rig.start(profile, offset_ms=0)    # stored 0 applies
-        rig.gateway.infolabels[self.DELAY_LABEL] = '0.000 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '0.000 s'
 
         self._switch_to_unlearned(rig, session)
 
@@ -350,7 +357,7 @@ class TestZeroReset:
                                  discarded.append)
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
-        rig.gateway.infolabels[self.DELAY_LABEL] = 'garbage'
+        rig.gateway.infolabels[DELAY_LABEL] = 'garbage'
 
         self._switch_to_unlearned(rig, session)
 
@@ -360,7 +367,7 @@ class TestZeroReset:
     def test_failed_reset_rpc_restores_applied_for_retry(self, rig):
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
         rig.profile_changed()                        # apply lands
 
         calls = []
@@ -382,7 +389,7 @@ class TestZeroReset:
     def test_paused_addon_never_resets(self, rig):
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
         rig.profile_changed()
 
         rig.settings.paused = True
@@ -393,6 +400,193 @@ class TestZeroReset:
         assert rig.gateway.applied == [(1, -0.125)]  # only the apply
 
 
+class TestSettingsChangedReapply:
+    """Immediate-effect edge (E7): a settings save re-runs the decision.
+
+    Every decision input is already read at decision instant (the per_fps
+    toggle inside resolve, the pause gate in the policy), so the trigger
+    itself is most of the feature. The one trigger-specific divergence
+    (E7 review): a save changes no profile, so a foreign delay — the
+    user's hand — survives the miss path's baseline reset; only our own
+    orphaned residue is reset by a save.
+    """
+
+    def test_no_session_is_a_no_op(self, rig):
+        rig.settings_changed()
+
+        assert rig.gateway.applied == []
+        assert rig.errors == []
+
+    def test_no_profile_yet_skips_quietly(self, rig):
+        # Settings saved during discovery (profile not adopted yet): the
+        # normal no-profile gate answers; nothing to reconcile.
+        rig.post(events.PlaybackStarted())
+
+        rig.settings_changed()
+
+        assert rig.gateway.applied == []
+        assert rig.logged('No stream profile available')
+
+    def test_unaffecting_save_dedupes_to_a_no_op(self, rig):
+        # Kodi may fire onSettingsChanged several times per dialog save;
+        # every firing whose resolution is unchanged lands in the dedupe.
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+
+        for _ in range(3):
+            rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.125)]     # no second RPC
+        assert session.applied == (ALL_KEY, -125)
+        assert len(rig.announced) == 1
+        assert rig.logged('skipping duplicate apply')
+
+    def test_per_fps_flip_applies_the_exact_entry_immediately(self, rig):
+        # The headline scenario: all-level value in force, user flips the
+        # per-fps toggle mid-playback, the taught exact entry lands NOW.
+        session = rig.start(make_profile(), offset_ms=75)   # all-level taught
+        session.mark_stable()
+        rig.profile_changed()
+        assert rig.gateway.applied == [(1, 0.075)]
+
+        rig.offsets.offsets[EXACT_KEY] = -25
+        rig.offsets.per_fps = True                          # the settings flip
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, 0.075), (1, -0.025)]
+        assert session.applied == (EXACT_KEY, -25)
+        assert rig.announced[-1].provisional is False       # STABLE session
+        assert rig.announced[-1].ms == -25
+
+    def test_per_fps_off_orphaning_the_exact_entry_zero_resets(self, rig):
+        # Flip OFF with only the exact level taught: the profile is now
+        # unlearned at the all level, AOM has acted, and the delay in force
+        # is OUR OWN residue (echoes the apply) — the save itself orphaned
+        # it, so the standing zero-reset doctrine runs, silently.
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        rig.offsets.per_fps = True
+        session = rig.start(make_profile(), offset_ms=-25, key=EXACT_KEY)
+        rig.profile_changed()
+        assert session.applied == (EXACT_KEY, -25)
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.025 s'    # our residue
+
+        rig.offsets.per_fps = False                         # the settings flip
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.025), (1, 0.0)]
+        assert session.applied == (None, 0)
+        assert discarded == []                              # silent reset
+
+    def test_settings_save_preserves_foreign_delay_on_miss(self, rig):
+        # E7 review finding (the wipe): a save changes no profile, so a
+        # delay that DIVERGED from our last apply is the user's hand (an
+        # in-flight dial, or a deliberate session value with remember off)
+        # and still targets the stream in force. A stream change would
+        # reset it with the not-saved toast; a settings save must not.
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        rig.offsets.per_fps = True
+        session = rig.start(make_profile(), offset_ms=-25, key=EXACT_KEY)
+        rig.profile_changed()
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.050 s'    # the user's dial
+
+        rig.offsets.per_fps = False                         # orphaning flip
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.025)]         # no reset RPC
+        assert session.applied == (EXACT_KEY, -25)          # bookkeeping intact
+        assert discarded == []                              # and no toast
+        assert rig.logged('not ours to reset')
+
+    def test_settings_save_leaves_unreadable_delay_alone(self, rig):
+        # On the settings path an unreadable delay is a hiccup over a
+        # profile that did not change — never act on it (a stream change
+        # keeps its reset-silently doctrine, pinned in TestZeroReset).
+        rig.offsets.per_fps = True
+        session = rig.start(make_profile(), offset_ms=-25, key=EXACT_KEY)
+        rig.profile_changed()
+        rig.gateway.infolabels[DELAY_LABEL] = 'garbage'
+
+        rig.offsets.per_fps = False
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.025)]         # no reset RPC
+        assert session.applied == (EXACT_KEY, -25)
+
+    def test_miss_resolution_drops_a_held_provisional_toast(self, rig):
+        # E7 review finding (the stale toast): a held provisional "applied
+        # X" cannot survive a miss resolution — without this, a settings-
+        # save reset during stabilization leaves the hold intact and the
+        # notifier releases a toast for a value no longer in force (the
+        # profile identity check cannot catch it: the profile is unchanged).
+        rig.offsets.per_fps = True
+        session = rig.start(make_profile(), offset_ms=-25, key=EXACT_KEY)
+        rig.profile_changed()                               # provisional apply
+        session.pending_notification = (session.profile, -25)  # notifier's hold
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.025 s'
+
+        rig.offsets.per_fps = False                         # orphaning flip
+        rig.settings_changed()                              # miss -> reset
+
+        assert rig.gateway.applied == [(1, -0.025), (1, 0.0)]
+        assert session.pending_notification is None         # hold dropped
+
+    def test_miss_with_no_prior_action_stays_untouched(self, rig):
+        # P1 holds under the new trigger: unlearned profile, no AOM action
+        # this session — a settings save must not disturb Kodi's delay.
+        rig.start(make_profile(), offset_ms=None)           # empty store
+        rig.profile_changed()
+        rig.gateway.infolabels[DELAY_LABEL] = '0.175 s'     # user/Kodi value
+
+        rig.settings_changed()
+
+        assert rig.gateway.applied == []
+
+    def test_unpausing_applies_immediately(self, rig):
+        rig.settings.paused = True
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        assert rig.gateway.applied == []                    # gated off
+
+        rig.settings.paused = False                         # user unpauses
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.125)]
+        assert session.applied == (ALL_KEY, -125)
+
+    def test_pausing_gates_but_never_reverts(self, rig):
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+
+        rig.settings.paused = True                          # user pauses
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.125)]         # left in force
+        assert session.applied == (ALL_KEY, -125)
+        assert rig.logged('paused')
+
+    def test_deleted_live_profile_resets_on_settings_save(self, rig):
+        # A settings save is a resolve moment, so a pending deletion marker
+        # for the LIVE profile acts then — not only at the next stream
+        # event. The marked path keeps forcing 0 even where the unmarked
+        # path now preserves: the user's delete IS the authorization.
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
+
+        del rig.offsets.offsets[ALL_KEY]                    # manage-view delete
+        rig.offsets.resets = {ALL_KEY}
+        rig.settings_changed()
+
+        assert rig.gateway.applied == [(1, -0.125), (1, 0.0)]
+        assert session.applied == (None, 0)
+        assert rig.offsets.consumed == [ALL_KEY]            # marker spent
+        assert rig.logged('reset delay to 0ms for deleted')
+
+
 class TestDeletedReset:
     """D3 second amendment (E7): a marked miss forces the promised 0.
 
@@ -401,15 +595,13 @@ class TestDeletedReset:
     ``announced`` collector doubles as the no-event pin here.
     """
 
-    DELAY_LABEL = 'Player.AudioDelay'
-
     def test_marked_miss_forces_zero_before_any_aom_action(self, rig):
         # The whole point: the user's delete authorizes the reset, so the
         # P1 "wait until we've acted" gate does NOT apply.
         profile = make_profile()
         session = rig.start(profile, offset_ms=None)     # empty store
         rig.offsets.resets = {ALL_KEY}                   # deleted in the view
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.100 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.100 s'
 
         rig.profile_changed()
 
@@ -423,7 +615,7 @@ class TestDeletedReset:
         profile = make_profile()
         rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
-        rig.gateway.infolabels[self.DELAY_LABEL] = '0.000 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '0.000 s'
 
         rig.profile_changed()
 
@@ -434,7 +626,7 @@ class TestDeletedReset:
         profile = make_profile()
         rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
-        rig.gateway.infolabels[self.DELAY_LABEL] = 'garbage'
+        rig.gateway.infolabels[DELAY_LABEL] = 'garbage'
 
         rig.profile_changed()
 
@@ -445,7 +637,7 @@ class TestDeletedReset:
         profile = make_profile()
         session = rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
-        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.100 s'
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.100 s'
         rig.gateway.set_audio_delay = lambda _pid, _s: False
 
         rig.profile_changed()
@@ -461,14 +653,13 @@ class TestDeletedReset:
         # (the user kept it) and its apply overwrites any residue — the
         # stale marker is spent without a reset.
         rig.offsets.per_fps = True
-        exact_key = 'dolbyvision|23|truehd'
         profile = make_profile()
         session = rig.start(profile, offset_ms=-25)      # seeds ALL_KEY
-        rig.offsets.resets = {exact_key}
+        rig.offsets.resets = {EXACT_KEY}
 
         rig.profile_changed()
 
         assert rig.gateway.applied == [(1, -0.025)]      # the fallback value
         assert session.applied == (ALL_KEY, -25)
-        assert rig.offsets.consumed == [exact_key]
+        assert rig.offsets.consumed == [EXACT_KEY]
         assert len(rig.announced) == 1                   # normal apply toast
