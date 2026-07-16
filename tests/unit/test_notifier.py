@@ -17,7 +17,8 @@ import pytest
 from resources.lib.aom.app import events
 from resources.lib.aom.app.dispatcher import Dispatcher
 from resources.lib.aom.app.notifier import (
-    Notifier, STRING_OFFSET_APPLIED, STRING_OFFSET_SAVED)
+    CORRUPTION_NOTICE_MS, Notifier, STRING_OFFSET_APPLIED,
+    STRING_OFFSET_SAVED, STRING_STORE_CORRUPTED)
 from resources.lib.aom.app.session import SessionTracker
 from resources.lib.aom.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeGui
@@ -420,6 +421,32 @@ class TestSettingsGate:
                                         profile=profile, ms=-115))
 
         assert rig.toasts == []
+
+
+class TestStoreCorrupted:
+    # The corruption notice is an error notice, not a per-kind toast: it
+    # has no session, ignores the notify gates, and uses its own duration.
+
+    def test_notice_fires_without_a_session(self, rig):
+        assert rig.session is None
+        rig.post(events.StoreCorrupted())
+        assert rig.toasts == [(f"#{STRING_STORE_CORRUPTED}",
+                               CORRUPTION_NOTICE_MS)]
+
+    def test_notice_ignores_both_toast_gates(self, rig):
+        rig.settings.apply_enabled = False
+        rig.settings.learn_enabled = False
+        rig.post(events.StoreCorrupted())
+        assert len(rig.toasts) == 1
+
+    def test_blank_localization_falls_back_to_english(self, rig):
+        # localized() degrades to '' on failure; the notice is the user's
+        # ONLY signal their offsets were reset and must never be blank.
+        rig.gui.localized_strings[STRING_STORE_CORRUPTED] = ''
+        rig.post(events.StoreCorrupted())
+        message, duration = rig.toasts[0]
+        assert 'offsets.json.bad' in message
+        assert duration == CORRUPTION_NOTICE_MS
 
 
 class TestSignRendering:

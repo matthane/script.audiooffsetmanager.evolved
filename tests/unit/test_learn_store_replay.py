@@ -336,7 +336,9 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
     store_path = tmp_path / 'offsets.json'
     store_path.write_bytes(b'this is not valid json at all {{{{')
 
-    # The corruption notification fires DURING construction, so capture at the
+    # The corruption flag is posted as a typed StoreCorrupted event during
+    # construction and the Notifier raises the notice on the first pump
+    # (E4: the composition root no longer touches the GUI). Capture at the
     # Gui class before building the runtime.
     notifications = []
     monkeypatch.setattr(
@@ -345,6 +347,7 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
             notifications.append((message, duration_ms)))
 
     rig = build()
+    rig.runtime.dispatcher.run_pending()
 
     assert notifications                            # user was told
     # ...and told SOMETHING: localized() degrades to '' (the kodistubs

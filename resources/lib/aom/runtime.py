@@ -53,13 +53,6 @@ from resources.lib.aom.store.table import OffsetTable
 
 STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
 
-# "Stored offsets were unreadable and were reset (backup kept as
-# offsets.json.bad)" — the startup corruption notice (E3 gave it a string
-# id; a typed StoreCorrupted event through the Notifier stays on the E4
-# ledger).
-STRING_STORE_CORRUPTED = 32121
-CORRUPTION_NOTICE_MS = 7000
-
 
 class ServiceRuntime:
     def __init__(self):
@@ -72,21 +65,13 @@ class ServiceRuntime:
 
         # The sparse offset store: loaded ONCE at service start, owned by
         # the dispatcher thread thereafter (single-writer doctrine). A
-        # corrupt file was quarantined to .bad inside load() — surface that
-        # once, then run normally (empty store = learn from scratch).
+        # corrupt file was quarantined to .bad inside load(); the typed
+        # StoreCorrupted event is posted AFTER the graph is built (below)
+        # and the Notifier owns the user-facing notice.
         self.store = OffsetStore(
             xbmcvfs.translatePath(STORE_PATH),
             log_debug=self.logger.debug, log_warning=self.logger.warning)
         self.store.load()
-        if self.store.pop_corruption():
-            # localized() degrades to '' on a transient failure, and this
-            # notice is the user's ONLY signal that stored offsets were
-            # reset — fall back to the English source string rather than
-            # raising a blank toast (E3 review).
-            message = self.gui.localized(STRING_STORE_CORRUPTED) or (
-                "Stored offsets were unreadable and were reset "
-                "(backup kept as offsets.json.bad)")
-            self.gui.notification(message, CORRUPTION_NOTICE_MS)
         self.offsets = OffsetTable(self.store, self.settings)
 
         self.dispatcher = Dispatcher(
@@ -132,6 +117,12 @@ class ServiceRuntime:
         self.monitor = MonitorBridge(self.dispatcher)
         self.dispatcher.subscribe(events.SettingsChanged,
                                   self._on_settings_changed)
+
+        # Surface the one-shot corruption flag through the graph: posted
+        # here (queued until the dispatcher starts) so the Notifier — the
+        # toast owner — raises the notice, not this composition root.
+        if self.store.pop_corruption():
+            self.dispatcher.post(events.StoreCorrupted())
 
     def _on_settings_changed(self, _event):
         """Refresh the cached debug flags; never write settings from here."""

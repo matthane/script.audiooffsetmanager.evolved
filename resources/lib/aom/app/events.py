@@ -186,6 +186,18 @@ class WatchTick:
     session_id: int
 
 
+# --- Store lifecycle ----------------------------------------------------------
+
+@dataclass(frozen=True)
+class StoreCorrupted:
+    """The offsets file was quarantined to .bad at load (one-shot).
+
+    Posted by the runtime after construction when the store's corruption
+    flag was set; the Notifier owns the user-facing notice (E3-review
+    ledger item — the composition root no longer raises GUI toasts).
+    """
+
+
 # --- Store mutation channel (script process -> service, D5) ------------------
 
 @dataclass(frozen=True)

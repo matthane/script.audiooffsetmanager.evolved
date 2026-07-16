@@ -46,6 +46,11 @@ from resources.lib.aom.store import keys as store_keys
 
 STRING_OFFSET_APPLIED = 32092
 STRING_OFFSET_SAVED = 32093
+# "Stored offsets were unreadable and were reset (backup kept as
+# offsets.json.bad)" — the startup corruption notice (moved here from the
+# runtime with the typed StoreCorrupted event, per the E4 ledger).
+STRING_STORE_CORRUPTED = 32121
+CORRUPTION_NOTICE_MS = 7000
 
 
 class Notifier:
@@ -67,6 +72,7 @@ class Notifier:
         dispatcher.subscribe(events.OffsetApplied, self._on_offset_applied)
         dispatcher.subscribe(events.UserOffsetSaved, self._on_user_offset_saved)
         dispatcher.subscribe(events.StreamStabilized, self._on_stream_stabilized)
+        dispatcher.subscribe(events.StoreCorrupted, self._on_store_corrupted)
 
     # -- handlers (dispatcher thread) -------------------------------------------
 
@@ -124,6 +130,19 @@ class Notifier:
         # do NOT re-read session/settings for the message.
         self._toast(STRING_OFFSET_SAVED, event.ms, event.profile,
                     enabled=self._settings.notify_learn_enabled)
+
+    def _on_store_corrupted(self, _event):
+        # An error notice, not a per-kind toast: deliberately outside the
+        # notify_apply/notify_learn gates and the dedupe window (it fires
+        # once per quarantine, has no session, and must never be muted).
+        # localized() degrades to '' on a transient failure, and this is
+        # the user's ONLY signal that stored offsets were reset — fall back
+        # to the English source string rather than raising a blank toast.
+        message = self._gui.localized(STRING_STORE_CORRUPTED) or (
+            "Stored offsets were unreadable and were reset "
+            "(backup kept as offsets.json.bad)")
+        self._gui.notification(message, CORRUPTION_NOTICE_MS)
+        self._log("AOM_Notifier: surfaced store corruption notice")
 
     # -- internals --------------------------------------------------------------
 
