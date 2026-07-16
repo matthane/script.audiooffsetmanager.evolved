@@ -85,7 +85,7 @@ class Notifier:
             # the hold so the release can compare identities at the
             # granularity in force THEN (toggle read at release instant).
             session.pending_notification = (event.profile, event.ms)
-            self._log("AOM_Notifier: holding provisional notification until "
+            self._log("AOMe_Notifier: holding provisional notification until "
                       "the stream stabilizes")
             return
         session.pending_notification = None
@@ -114,7 +114,7 @@ class Notifier:
         session.pending_notification = None
         self._toast(STRING_OFFSET_APPLIED, pending_ms, profile,
                     enabled=self._settings.notify_apply_enabled)
-        self._log("AOM_Notifier: Released pending offset notification after "
+        self._log("AOMe_Notifier: Released pending offset notification after "
                   "stream stabilization")
 
     def _on_user_offset_saved(self, event):
@@ -142,7 +142,7 @@ class Notifier:
             "Stored offsets were unreadable and were reset "
             "(backup kept as offsets.json.bad)")
         self._gui.notification(message, CORRUPTION_NOTICE_MS)
-        self._log("AOM_Notifier: surfaced store corruption notice")
+        self._log("AOMe_Notifier: surfaced store corruption notice")
 
     # -- internals --------------------------------------------------------------
 
@@ -192,6 +192,6 @@ class Notifier:
         self._gui.notification(summary,
                                self._settings.notification_duration_ms(),
                                title=heading)
-        self._log(f"AOM_Notifier: {heading} — {summary}")
+        self._log(f"AOMe_Notifier: {heading} — {summary}")
         self._last_toast = key
         self._last_toast_at = now

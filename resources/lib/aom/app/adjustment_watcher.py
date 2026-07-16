@@ -167,7 +167,7 @@ class AdjustmentWatcher:
         else:
             self._dispatcher.cancel(self._TICK_KEY)
             self._clear_observation(session)
-            self._log(f"AOM_AdjustmentWatcher: not watching session "
+            self._log(f"AOMe_AdjustmentWatcher: not watching session "
                       f"#{session.session_id} (ineligible: "
                       f"profile={session.profile})")
 
@@ -182,7 +182,7 @@ class AdjustmentWatcher:
         session = self._sessions.current
         if not self._eligible(session.profile):
             self._clear_observation(session)
-            self._log("AOM_AdjustmentWatcher: no longer eligible; stopping "
+            self._log("AOMe_AdjustmentWatcher: no longer eligible; stopping "
                       "watch")
             return  # ProfileChanged/SettingsChanged restart the chain
         # One poll, one reschedule: _observe classifies the reading and only
@@ -194,7 +194,7 @@ class AdjustmentWatcher:
         observed = policies.parse_delay_ms(
             self._gateway.infolabel(self.INFOLABEL_AUDIO_DELAY))
         if observed is None:
-            self._log("AOM_AdjustmentWatcher: audio delay unreadable; "
+            self._log("AOMe_AdjustmentWatcher: audio delay unreadable; "
                       "retrying")
             return self.IDLE_TICK_SECONDS
 
@@ -213,7 +213,7 @@ class AdjustmentWatcher:
             # pre-existing player state) — only a CHANGE while watching is a
             # user adjustment.
             session.watch_baseline_ms = observed
-            self._log(f"AOM_AdjustmentWatcher: adopting baseline "
+            self._log(f"AOMe_AdjustmentWatcher: adopting baseline "
                       f"{observed}ms (first observation)")
             return self.IDLE_TICK_SECONDS
 
@@ -228,7 +228,7 @@ class AdjustmentWatcher:
         pending = session.watch_pending
         if pending is None or pending[0] != observed:
             session.watch_pending = (observed, now)
-            self._log(f"AOM_AdjustmentWatcher: observing manual adjustment "
+            self._log(f"AOMe_AdjustmentWatcher: observing manual adjustment "
                       f"{observed}ms; awaiting quiescence")
             return self.ACTIVE_TICK_SECONDS
         if now - pending[1] < self.QUIESCENCE_SECONDS:
@@ -241,7 +241,7 @@ class AdjustmentWatcher:
             # longer exists — discard the whole observation chain (the
             # baseline is teardown-tainted too).
             self._clear_observation(session)
-            self._log("AOM_AdjustmentWatcher: no active player at store "
+            self._log("AOMe_AdjustmentWatcher: no active player at store "
                       "time; discarding pending adjustment")
             return self.IDLE_TICK_SECONDS
         self._store(session, observed)
@@ -258,7 +258,7 @@ class AdjustmentWatcher:
         if not policies.is_complete(profile):
             # Watched but not persistable: account for the value so we don't
             # chase it, but never write an incomplete key.
-            self._log(f"AOM_AdjustmentWatcher: profile incomplete "
+            self._log(f"AOMe_AdjustmentWatcher: profile incomplete "
                       f"({profile}); not storing {observed_ms}ms")
             session.watch_baseline_ms = observed_ms
             return
@@ -268,7 +268,7 @@ class AdjustmentWatcher:
             # Cannot compose a key (unparseable fps under per-fps): account,
             # never persist. is_complete makes this unreachable in practice;
             # the guard keeps the invariant local.
-            self._log(f"AOM_AdjustmentWatcher: no write key for {profile}; "
+            self._log(f"AOMe_AdjustmentWatcher: no write key for {profile}; "
                       f"not storing {observed_ms}ms")
             session.watch_baseline_ms = observed_ms
             return
@@ -277,7 +277,7 @@ class AdjustmentWatcher:
             # Already the stored value (e.g. re-dialed to the configured
             # offset): account for it, emit nothing.
             session.watch_baseline_ms = observed_ms
-            self._log(f"AOM_AdjustmentWatcher: {observed_ms}ms already stored "
+            self._log(f"AOMe_AdjustmentWatcher: {observed_ms}ms already stored "
                       f"for {write_key}; nothing to do")
             return
 
@@ -288,7 +288,7 @@ class AdjustmentWatcher:
         if stored_key is None:
             # The value is still foreign; leave the baseline untouched so the
             # next quiescence cycle retries the store.
-            self._warn(f"AOM_AdjustmentWatcher: failed to store "
+            self._warn(f"AOMe_AdjustmentWatcher: failed to store "
                        f"{observed_ms}ms for {write_key}")
             return
 
@@ -300,7 +300,7 @@ class AdjustmentWatcher:
         # delete->re-teach->delete cycle must re-log its miss, not be
         # swallowed by session-lifetime dedupe — E2 review finding).
         session.miss_announced = None
-        self._log(f"AOM_AdjustmentWatcher: Stored audio offset "
+        self._log(f"AOMe_AdjustmentWatcher: Stored audio offset "
                   f"{observed_ms}ms for {stored_key}")
         self._dispatcher.post(events.UserOffsetSaved(
             session_id=session.session_id, profile=profile, ms=observed_ms,

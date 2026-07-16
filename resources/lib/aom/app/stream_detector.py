@@ -209,7 +209,7 @@ class StreamDetector:
             return  # tracker subscribes first; defensive only
         self._cancel_scheduled()
         self._discovering = True
-        self._log(f"AOM_StreamDetector: session #{session.session_id} "
+        self._log(f"AOMe_StreamDetector: session #{session.session_id} "
                   f"discovery started")
         self._dispatcher.post(
             events.ProbeStream(session_id=session.session_id, attempt=1))
@@ -231,7 +231,7 @@ class StreamDetector:
         facts = self._gather(event.session_id)
         if policies.is_complete(facts.profile):
             self._discovering = False
-            self._log(f"AOM_StreamDetector: discovery complete on attempt "
+            self._log(f"AOMe_StreamDetector: discovery complete on attempt "
                       f"{event.attempt}: {facts.profile}")
             self._adopt(session, facts.profile)
         elif event.attempt < self.PROBE_BUDGET:
@@ -242,7 +242,7 @@ class StreamDetector:
                 key=self._PROBE_KEY)
         else:
             self._discovering = False
-            self._warn(f"AOM_StreamDetector: giving up discovery after "
+            self._warn(f"AOMe_StreamDetector: giving up discovery after "
                        f"{event.attempt} attempts; last probe: {facts.profile}")
 
     # -- change detection --------------------------------------------------------
@@ -250,12 +250,12 @@ class StreamDetector:
     def _on_av_changed(self, _event):
         session = self._sessions.current
         if session is None:
-            self._log("AOM_StreamDetector: AV change with no session; ignoring")
+            self._log("AOMe_StreamDetector: AV change with no session; ignoring")
             return
         if self._discovering:
             # The probe chain reads fresh facts on every attempt, so it will
             # observe whatever this change did — no extra work to schedule.
-            self._log("AOM_StreamDetector: AV change during discovery; "
+            self._log("AOMe_StreamDetector: AV change during discovery; "
                       "probes will observe it")
             return
         facts = self._gather(session.session_id)
@@ -263,11 +263,11 @@ class StreamDetector:
             # Same offset-relevant stream: refresh incidental fields
             # (player_id/channels/raw fps) silently — no events, no state.
             session.profile = facts.profile
-            self._log("AOM_StreamDetector: AV change with unchanged profile; "
+            self._log("AOMe_StreamDetector: AV change with unchanged profile; "
                       "ignoring")
             return
         if policies.is_complete(facts.profile):
-            self._log(f"AOM_StreamDetector: stream change detected: "
+            self._log(f"AOMe_StreamDetector: stream change detected: "
                       f"{session.profile} -> {facts.profile}")
             self._adopt(session, facts.profile)
         elif session.profile is None:
@@ -275,7 +275,7 @@ class StreamDetector:
             # a change means it may be completing now; restart the budget
             # (legacy's in-call retry loops would have kept chasing here).
             self._discovering = True
-            self._log("AOM_StreamDetector: AV change after exhausted "
+            self._log("AOMe_StreamDetector: AV change after exhausted "
                       "discovery; restarting probes")
             self._dispatcher.post(
                 events.ProbeStream(session_id=session.session_id, attempt=1))
@@ -284,7 +284,7 @@ class StreamDetector:
             # flight. Regress to STABILIZING and let the verify loop
             # re-probe until the stream settles (recovery edge).
             session.mark_verifying()
-            self._log("AOM_StreamDetector: profile lost mid-playback; "
+            self._log("AOMe_StreamDetector: profile lost mid-playback; "
                       "verifying until it settles")
             self._schedule_verify(session.session_id)
 
@@ -305,7 +305,7 @@ class StreamDetector:
             session.mark_stable()
             announce = session.profile_changed_since_stabilized
             session.profile_changed_since_stabilized = False
-            self._log(f"AOM_StreamDetector: profile held for "
+            self._log(f"AOMe_StreamDetector: profile held for "
                       f"{self.VERIFY_WINDOW_SECONDS}s; session "
                       f"#{event.session_id} stable "
                       f"(profile_changed={announce})")
@@ -313,14 +313,14 @@ class StreamDetector:
                 session_id=event.session_id, profile_changed=announce,
                 initial=session.stabilized_count == 1))
         elif policies.is_complete(facts.profile):
-            self._log(f"AOM_StreamDetector: profile changed during "
+            self._log(f"AOMe_StreamDetector: profile changed during "
                       f"verification: {session.profile} -> {facts.profile}; "
                       f"re-verifying")
             self._adopt(session, facts.profile)
         else:
             # Profile went incomplete inside the window (codec blip):
             # keep watching. Session-bound: playback stop cancels the key.
-            self._log("AOM_StreamDetector: profile incomplete during "
+            self._log("AOMe_StreamDetector: profile incomplete during "
                       "verification; re-verifying")
             self._schedule_verify(event.session_id)
 
@@ -380,7 +380,7 @@ class StreamDetector:
         # The raw gateway strings are logged VERBATIM: under the open
         # vocabulary they are the store's key material, and field logs are
         # how key fragmentation would ever be observed and diagnosed.
-        self._log(f"AOM_StreamDetector: probed {facts.profile} "
+        self._log(f"AOMe_StreamDetector: probed {facts.profile} "
                   f"(hdr_source={facts.hdr_source}, "
                   f"platform_hdr_full={facts.platform_hdr_full}, "
                   f"gamut={facts.gamut_info}, "

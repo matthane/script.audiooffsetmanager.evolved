@@ -17,7 +17,7 @@ level (LOGDEBUG vs LOGINFO) and nothing else, so it carries no lock.
 The escalation and prefix behavior are ported verbatim from the legacy
 ``log()``: a LOGDEBUG line escalates to LOGINFO when the addon debug toggle is
 on (so users can capture addon debug lines without turning on Kodi-wide debug),
-and a message already prefixed ``AOM_`` or ``[AOM]`` is not double-tagged.
+and a message already prefixed ``AOMe_`` or ``[AOM]`` is not double-tagged.
 
 This layer may import ``xbmc*`` and ``resources.lib.aom.*`` only.
 """
@@ -39,13 +39,13 @@ class KodiLogger:
         # LOGDEBUG escalates to LOGINFO when the addon debug toggle is on
         # (so users can capture addon debug lines without Kodi-wide debug).
         # Prefix rule ported verbatim from the legacy logger: messages already
-        # prefixed 'AOM_' or '[AOM]' are not double-tagged.
+        # prefixed 'AOMe_' or '[AOM]' are not double-tagged.
         effective_level = (
             xbmc.LOGINFO
             if (level == xbmc.LOGDEBUG and self.debug_escalation)
             else level)
         use_prefix = (
-            '' if message.startswith('[AOM]') or message.startswith('AOM_')
+            '' if message.startswith('[AOM]') or message.startswith('AOMe_')
             else '[AOM]')
         xbmc.log(f"{use_prefix} {message}".strip(), effective_level)
 

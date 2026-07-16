@@ -94,7 +94,7 @@ class ExternalSeekCoordinator:
         for name in self.VENDOR_BUSY_PROPERTIES:
             if self._gateway.window_property(name) == '1':
                 self._last_vendor_busy = self._clock()
-                self._log(f"AOM_SeekCoordinator: {name} indicates seek "
+                self._log(f"AOMe_SeekCoordinator: {name} indicates seek "
                           f"activity; deferring")
                 return True
         return False
@@ -192,7 +192,7 @@ class SeekScheduler:
             # Startup settling, not an adjustment — stamped by the detector
             # from the state machine's own stabilization count (this replaced
             # the per-session initial_av_change_consumed latch).
-            self._log("AOM_SeekScheduler: Skipping initial AV change (startup)")
+            self._log("AOMe_SeekScheduler: Skipping initial AV change (startup)")
             return
         self._request('adjust')
 
@@ -217,7 +217,7 @@ class SeekScheduler:
             # Replaying into a paused player is pointless; an unpause is its
             # own trigger. (Fire-time cancellation also closes legacy's gap
             # of seeking into a player paused during its settle window.)
-            self._log(f"AOM_SeekScheduler: Playback is paused; cancelling "
+            self._log(f"AOMe_SeekScheduler: Playback is paused; cancelling "
                       f"{event.reason} seek back")
             return
 
@@ -235,7 +235,7 @@ class SeekScheduler:
             deadline=self.DEADLINE_SECONDS)
 
         if decision == 'abandon':
-            self._log(f"AOM_SeekScheduler: Abandoning {event.reason} seek "
+            self._log(f"AOMe_SeekScheduler: Abandoning {event.reason} seek "
                       f"back (already served or deadline passed)")
             return
         if decision == 'defer':
@@ -252,11 +252,11 @@ class SeekScheduler:
         enabled, seek_seconds = self._settings.seek_back_config(event.reason)
         if not enabled or seek_seconds <= 0:
             # Toggled off mid-defer (the trigger-time check is the primary).
-            self._log(f"AOM_SeekScheduler: Seek back on {event.reason} no "
+            self._log(f"AOMe_SeekScheduler: Seek back on {event.reason} no "
                       f"longer enabled; cancelling")
             return
 
-        self._log(f"AOM_SeekScheduler: Seeking back {seek_seconds} seconds "
+        self._log(f"AOMe_SeekScheduler: Seeking back {seek_seconds} seconds "
                   f"on {event.reason}")
         # An undetected stream (profile None past the stability grace) lets
         # the coordinator resolve the player at execution time.
@@ -268,7 +268,7 @@ class SeekScheduler:
             session.seek_history[event.reason] = executed_at
             session.last_seek_activity = executed_at
         else:
-            self._log(f"AOM_SeekScheduler: Seek back failed on "
+            self._log(f"AOMe_SeekScheduler: Seek back failed on "
                       f"{event.reason}")
 
     # -- internals ----------------------------------------------------------------
@@ -281,16 +281,16 @@ class SeekScheduler:
         last_executed = session.seek_history.get(reason)
         if last_executed is not None and \
                 now - last_executed < self.DEBOUNCE_SECONDS:
-            self._log(f"AOM_SeekScheduler: Skipping {reason} seek back - "
+            self._log(f"AOMe_SeekScheduler: Skipping {reason} seek back - "
                       f"too soon after the previous one")
             return
         enabled, seek_seconds = self._settings.seek_back_config(reason)
         if not enabled:
-            self._log(f"AOM_SeekScheduler: Seek back on {reason} is not "
+            self._log(f"AOMe_SeekScheduler: Seek back on {reason} is not "
                       f"enabled")
             return
         if seek_seconds <= 0:
-            self._warn(f"AOM_SeekScheduler: Invalid seek back seconds "
+            self._warn(f"AOMe_SeekScheduler: Invalid seek back seconds "
                        f"({seek_seconds}) for {reason}")
             return
         # A re-trigger while pending key-replaces the attempt chain; the
@@ -303,7 +303,7 @@ class SeekScheduler:
             key=self._key(reason))
 
     def _defer(self, event, why):
-        self._log(f"AOM_SeekScheduler: Deferring {event.reason} seek back "
+        self._log(f"AOMe_SeekScheduler: Deferring {event.reason} seek back "
                   f"({why})")
         self._dispatcher.schedule(self.RECHECK_SECONDS, event,
                                   key=self._key(event.reason))

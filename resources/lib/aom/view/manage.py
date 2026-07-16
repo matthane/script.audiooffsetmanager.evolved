@@ -92,7 +92,7 @@ class ManageView:
             try:
                 entries = self._read_entries()
             except StoreUnreadable as error:
-                self._log("AOM_ManageView: store unreadable ({0})".format(error))
+                self._log("AOMe_ManageView: store unreadable ({0})".format(error))
                 # A newer-schema file is PRESERVED by the service (read-
                 # only), never quarantined — its wording must not promise
                 # the reset the corrupt case gets (E4 review).
@@ -102,12 +102,12 @@ class ManageView:
                 return
 
             if not entries:
-                self._log("AOM_ManageView: store empty; nothing to manage")
+                self._log("AOMe_ManageView: store empty; nothing to manage")
                 self._gui.ok(heading, self._text(_MSG_EMPTY))
                 return
 
             rows = self._build_rows(entries)
-            self._log("AOM_ManageView: rendering {0} stored offset(s)"
+            self._log("AOMe_ManageView: rendering {0} stored offset(s)"
                       .format(len(rows)))
 
             options = [row.label for row in rows]
@@ -130,7 +130,7 @@ class ManageView:
                 # the first-run education empty state, which reads as
                 # "nothing was ever stored" right after the user emptied
                 # the store on purpose (E4 review).
-                self._log("AOM_ManageView: store cleared; closing view")
+                self._log("AOMe_ManageView: store cleared; closing view")
                 return
 
     # -- rendering ------------------------------------------------------------
@@ -190,19 +190,19 @@ class ManageView:
         message = self._gui.localized(_MSG_CONFIRM_DELETE) + "\n" + row.describe
         if not self._gui.yesno(heading, message):
             return _DECLINED
-        self._log("AOM_ManageView: requesting delete of {0}".format(row.key))
+        self._log("AOMe_ManageView: requesting delete of {0}".format(row.key))
         return self._send_mutation("delete", row.key)
 
     def _confirm_clear(self, heading):
         if not self._gui.yesno(heading, self._gui.localized(_MSG_CONFIRM_CLEAR)):
             return _DECLINED
-        self._log("AOM_ManageView: requesting clear of all stored offsets")
+        self._log("AOMe_ManageView: requesting clear of all stored offsets")
         return self._send_mutation("clear")
 
     def _report_ack(self, heading, ack):
         """Surface a failed/absent ack; a success just falls through to re-read."""
         if ack is None:
-            self._log("AOM_ManageView: no ack (service not running)")
+            self._log("AOMe_ManageView: no ack (service not running)")
             self._gui.ok(heading, self._text(_MSG_NO_SERVICE))
             return
         if not ack.get("ok"):
@@ -212,15 +212,15 @@ class ManageView:
                 # learning or another session): the user's intent is
                 # satisfied — the refreshed list is the feedback, not an
                 # error dialog for a no-op (E4 review).
-                self._log("AOM_ManageView: delete target already gone")
+                self._log("AOMe_ManageView: delete target already gone")
                 return
-            self._log("AOM_ManageView: mutation refused ({0})".format(detail))
+            self._log("AOMe_ManageView: mutation refused ({0})".format(detail))
             self._gui.ok(
                 heading,
                 self._text(_MSG_MUTATION_FAILED)
                 + " (" + str(detail) + ")")
             return
-        self._log("AOM_ManageView: mutation ok ({0})".format(ack.get("detail")))
+        self._log("AOMe_ManageView: mutation ok ({0})".format(ack.get("detail")))
 
     def _text(self, string_id):
         """localized() with the English fallback for full-content dialogs."""

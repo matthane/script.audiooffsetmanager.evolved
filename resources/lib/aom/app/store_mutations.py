@@ -73,7 +73,7 @@ class StoreMutationHandler:
             # The loud rejection (P6): anything outside the whitelist —
             # including a would-be value write or a malformed payload —
             # is named in the log, refused, and acked as failed.
-            self._warn(f"AOM_StoreMutations: rejected op {event.op!r} "
+            self._warn(f"AOMe_StoreMutations: rejected op {event.op!r} "
                        f"(allowed: {', '.join(ALLOWED_OPS)})")
             reply = {'ok': False, 'detail': 'rejected'}
 
@@ -85,11 +85,11 @@ class StoreMutationHandler:
 
     def _delete(self, key):
         if not isinstance(key, str) or not key:
-            self._warn(f"AOM_StoreMutations: rejected delete with bad key "
+            self._warn(f"AOMe_StoreMutations: rejected delete with bad key "
                        f"{key!r}")
             return {'ok': False, 'detail': 'rejected'}
         if self._store.read_only:
-            self._warn(f"AOM_StoreMutations: store is read-only; "
+            self._warn(f"AOMe_StoreMutations: store is read-only; "
                        f"refusing delete({key!r})")
             return {'ok': False, 'detail': 'read_only'}
         if self._store.get(key) is None:
@@ -101,13 +101,13 @@ class StoreMutationHandler:
             # resurrect from disk on the next load — the ack must not
             # claim durability the store does not have.
             return {'ok': False, 'detail': 'persist_failed'}
-        self._log(f"AOM_StoreMutations: deleted stored offset {key}")
+        self._log(f"AOMe_StoreMutations: deleted stored offset {key}")
         self._clear_miss_dedupe()
         return {'ok': True, 'detail': 'deleted'}
 
     def _clear(self):
         if self._store.read_only:
-            self._warn("AOM_StoreMutations: store is read-only; "
+            self._warn("AOMe_StoreMutations: store is read-only; "
                        "refusing clear()")
             return {'ok': False, 'detail': 'read_only'}
         expected = len(self._store)
@@ -116,7 +116,7 @@ class StoreMutationHandler:
             # clear() reports 0 on a persist failure; with entries present
             # that means the file still holds them (see OffsetStore.clear).
             return {'ok': False, 'detail': 'persist_failed', 'count': count}
-        self._log(f"AOM_StoreMutations: cleared {count} stored offset(s)")
+        self._log(f"AOMe_StoreMutations: cleared {count} stored offset(s)")
         self._clear_miss_dedupe()
         return {'ok': True, 'detail': 'cleared', 'count': count}
 

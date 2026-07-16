@@ -33,7 +33,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-_PREFIX = "AOM_OffsetStore:"
+_PREFIX = "AOMe_OffsetStore:"
 _SCHEMA_VERSION = 1
 
 

@@ -46,7 +46,7 @@ class Gui:
         try:
             return self._addon.getLocalizedString(string_id)
         except Exception as e:
-            self._log(f"AOM_Gui: Error reading localized string {string_id}: "
+            self._log(f"AOMe_Gui: Error reading localized string {string_id}: "
                       f"{str(e)}", xbmc.LOGERROR)
             return ''
 
@@ -60,7 +60,7 @@ class Gui:
         try:
             return xbmcgui.Dialog().select(heading, options)
         except Exception as e:
-            self._log(f"AOM_Gui: Error showing select dialog: {str(e)}",
+            self._log(f"AOMe_Gui: Error showing select dialog: {str(e)}",
                       xbmc.LOGERROR)
             return -1
 
@@ -73,7 +73,7 @@ class Gui:
         try:
             return bool(xbmcgui.Dialog().yesno(heading, message))
         except Exception as e:
-            self._log(f"AOM_Gui: Error showing yesno dialog: {str(e)}",
+            self._log(f"AOMe_Gui: Error showing yesno dialog: {str(e)}",
                       xbmc.LOGERROR)
             return False
 
@@ -89,7 +89,7 @@ class Gui:
             xbmcgui.Dialog().ok(heading, message)
             return True
         except Exception as e:
-            self._log(f"AOM_Gui: Error showing ok dialog: {str(e)}",
+            self._log(f"AOMe_Gui: Error showing ok dialog: {str(e)}",
                       xbmc.LOGERROR)
             return False
 
@@ -108,5 +108,5 @@ class Gui:
                 icon if icon is not None else self._icon,
                 duration_ms)
         except Exception as e:
-            self._log(f"AOM_Gui: Error raising notification: {str(e)}",
+            self._log(f"AOMe_Gui: Error raising notification: {str(e)}",
                       xbmc.LOGERROR)

@@ -24,7 +24,7 @@ never rewrite it as ``xbmcaddon.Addon(...).getSettings()``.
 
 Faithful port of the legacy semantics, with two deliberate upgrades noted as
 Phase 7 work: the bare ``except:`` clauses become ``except Exception`` here, and
-the ``AOM_SettingsManager`` log prefix becomes ``AOM_Settings``. The
+the ``AOMe_SettingsManager`` log prefix becomes ``AOMe_Settings``. The
 ``store_*_if_changed`` helpers keep the read-before-write skip for BEHAVIOR
 settings (the only kind that lives here now — offsets moved to the sparse
 store, P4): no write means nothing for a dialog save-on-close to fight
@@ -66,7 +66,7 @@ class Settings:
             return self._settings.getBool(setting_id)
         except Exception:
             self._log(
-                f"AOM_Settings: Error getting boolean setting '{setting_id}'. "
+                f"AOMe_Settings: Error getting boolean setting '{setting_id}'. "
                 f"Using default: {default}", xbmc.LOGWARNING)
             return default
 
@@ -76,7 +76,7 @@ class Settings:
             return self._settings.getInt(setting_id)
         except Exception:
             self._log(
-                f"AOM_Settings: Error getting integer setting '{setting_id}'. "
+                f"AOMe_Settings: Error getting integer setting '{setting_id}'. "
                 f"Using default: {default}", xbmc.LOGWARNING)
             return default
 
@@ -109,13 +109,13 @@ class Settings:
         """Log the store at LOGDEBUG and write; on error log LOGWARNING."""
         try:
             self._log(
-                f"AOM_Settings: Storing {value_type} setting {setting_id}: "
+                f"AOMe_Settings: Storing {value_type} setting {setting_id}: "
                 f"{value}", xbmc.LOGDEBUG)
             operation(setting_id, value)
             return True
         except Exception:
             self._log(
-                f"AOM_Settings: Error storing {value_type} setting "
+                f"AOMe_Settings: Error storing {value_type} setting "
                 f"'{setting_id}'.", xbmc.LOGWARNING)
             return False
 

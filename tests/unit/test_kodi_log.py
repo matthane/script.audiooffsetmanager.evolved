@@ -80,8 +80,8 @@ class TestPrefixRules:
 
     def test_aom_underscore_prefix_not_double_tagged(self, monkeypatch):
         calls = _install_recorder(monkeypatch)
-        KodiLogger()("AOM_Settings: stored", xbmc.LOGINFO)
-        assert calls == [("AOM_Settings: stored", xbmc.LOGINFO)]
+        KodiLogger()("AOMe_Settings: stored", xbmc.LOGINFO)
+        assert calls == [("AOMe_Settings: stored", xbmc.LOGINFO)]
 
     def test_bracket_aom_prefix_not_double_tagged(self, monkeypatch):
         calls = _install_recorder(monkeypatch)

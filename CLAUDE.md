@@ -99,7 +99,8 @@ settings-state doctrine survives for these, unchanged and binding:
 - Match existing style: module docstrings, constructor dependency
   injection, no globals; new runtime files under `resources/lib/aom/`.
 - Kodi I/O through the gateway adapters; logging through the injected
-  sinks with `AOM_`-prefixed messages; Python 3.8 syntax.
+  sinks with `AOMe_`-prefixed messages (the `e` distinguishes Evolved's
+  lines from classic AOM's in a shared kodi.log); Python 3.8 syntax.
 - Small imperative commits with the
   `Co-authored-by: Claude <noreply@anthropic.com>` trailer; annotated
   `evolved-N` tags at phase boundaries; full pytest green before every

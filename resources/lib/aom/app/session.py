@@ -163,16 +163,16 @@ class SessionTracker:
         if self.current is not None:
             # In-place reopen: the old session is superseded; every scheduled
             # or marshaled event stamped with its id is now inert.
-            self._log(f"AOM_SessionTracker: superseding session "
+            self._log(f"AOMe_SessionTracker: superseding session "
                       f"#{self.current.session_id} (in-place reopen)")
         self.current = PlaybackSession(session_id=self._next_id,
                                        started_at=self._clock())
         self._next_id += 1
-        self._log(f"AOM_SessionTracker: session #{self.current.session_id} started")
+        self._log(f"AOMe_SessionTracker: session #{self.current.session_id} started")
 
     def _on_ended(self, _event):
         if self.current is not None:
-            self._log(f"AOM_SessionTracker: session #{self.current.session_id} ended")
+            self._log(f"AOMe_SessionTracker: session #{self.current.session_id} ended")
         self.current = None
 
     def _on_paused(self, _event):

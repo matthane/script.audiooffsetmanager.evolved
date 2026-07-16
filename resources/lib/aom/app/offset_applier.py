@@ -81,7 +81,7 @@ class OffsetApplier:
             return
 
         if profile.player_id == -1:
-            self._log("AOM_OffsetApplier: No valid player ID found to set "
+            self._log("AOMe_OffsetApplier: No valid player ID found to set "
                       "audio delay")
             return
 
@@ -91,7 +91,7 @@ class OffsetApplier:
             # One debug line per distinct consulted chain, not per event.
             if session.miss_announced != resolution.tried:
                 session.miss_announced = resolution.tried
-                self._log(f"AOM_OffsetApplier: no stored offset for "
+                self._log(f"AOMe_OffsetApplier: no stored offset for "
                           f"{profile.describe()} (tried "
                           f"{', '.join(resolution.tried)}); leaving Kodi's "
                           f"delay untouched")
@@ -101,7 +101,7 @@ class OffsetApplier:
         delay_ms = resolution.ms
 
         if session.applied == (key, delay_ms):
-            self._log(f"AOM_OffsetApplier: Offset already applied for "
+            self._log(f"AOMe_OffsetApplier: Offset already applied for "
                       f"{key} at {delay_ms}ms; skipping duplicate apply")
             return
 
@@ -115,11 +115,11 @@ class OffsetApplier:
         if not self._gateway.set_audio_delay(profile.player_id,
                                              delay_ms / 1000.0):
             session.applied = previous_applied
-            self._warn(f"AOM_OffsetApplier: audio delay RPC failed for "
+            self._warn(f"AOMe_OffsetApplier: audio delay RPC failed for "
                        f"{key}; will retry on the next stabilization")
             return
 
-        self._log(f"AOM_OffsetApplier: Applied {delay_ms}ms for {key} "
+        self._log(f"AOMe_OffsetApplier: Applied {delay_ms}ms for {key} "
                   f"(hit={resolution.hit_kind}, provisional={provisional}); "
                   f"{session.describe()}")
         self._dispatcher.post(events.OffsetApplied(
@@ -134,12 +134,12 @@ class OffsetApplier:
             return True
 
         if reason == 'paused':
-            self._log("AOM_OffsetApplier: paused; skipping audio offset "
+            self._log("AOMe_OffsetApplier: paused; skipping audio offset "
                       "application")
         elif reason == 'no_profile':
-            self._log("AOM_OffsetApplier: No stream profile available; "
+            self._log("AOMe_OffsetApplier: No stream profile available; "
                       "skipping offset")
         elif reason == 'unknown_format':
-            self._log(f"AOM_OffsetApplier: Skipping audio offset - profile "
+            self._log(f"AOMe_OffsetApplier: Skipping audio offset - profile "
                       f"incomplete ({profile.describe()})")
         return False

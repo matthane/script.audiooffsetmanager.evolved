@@ -232,10 +232,10 @@ class Dispatcher:
                 handler(event)
             except Exception as exc:  # isolation: one bad handler never starves the rest
                 self._log_error(
-                    f"AOM_Dispatcher: {type(event).__name__} handler "
+                    f"AOMe_Dispatcher: {type(event).__name__} handler "
                     f"{_handler_name(handler)} failed: {exc!r}")
             if self.log_runtimes:
                 elapsed_ms = (self._clock() - started) * 1000.0
                 self._log_debug(
-                    f"AOM_Dispatcher: {type(event).__name__} handled by "
+                    f"AOMe_Dispatcher: {type(event).__name__} handled by "
                     f"{_handler_name(handler)} in {elapsed_ms:.1f}ms")

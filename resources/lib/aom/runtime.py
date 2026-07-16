@@ -168,20 +168,20 @@ class ServiceRuntime:
             # restart CAN land under an open dialog — addon update/re-
             # enable — so skip the write; the warning re-fires and writes
             # on a later start (E4 review).
-            self.logger.debug("AOM_Runtime: deferring coexistence flag "
+            self.logger.debug("AOMe_Runtime: deferring coexistence flag "
                               "(settings dialog open)")
             return
         self.settings.store_boolean_if_changed('coexistence_warned', True)
-        self.logger.debug("AOM_Runtime: coexistence warning shown")
+        self.logger.debug("AOMe_Runtime: coexistence warning shown")
 
     def run(self):
         self.dispatcher.start()
-        self.logger.debug("AOM_Runtime: service started")
+        self.logger.debug("AOMe_Runtime: service started")
 
         self._maybe_warn_coexistence()
         self.monitor.waitForAbort()
 
-        self.logger.debug("AOM_Runtime: abort requested; shutting down")
+        self.logger.debug("AOMe_Runtime: abort requested; shutting down")
         # Joining the dispatcher thread is the whole shutdown: every
         # subscription lives on the dispatcher, and posts arriving after
         # stop are dropped by design.

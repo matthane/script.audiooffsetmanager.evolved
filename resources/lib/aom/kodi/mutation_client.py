@@ -96,7 +96,7 @@ class MutationClient(xbmc.Monitor):
                 waited += self.POLL_SECONDS
         finally:
             self._pending_id = None
-        self._log(f"AOM_MutationClient: No ack for {op} within "
+        self._log(f"AOMe_MutationClient: No ack for {op} within "
                   f"{self.TIMEOUT_SECONDS}s (service not running?)",
                   xbmc.LOGDEBUG)
         return None

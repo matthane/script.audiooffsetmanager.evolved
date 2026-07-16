@@ -61,7 +61,7 @@ class KodiGateway:
 
             return -1
         except Exception as e:
-            self._log(f"AOM_Gateway: Error getting player ID: {str(e)}", xbmc.LOGERROR)
+            self._log(f"AOMe_Gateway: Error getting player ID: {str(e)}", xbmc.LOGERROR)
             return -1
 
     def audio_info(self, player_id):
@@ -92,10 +92,10 @@ class KodiGateway:
                 return (audio_stream.get("codec", "unknown").replace('pt-', ''),
                         audio_stream.get("channels", "unknown"))
 
-            self._log("AOM_Gateway: No currentaudiostream in response", xbmc.LOGDEBUG)
+            self._log("AOMe_Gateway: No currentaudiostream in response", xbmc.LOGDEBUG)
             return "unknown", "unknown"
         except Exception as e:
-            self._log(f"AOM_Gateway: Error getting audio info: {str(e)}", xbmc.LOGERROR)
+            self._log(f"AOMe_Gateway: Error getting audio info: {str(e)}", xbmc.LOGERROR)
             return "unknown", "unknown"
 
     def infolabel(self, label):
@@ -110,7 +110,7 @@ class KodiGateway:
         try:
             return xbmc.getInfoLabel(label)
         except Exception as e:
-            self._log(f"AOM_Gateway: Error reading infolabel {label}: {str(e)}",
+            self._log(f"AOMe_Gateway: Error reading infolabel {label}: {str(e)}",
                       xbmc.LOGERROR)
             return ''
 
@@ -133,15 +133,15 @@ class KodiGateway:
             })
 
             if "error" in response:
-                self._log(f"AOM_Gateway: Failed to set audio offset: {response['error']}",
+                self._log(f"AOMe_Gateway: Failed to set audio offset: {response['error']}",
                           xbmc.LOGWARNING)
                 return False
 
-            self._log(f"AOM_Gateway: Audio offset set to {delay_seconds} seconds",
+            self._log(f"AOMe_Gateway: Audio offset set to {delay_seconds} seconds",
                       xbmc.LOGDEBUG)
             return True
         except Exception as e:
-            self._log(f"AOM_Gateway: Error setting audio delay: {str(e)}", xbmc.LOGERROR)
+            self._log(f"AOMe_Gateway: Error setting audio delay: {str(e)}", xbmc.LOGERROR)
             return False
 
     def seek_back(self, seconds, player_id=None):
@@ -165,20 +165,20 @@ class KodiGateway:
         }
 
         try:
-            self._log(f"AOM_Gateway: Attempting to seek back {seconds} seconds",
+            self._log(f"AOMe_Gateway: Attempting to seek back {seconds} seconds",
                       xbmc.LOGDEBUG)
             response = self._execute_rpc(request)
 
             if "error" in response:
-                self._log(f"AOM_Gateway: Failed to perform seek back: {response['error']}",
+                self._log(f"AOMe_Gateway: Failed to perform seek back: {response['error']}",
                           xbmc.LOGWARNING)
                 return False
 
-            self._log(f"AOM_Gateway: Successfully seeked back by {seconds} seconds",
+            self._log(f"AOMe_Gateway: Successfully seeked back by {seconds} seconds",
                       xbmc.LOGDEBUG)
             return True
         except Exception as e:
-            self._log(f"AOM_Gateway: Error executing seek command: {str(e)}", xbmc.LOGERROR)
+            self._log(f"AOMe_Gateway: Error executing seek command: {str(e)}", xbmc.LOGERROR)
             return False
 
     def addon_enabled(self, addon_id):
@@ -202,14 +202,14 @@ class KodiGateway:
             })
 
             if "error" in response:
-                self._log(f"AOM_Gateway: {addon_id} not installed",
+                self._log(f"AOMe_Gateway: {addon_id} not installed",
                           xbmc.LOGDEBUG)
                 return False
 
             addon = response.get("result", {}).get("addon", {})
             return bool(addon.get("enabled", False))
         except Exception as e:
-            self._log(f"AOM_Gateway: Error probing addon {addon_id}: "
+            self._log(f"AOMe_Gateway: Error probing addon {addon_id}: "
                       f"{str(e)}", xbmc.LOGERROR)
             return False
 
@@ -234,14 +234,14 @@ class KodiGateway:
             })
 
             if "error" in response:
-                self._log(f"AOM_Gateway: Failed to broadcast {message}: "
+                self._log(f"AOMe_Gateway: Failed to broadcast {message}: "
                           f"{response['error']}", xbmc.LOGWARNING)
                 return False
 
-            self._log(f"AOM_Gateway: Broadcast {message}", xbmc.LOGDEBUG)
+            self._log(f"AOMe_Gateway: Broadcast {message}", xbmc.LOGDEBUG)
             return True
         except Exception as e:
-            self._log(f"AOM_Gateway: Error broadcasting {message}: {str(e)}",
+            self._log(f"AOMe_Gateway: Error broadcasting {message}: {str(e)}",
                       xbmc.LOGERROR)
             return False
 
@@ -262,7 +262,7 @@ class KodiGateway:
         try:
             return xbmcgui.getCurrentWindowDialogId() == self._SETTINGS_DIALOG_ID
         except Exception as e:
-            self._log(f"AOM_Gateway: Error reading current dialog id: {str(e)}",
+            self._log(f"AOMe_Gateway: Error reading current dialog id: {str(e)}",
                       xbmc.LOGERROR)
             return False
 
@@ -281,7 +281,7 @@ class KodiGateway:
         try:
             return self._window().getProperty(name)
         except Exception as e:
-            self._log(f"AOM_Gateway: Error reading window property {name}: "
+            self._log(f"AOMe_Gateway: Error reading window property {name}: "
                       f"{str(e)}", xbmc.LOGERROR)
             return ''
 
@@ -290,7 +290,7 @@ class KodiGateway:
         try:
             self._window().setProperty(name, value)
         except Exception as e:
-            self._log(f"AOM_Gateway: Error setting window property {name}: "
+            self._log(f"AOMe_Gateway: Error setting window property {name}: "
                       f"{str(e)}", xbmc.LOGERROR)
 
     def clear_window_property(self, name):
@@ -298,5 +298,5 @@ class KodiGateway:
         try:
             self._window().clearProperty(name)
         except Exception as e:
-            self._log(f"AOM_Gateway: Error clearing window property {name}: "
+            self._log(f"AOMe_Gateway: Error clearing window property {name}: "
                       f"{str(e)}", xbmc.LOGERROR)
