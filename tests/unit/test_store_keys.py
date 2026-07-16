@@ -170,6 +170,7 @@ def test_display_known_names():
     ('ac3', 'Dolby Digital'),
     ('eac3', 'Dolby Digital Plus'),
     ('eac3_ddp_atmos', 'Dolby Digital Plus Atmos'),
+    ('ac4', 'Dolby AC-4'),
     ('truehd', 'Dolby TrueHD'),
     ('truehd_atmos', 'Dolby TrueHD Atmos'),
     # DTS family: Kodi's StreamUtils profile names, incl. modern 'dts'

@@ -86,6 +86,10 @@ AUDIO_DISPLAY = {
     'eac3': 'Dolby Digital Plus',
     'eac3_ddp_atmos': 'Dolby Digital Plus Atmos',
     'ac3': 'Dolby Digital',
+    # Kodi's demuxer knows AC-4 but StreamUtils has no special case for
+    # it, so the reported name is FFmpeg's canonical 'ac4' (no Atmos
+    # profile variant exists in FFmpeg — one spelling only).
+    'ac4': 'Dolby AC-4',
     'mlp': 'MLP',
     # DTS family. Modern Kodi reports 'dts' for the base profile; 'dca' is
     # FFmpeg's canonical spelling kept for older report paths.
