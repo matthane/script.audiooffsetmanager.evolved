@@ -28,11 +28,18 @@ state and exits) — the refreshed list IS the feedback. Values render
 VERBATIM: the odd signed millisecond integers the store keeps (-115, +9999)
 are shown exactly, never rounded or step-snapped. The empty state is the
 first-run education: nothing is stored until the user fixes lipsync once.
+
+Display is toggle-aware but NEVER filtered: the injected ``per_fps`` flag
+renders the 'all' segment as 'Other rates' when the toggle is on (it is
+the fallback below the exact-rate entries, not an override) and tags
+dormant per-fps rows '— inactive' when it is off. Every stored entry
+always lists — this view is the store's only inspection surface, and
+clear-all's confirmation must never under-represent what it deletes.
 """
 
 from collections import namedtuple
 
-from resources.lib.aom.store.keys import describe_key, sort_key
+from resources.lib.aom.store.keys import describe_key, sort_key, split_key
 from resources.lib.aom.store.offset_store import StoreUnreadable
 
 # Localized string ids owned by this view (defined in strings.po).
@@ -79,10 +86,19 @@ def _noop(_message):
 class ManageView:
     """Inspect + delete/clear stored offsets from the script process (P6)."""
 
-    def __init__(self, read_entries, gui, send_mutation, *, log_debug=None):
+    def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
+                 log_debug=None):
+        """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
+        change while the view is open — the settings dialog is closed). It
+        drives DISPLAY only: 'Other rates' vs 'All rates' for the 'all'
+        segment, and the '— inactive' tag on per-fps rows the lookup will
+        not consult while the toggle is off. Never filtering: this view is
+        the store's only inspection surface, so every entry always lists.
+        """
         self._read_entries = read_entries
         self._gui = gui
         self._send_mutation = send_mutation
+        self._per_fps = bool(per_fps)
         self._log = log_debug or _noop
 
     # -- entry point ----------------------------------------------------------
@@ -150,14 +166,31 @@ class ManageView:
         list never shuffles between renders.
         """
         rows = [
-            _Row(self._describe(key, entry), self._detail(entry), key)
+            _Row(self._describe(key, entry),
+                 self._detail(entry, inactive=self._is_dormant(key)),
+                 key)
             for key, entry in entries.items()
         ]
         rows.sort(key=lambda row: sort_key(row.key))
         return rows
 
-    @staticmethod
-    def _describe(key, entry):
+    def _is_dormant(self, key):
+        """True for a per-fps entry the lookup will not consult right now.
+
+        With the toggle off, resolution only ever reads the 'all' key, so
+        an exact-rate entry is stored-but-dormant; the row is tagged rather
+        than hidden (hiding would misstate clear-all's scope and strand the
+        entries with no way to prune them). Unsplittable hand-edited keys
+        are never tagged — nothing is known about how they resolve.
+        """
+        if self._per_fps:
+            return False
+        try:
+            return split_key(key)[1] != 'all'
+        except ValueError:
+            return False
+
+    def _describe(self, key, entry):
         """describe_key with a verbatim fallback for a hand-edited key.
 
         A key that does not split into three segments would raise; the store
@@ -167,35 +200,25 @@ class ManageView:
         keys (the truncated segment is identity, not display).
         """
         try:
-            return describe_key(key, video_fps=entry.get("video_fps"))
+            return describe_key(key, video_fps=entry.get("video_fps"),
+                                per_fps=self._per_fps)
         except ValueError:
             return key
 
-    @classmethod
-    def _detail(cls, entry):
-        """The value/meta line: '-115 ms (user, 2026-07-15)'."""
+    @staticmethod
+    def _detail(entry, *, inactive):
+        """The value line: '-115 ms', tagged '— inactive' when dormant.
+
+        Just the verbatim signed value — the store's source/updated
+        metadata stays in the file but out of the row (field feedback:
+        it is noise at this altitude).
+        """
         delay = entry.get("delay_ms")
         sign = "+" if isinstance(delay, int) and delay > 0 else ""
-        source = entry.get("source", "")
-        date = cls._date_part(entry.get("updated"))
-        if date:
-            meta = "({0}, {1})".format(source, date)
-        else:
-            meta = "({0})".format(source)
-        return "{0}{1} ms {2}".format(sign, delay, meta)
-
-    @staticmethod
-    def _date_part(updated):
-        """The date portion of an ISO ``updated`` ('2026-07-15T..' → '2026-07-15').
-
-        Tolerates a missing or malformed value (None, non-string, empty): the
-        parenthetical simply omits the date rather than crashing on a
-        hand-edited file.
-        """
-        if not isinstance(updated, str):
-            return None
-        text = updated.split("T", 1)[0].strip()
-        return text or None
+        detail = "{0}{1} ms".format(sign, delay)
+        if inactive:
+            detail += " — inactive"
+        return detail
 
     # -- actions --------------------------------------------------------------
 

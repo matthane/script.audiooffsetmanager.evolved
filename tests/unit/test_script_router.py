@@ -92,10 +92,11 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
 
     class FakeView:
         def __init__(self, read_entries, gui, send_mutation, *,
-                     log_debug=None):
+                     per_fps=False, log_debug=None):
             built['reader'] = read_entries
             built['gui'] = gui
             built['send'] = send_mutation
+            built['per_fps'] = per_fps
             built['log'] = log_debug
             built['ran'] = 0
 
@@ -111,6 +112,7 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
     assert built['ran'] == 1
     assert built['reader']() == {}                 # read-only reader, no file
     assert isinstance(built['gui'], Gui)
+    assert built['per_fps'] is False               # the live toggle read
     method = built['send']
     assert getattr(method, '__name__', '') == 'send'
     assert isinstance(getattr(method, '__self__', None), MutationClient)

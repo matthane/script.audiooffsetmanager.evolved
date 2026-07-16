@@ -65,5 +65,7 @@ def _manage_offsets():
     store_path = xbmcvfs.translatePath(STORE_PATH)
     view = ManageView(
         lambda: read_profiles(store_path, log_debug=logger.debug),
-        gui, client.send, log_debug=logger.debug)
+        gui, client.send,
+        per_fps=settings.per_fps_offsets_enabled(),
+        log_debug=logger.debug)
     view.run()

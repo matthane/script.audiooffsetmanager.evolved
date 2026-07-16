@@ -69,10 +69,10 @@ HDR10 = "hdr10|all|ac3"
 HLG = "hlg|all|eac3"
 
 
-def _build(entries, acks=None, gui=None):
+def _build(entries, acks=None, gui=None, per_fps=False):
     service = FakeService(entries, acks=acks)
     gui = gui or FakeGui()
-    view = ManageView(service.read, gui, service.send)
+    view = ManageView(service.read, gui, service.send, per_fps=per_fps)
     return view, gui, service
 
 
@@ -111,12 +111,9 @@ def test_rows_render_verbatim_signed_milliseconds():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All rates | TrueHD",
-                          "-115 ms (user, 2026-07-15)")
-    assert options[1] == ("HDR10 | All rates | AC-3",
-                          "+9999 ms (user, 2026-07-14)")
-    assert options[2] == ("HLG | All rates | E-AC-3",
-                          "-2500 ms (user, 2026-07-13)")
+    assert options[0] == ("Dolby Vision | All rates | TrueHD", "-115 ms")
+    assert options[1] == ("HDR10 | All rates | AC-3", "+9999 ms")
+    assert options[2] == ("HLG | All rates | E-AC-3", "-2500 ms")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
     details = [detail for _profile, detail in options[:3]]
     assert any("+9999 ms" in detail for detail in details)
@@ -147,14 +144,49 @@ def test_per_fps_rows_show_the_exact_reported_rate():
         "dolbyvision|23|eac3": dict(_entry(-25), video_fps=23.976),
         "hdr10|59|ac3": _entry(75),                # no metadata -> segment
     }
-    view, gui, _ = _build(entries)
+    view, gui, _ = _build(entries, per_fps=True)
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3",
-                          "-25 ms (user, 2026-07-15)")
-    assert options[1] == ("HDR10 | 59 fps | AC-3",
-                          "+75 ms (user, 2026-07-15)")
+    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3", "-25 ms")
+    assert options[1] == ("HDR10 | 59 fps | AC-3", "+75 ms")
+
+
+def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
+    # With per_fps off the lookup only reads 'all' keys: exact-rate entries
+    # are stored-but-dormant. They TAG rather than hide (this view is the
+    # store's only inspection surface; clear-all must not under-represent
+    # its scope), and the 'all' label stays literally true: 'All rates'.
+    entries = {
+        "dolbyvision|all|eac3": _entry(-25),
+        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+    }
+    view, gui, _ = _build(entries, per_fps=False)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | All rates | E-AC-3", "-25 ms")
+    assert options[1] == ("Dolby Vision | 23.976 fps | E-AC-3",
+                          "+125 ms — inactive")
+    assert len(options) == 3               # both entries + clear-all
+
+
+def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
+    # Under the toggle the 'all' entry is the fallback BELOW the exact
+    # entries (exact -> all -> miss), so 'All rates' would misread as an
+    # override: it renders 'Other rates'. Nothing is dormant when on.
+    entries = {
+        "dolbyvision|all|eac3": _entry(-25),
+        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+    }
+    view, gui, _ = _build(entries, per_fps=True)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | Other rates | E-AC-3", "-25 ms")
+    assert options[1] == ("Dolby Vision | 23.976 fps | E-AC-3", "+125 ms")
+    assert not any(isinstance(opt, tuple) and "inactive" in opt[1]
+                   for opt in options)
 
 
 def test_rows_group_by_hdr_then_codec_then_numeric_rate():
@@ -181,12 +213,15 @@ def test_rows_group_by_hdr_then_codec_then_numeric_rate():
     ]
 
 
-def test_malformed_updated_omits_date_without_crashing():
-    entries = {DV: {"delay_ms": 42, "source": "user"}}  # no 'updated'
+def test_bare_entry_renders_without_meta_fields():
+    # source/updated stay in the store file but out of the row (field
+    # feedback: noise at this altitude) — an entry carrying only the value
+    # renders identically to a full one.
+    entries = {DV: {"delay_ms": 42}}
     view, gui, _ = _build(entries)
     view.run()
     assert gui.selects[0][1][0] == ("Dolby Vision | All rates | TrueHD",
-                                    "+42 ms (user)")
+                                    "+42 ms")
 
 
 # -- navigation --------------------------------------------------------------
@@ -325,7 +360,8 @@ def test_ack_failure_reports_detail():
 
 def test_constructor_exposes_no_store_writer_seam():
     params = list(inspect.signature(ManageView.__init__).parameters)
-    assert params == ["self", "read_entries", "gui", "send_mutation", "log_debug"]
+    assert params == ["self", "read_entries", "gui", "send_mutation",
+                      "per_fps", "log_debug"]
     # No parameter is a store writer / value setter — the view cannot write.
     for name in params:
         assert "write" not in name
