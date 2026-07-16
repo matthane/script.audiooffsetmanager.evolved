@@ -1,0 +1,22 @@
+# D11 observed-format corpus — raw strings seen in real logs.
+# Destination: tests/data/observed_formats.txt on evolved/1.0 (E0 item 6).
+# Format: <box>\t<source-line-kind>\t<raw-string>
+# Harvested 2026-07-15. Grows during E7 soak.
+
+# ---- Windows box (Kodi 21.2, non-HDR display) — kodi.log + kodi.old.log ----
+# Codec strings (Kodi "Creating audio stream (codec: ...)" + ffmpeg decoder open)
+windows	audio-codec	truehd
+windows	video-codec	hevc
+windows	video-codec	HEVC
+# HDR: primary infolabel Player.Process(video.source.hdr.type) unresolved on
+# this box (display not HDR capable); fallback VideoPlayer.HdrType reported:
+windows	hdr-fallback	dolbyvision
+# Gamut infolabel Player.Process(amlogic.eoft_gamut): not available (expected — amlogic-only)
+windows	gamut	(unresolved)
+# Derived profile observed: hdr_type='dolbyvision', fps_type='all'(override off),
+#   audio_format='truehd', video_fps=23, channels=8
+
+# ---- CoreELEC box (192.168.0.56, Kodi 21.3, amlogic — HDR-primary + HLG gamut) ----
+# PENDING: needs SSH session (password requested from user). Expect richer set:
+# passthrough codec names, pt-* decoder lines, amlogic gamut strings, hdr10/hlg/
+# hdr10plus primary-infolabel values.
