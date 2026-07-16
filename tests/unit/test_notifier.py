@@ -479,53 +479,6 @@ class TestUnsavedOffsetDiscarded:
         assert rig.gui.titles == ["Offset not saved"]
 
 
-class TestDeletedProfileReset:
-    # D3 second amendment (E7): the forced 0 for a deleted profile —
-    # store-related feedback like the discard toast, so the LEARN gate
-    # owns it; one-shot by construction (the marker is consumed first).
-
-    def _reset(self, rig, session):
-        rig.post(events.DeletedProfileReset(
-            session_id=session.session_id, profile=session.profile,
-            ms=-100))
-
-    def test_toast_shape(self, rig):
-        session = rig.start(make_profile())
-        self._reset(rig, session)
-
-        assert rig.toasts == [("#32134", DURATION_MS)]
-
-    def test_gated_by_notify_learn_not_apply(self, rig):
-        session = rig.start(make_profile())
-
-        rig.settings.apply_enabled = False           # irrelevant gate
-        self._reset(rig, session)
-        assert len(rig.toasts) == 1
-
-        rig.settings.learn_enabled = False           # the owning gate
-        self._reset(rig, session)
-        assert len(rig.toasts) == 1                  # suppressed
-
-    def test_dead_session_is_inert(self, rig):
-        session = rig.start(make_profile())
-        rig.post(events.PlaybackStopped())
-
-        rig.post(events.DeletedProfileReset(
-            session_id=session.session_id, profile=session.profile,
-            ms=-100))
-
-        assert rig.toasts == []
-
-    def test_blank_localization_falls_back_to_english(self, rig):
-        session = rig.start(make_profile())
-        rig.gui.localized_strings[32134] = ''
-
-        self._reset(rig, session)
-
-        message, _duration = rig.toasts[0]
-        assert 'offset was deleted' in message
-
-
 class TestStoreCorrupted:
     # The corruption notice is an error notice, not a per-kind toast: it
     # has no session, ignores the notify gates, and uses its own duration.

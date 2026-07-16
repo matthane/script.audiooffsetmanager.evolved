@@ -394,19 +394,18 @@ class TestZeroReset:
 
 
 class TestDeletedReset:
-    """D3 second amendment (E7): a marked miss forces the promised 0."""
+    """D3 second amendment (E7): a marked miss forces the promised 0.
+
+    SILENT by design (user call, same day): 0 is the implicit, expected
+    outcome of the deletion, so NO event and NO toast exist for it — the
+    ``announced`` collector doubles as the no-event pin here.
+    """
 
     DELAY_LABEL = 'Player.AudioDelay'
-
-    def _collect_resets(self, rig):
-        fired = []
-        rig.dispatcher.subscribe(events.DeletedProfileReset, fired.append)
-        return fired
 
     def test_marked_miss_forces_zero_before_any_aom_action(self, rig):
         # The whole point: the user's delete authorizes the reset, so the
         # P1 "wait until we've acted" gate does NOT apply.
-        fired = self._collect_resets(rig)
         profile = make_profile()
         session = rig.start(profile, offset_ms=None)     # empty store
         rig.offsets.resets = {ALL_KEY}                   # deleted in the view
@@ -417,13 +416,10 @@ class TestDeletedReset:
         assert rig.gateway.applied == [(1, 0.0)]
         assert session.applied == (None, 0)
         assert rig.offsets.consumed == [ALL_KEY]         # one-shot
-        assert len(fired) == 1
-        assert fired[0].ms == -100                       # the wiped value
-        assert fired[0].session_id == session.session_id
+        assert rig.announced == []                       # silent: no toast
         assert rig.logged('reset delay to 0ms for deleted')
 
     def test_marked_miss_with_delay_already_zero_consumes_silently(self, rig):
-        fired = self._collect_resets(rig)
         profile = make_profile()
         rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
@@ -433,10 +429,8 @@ class TestDeletedReset:
 
         assert rig.gateway.applied == []                 # nothing to wipe
         assert rig.offsets.consumed == [ALL_KEY]         # marker still spent
-        assert fired == []
 
-    def test_unreadable_delay_still_resets_but_never_toasts(self, rig):
-        fired = self._collect_resets(rig)
+    def test_unreadable_delay_still_resets(self, rig):
         profile = make_profile()
         rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
@@ -446,10 +440,8 @@ class TestDeletedReset:
 
         assert rig.gateway.applied == [(1, 0.0)]
         assert rig.offsets.consumed == [ALL_KEY]
-        assert fired == []                               # never toast a hiccup
 
     def test_failed_reset_rpc_keeps_the_marker_for_retry(self, rig):
-        fired = self._collect_resets(rig)
         profile = make_profile()
         session = rig.start(profile, offset_ms=None)
         rig.offsets.resets = {ALL_KEY}
@@ -461,15 +453,13 @@ class TestDeletedReset:
         assert rig.offsets.consumed == []                # marker survives
         assert rig.offsets.resets == {ALL_KEY}
         assert session.applied is None                   # restored
-        assert fired == []
         assert any('deleted-profile reset RPC failed' in line
                    for line in rig.warnings)
 
     def test_hit_consumes_a_stale_marker_silently(self, rig):
         # Deleted exact entry over a KEPT 'all' fallback: the fallback wins
         # (the user kept it) and its apply overwrites any residue — the
-        # stale marker is spent without a reset or a toast.
-        fired = self._collect_resets(rig)
+        # stale marker is spent without a reset.
         rig.offsets.per_fps = True
         exact_key = 'dolbyvision|23|truehd'
         profile = make_profile()
@@ -481,5 +471,4 @@ class TestDeletedReset:
         assert rig.gateway.applied == [(1, -0.025)]      # the fallback value
         assert session.applied == (ALL_KEY, -25)
         assert rig.offsets.consumed == [exact_key]
-        assert fired == []
         assert len(rig.announced) == 1                   # normal apply toast

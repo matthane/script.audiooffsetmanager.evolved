@@ -161,23 +161,6 @@ class UnsavedOffsetDiscarded:
 
 
 @dataclass(frozen=True)
-class DeletedProfileReset:
-    """A reset marker fired: a deleted profile's delay was forced to 0.
-
-    Posted by the applier's miss path (D3 second amendment, E7): the user
-    deleted this profile in the management view expecting 0 on its next
-    playback, and Kodi's per-file memory was still holding a nonzero
-    delay — the forced 0 is the deletion completing, so the Notifier
-    confirms it with the "reset to 0" toast. A marker consumed against a
-    delay already at 0 posts nothing (nothing visible happened). ``ms``
-    is the value that was wiped, for the toast/log only.
-    """
-    session_id: int
-    profile: object  # StreamProfile
-    ms: int
-
-
-@dataclass(frozen=True)
 class UserOffsetSaved:
     """The adjustment watcher stored a user's manual offset change.
 

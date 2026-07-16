@@ -48,12 +48,12 @@ markers (``Resolution.reset_keys`` — the user deleted those keys in the
 management view) forces the delay to 0 IMMEDIATELY, first action or not.
 The user's deletion is the authorization the P1 guard otherwise waits for;
 without this, Kodi's per-file memory keeps replaying the deleted offset.
-The forced 0 consumes the markers (one-shot), posts a typed
-``DeletedProfileReset`` when a nonzero value was actually wiped (the
-Notifier's confirmation toast), and stays silent when the delay was
-already 0. A marker on a key consulted BEFORE a hit (deleted exact entry,
-kept ``all`` fallback) is consumed silently after the hit applies — the
-fallback the user kept overwrites the residue anyway.
+The forced 0 consumes the markers (one-shot) and is completely SILENT —
+zero is the implicit, expected outcome of the deletion, so a toast would
+be noise (user call, same day as the amendment); the debug line is the
+only trace. A marker on a key consulted BEFORE a hit (deleted exact
+entry, kept ``all`` fallback) is consumed silently after the hit applies
+— the fallback the user kept overwrites the residue anyway.
 
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
@@ -166,7 +166,8 @@ class OffsetApplier:
         management view is the authorization P1 otherwise waits for. The
         forced 0 is one-shot — markers are consumed on success and on the
         already-0 case; a failed RPC keeps them so the next stabilization
-        retries naturally.
+        retries naturally. Silent by design: 0 is the implicit, expected
+        outcome of the deletion, so no toast fires (user call, E7).
         """
         raw = self._gateway.infolabel(AdjustmentWatcher.INFOLABEL_AUDIO_DELAY)
         current_ms = policies.parse_delay_ms(raw)
@@ -189,11 +190,6 @@ class OffsetApplier:
                   f"{profile.describe()} (was "
                   f"{'unreadable' if current_ms is None else current_ms}ms; "
                   f"markers {', '.join(reset_keys)})")
-        # An unreadable delay resets silently — never toast on a hiccup.
-        if current_ms is not None:
-            self._dispatcher.post(events.DeletedProfileReset(
-                session_id=session.session_id, profile=profile,
-                ms=current_ms))
 
     def _consume_markers(self, reset_keys):
         for key in reset_keys:
