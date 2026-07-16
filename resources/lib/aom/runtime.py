@@ -39,6 +39,8 @@ from resources.lib.aom.app.offset_applier import OffsetApplier
 from resources.lib.aom.app.seek_scheduler import (ExternalSeekCoordinator,
                                                   SeekScheduler)
 from resources.lib.aom.app.session import SessionTracker
+from resources.lib.aom.app.store_mutations import (ACK_MESSAGE,
+                                                   StoreMutationHandler)
 from resources.lib.aom.app.stream_detector import StreamDetector
 from resources.lib.aom.kodi.gateway import KodiGateway
 from resources.lib.aom.kodi.gui import Gui
@@ -116,6 +118,15 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, self.offsets, log_debug=self.logger.debug,
             log_warning=self.logger.warning)
+        # The cross-process mutation channel's executor (D5): requests
+        # arrive via the monitor bridge as typed events, mutate the store
+        # on this dispatcher (single-writer doctrine), and ack back over
+        # NotifyAll so the script process can tell "done" from "no service".
+        self.store_mutations = StoreMutationHandler(
+            self.dispatcher, self.session_tracker, self.store,
+            lambda payload: self.gateway.notify_all(
+                ADDON_ID, ACK_MESSAGE, payload),
+            log_debug=self.logger.debug, log_warning=self.logger.warning)
 
         self.player_bridge = PlayerBridge(self.dispatcher)
         self.monitor = MonitorBridge(self.dispatcher)

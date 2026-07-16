@@ -184,3 +184,21 @@ class ExecuteSeek:
 class WatchTick:
     """Recurring adjustment-watcher poll tick for a session."""
     session_id: int
+
+
+# --- Store mutation channel (script process -> service, D5) ------------------
+
+@dataclass(frozen=True)
+class StoreMutationRequested:
+    """A cross-process store mutation request received over NotifyAll.
+
+    Posted by the monitor bridge VERBATIM from the (untrusted) payload —
+    fields may be None or wrong-typed; the StoreMutationHandler owns
+    validation and the op whitelist (delete/clear ONLY, P6: the channel
+    structurally cannot carry a value write — there is no value field).
+    ``request_id`` is echoed back on the ack so the script process can
+    match replies.
+    """
+    op: object
+    key: object = None
+    request_id: object = None

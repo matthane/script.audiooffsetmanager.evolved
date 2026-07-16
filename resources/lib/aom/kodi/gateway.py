@@ -181,6 +181,38 @@ class KodiGateway:
             self._log(f"AOM_Gateway: Error executing seek command: {str(e)}", xbmc.LOGERROR)
             return False
 
+    def notify_all(self, sender, message, data):
+        """Broadcast a ``JSONRPC.NotifyAll`` message; return success.
+
+        The store mutation channel's reply path (the service acks script-
+        process requests through this). Single-shot like every sibling:
+        an ``error`` response logs LOGWARNING and returns False, an
+        exception logs LOGERROR and returns False.
+        """
+        try:
+            response = self._execute_rpc({
+                "jsonrpc": "2.0",
+                "method": "JSONRPC.NotifyAll",
+                "params": {
+                    "sender": sender,
+                    "message": message,
+                    "data": data
+                },
+                "id": 1
+            })
+
+            if "error" in response:
+                self._log(f"AOM_Gateway: Failed to broadcast {message}: "
+                          f"{response['error']}", xbmc.LOGWARNING)
+                return False
+
+            self._log(f"AOM_Gateway: Broadcast {message}", xbmc.LOGDEBUG)
+            return True
+        except Exception as e:
+            self._log(f"AOM_Gateway: Error broadcasting {message}: {str(e)}",
+                      xbmc.LOGERROR)
+            return False
+
     # Kodi's WINDOW_DIALOG_ADDON_SETTINGS. While it is open, its working copy
     # of our settings is saved back on close, clobbering programmatic writes
     # made underneath it (settings-state doctrine) — writers defer past it.
