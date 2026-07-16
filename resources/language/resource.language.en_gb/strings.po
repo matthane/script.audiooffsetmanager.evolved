@@ -428,3 +428,71 @@ msgstr ""
 msgctxt "#32104"
 msgid "Show log items and debug snapshots within Kodi's standard log level"
 msgstr ""
+
+msgctxt "#32105"
+msgid "Offset Learning"
+msgstr ""
+
+msgctxt "#32106"
+msgid "How audio offsets are learned during playback and applied on later playbacks"
+msgstr ""
+
+msgctxt "#32107"
+msgid "Learning"
+msgstr ""
+
+msgctxt "#32108"
+msgid "Remember manual adjustments"
+msgstr ""
+
+msgctxt "#32109"
+msgid "Save manual audio offset adjustments made during playback and re-apply them automatically whenever content with the same stream profile plays"
+msgstr ""
+
+msgctxt "#32110"
+msgid "Per-refresh-rate offsets"
+msgstr ""
+
+msgctxt "#32111"
+msgid "Learn and apply offsets separately for each video frame rate. When disabled, one offset covers all frame rates of the same HDR type and audio format. Per-rate offsets already learned are kept, but not applied, while this is disabled."
+msgstr ""
+
+msgctxt "#32112"
+msgid "Pause automatic offsets"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Temporarily stop applying stored offsets and learning new ones. Everything already stored is kept."
+msgstr ""
+
+msgctxt "#32114"
+msgid "Stored offsets"
+msgstr ""
+
+msgctxt "#32115"
+msgid "Manage stored offsets"
+msgstr ""
+
+msgctxt "#32116"
+msgid "View and remove the audio offsets the addon has learned"
+msgstr ""
+
+msgctxt "#32117"
+msgid "Show notification when an offset is applied"
+msgstr ""
+
+msgctxt "#32118"
+msgid "Display a notification whenever a stored audio offset is automatically applied to playback"
+msgstr ""
+
+msgctxt "#32119"
+msgid "Show notification when an offset is saved"
+msgstr ""
+
+msgctxt "#32120"
+msgid "Display a notification whenever a manual adjustment is saved as a stored offset"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Stored offsets were unreadable and were reset (backup kept as offsets.json.bad)"
+msgstr ""

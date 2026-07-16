@@ -51,6 +51,13 @@ from resources.lib.aom.store.table import OffsetTable
 
 STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
 
+# "Stored offsets were unreadable and were reset (backup kept as
+# offsets.json.bad)" — the startup corruption notice (E3 gave it a string
+# id; a typed StoreCorrupted event through the Notifier stays on the E4
+# ledger).
+STRING_STORE_CORRUPTED = 32121
+CORRUPTION_NOTICE_MS = 7000
+
 
 class ServiceRuntime:
     def __init__(self):
@@ -71,8 +78,8 @@ class ServiceRuntime:
         self.store.load()
         if self.store.pop_corruption():
             self.gui.notification(
-                "Stored offsets were unreadable and were reset "
-                "(backup kept as offsets.json.bad)", 7000)
+                self.gui.localized(STRING_STORE_CORRUPTED),
+                CORRUPTION_NOTICE_MS)
         self.offsets = OffsetTable(self.store, self.settings)
 
         self.dispatcher = Dispatcher(
