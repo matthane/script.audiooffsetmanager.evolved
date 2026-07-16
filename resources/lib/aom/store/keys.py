@@ -70,20 +70,60 @@ HDR_DISPLAY = {
     UNKNOWN: 'Unknown',
 }
 
+# Commercial display names for the codec vocabulary Kodi can actually report.
+# Sourced from Kodi's StreamUtils::GetCodecName (the profile-mapped names the
+# JSON-RPC `currentaudiostream.codec` carries — the gateway strips the `pt-`
+# passthrough prefix first) plus FFmpeg's canonical names on its fallback
+# path. DISPLAY-only: these never participate in key matching, and an
+# unlisted codec renders verbatim, so this table can grow or shrink without
+# touching stored data.
 AUDIO_DISPLAY = {
+    # Dolby family. TrueHD keeps its bare commercial name (field-observed
+    # style since E7 beta1: 'truehd_atmos' is reported verbatim by Kodi 22).
     'truehd': 'TrueHD',
-    # Observed verbatim on Kodi 22 beta1/Windows (E7 beta1): Atmos-flagged
-    # TrueHD reports its own codec string. DISPLAY-only — never matched on.
     'truehd_atmos': 'TrueHD Atmos',
-    'eac3': 'E-AC-3',
-    'ac3': 'AC-3',
+    'eac3': 'Dolby Digital Plus',
+    'eac3_ddp_atmos': 'Dolby Digital Plus Atmos',
+    'ac3': 'Dolby Digital',
+    'mlp': 'MLP',
+    # DTS family. Modern Kodi reports 'dts' for the base profile; 'dca' is
+    # FFmpeg's canonical spelling kept for older report paths.
+    'dts': 'DTS',
+    'dca': 'DTS',
+    'dts_es': 'DTS-ES',
+    'dts_96_24': 'DTS 96/24',
+    'dts_express': 'DTS Express',
     'dtshd_ma': 'DTS-HD MA',
     'dtshd_hra': 'DTS-HD HRA',
-    'dca': 'DTS',
-    'pcm': 'PCM',
+    'dtshd_ma_x': 'DTS:X',
+    'dtshd_ma_x_imax': 'DTS:X IMAX',
+    # AAC family (Kodi maps the MPEG profiles to their own names).
     'aac': 'AAC',
+    'aac_lc': 'AAC-LC',
+    'he_aac': 'HE-AAC',
+    'he_aac_v2': 'HE-AAC v2',
+    'aac_ssr': 'AAC SSR',
+    'aac_ltp': 'AAC LTP',
+    'aac_latm': 'AAC (LATM)',
+    # Lossless / other.
     'flac': 'FLAC',
+    'alac': 'ALAC',
     'opus': 'Opus',
+    'vorbis': 'Vorbis',
+    'mp3': 'MP3',
+    'mp2': 'MP2',
+    'wmav2': 'WMA',
+    'wmapro': 'WMA Pro',
+    'wmalossless': 'WMA Lossless',
+    # PCM: FFmpeg names carry the sample layout; render the part a user
+    # recognises. Rare layouts fall back verbatim like any other stranger.
+    'pcm': 'PCM',
+    'pcm_s16le': 'PCM 16-bit',
+    'pcm_s24le': 'PCM 24-bit',
+    'pcm_s32le': 'PCM 32-bit',
+    'pcm_f32le': 'PCM 32-bit float',
+    'pcm_bluray': 'PCM (Blu-ray)',
+    'pcm_dvd': 'PCM (DVD)',
     UNKNOWN: 'Unknown Format',
 }
 

@@ -112,8 +112,8 @@ def test_rows_render_verbatim_signed_milliseconds():
 
     options = gui.selects[0][1]
     assert options[0] == ("Dolby Vision | All rates | TrueHD", "-115 ms")
-    assert options[1] == ("HDR10 | All rates | AC-3", "+9999 ms")
-    assert options[2] == ("HLG | All rates | E-AC-3", "-2500 ms")
+    assert options[1] == ("HDR10 | All rates | Dolby Digital", "+9999 ms")
+    assert options[2] == ("HLG | All rates | Dolby Digital Plus", "-2500 ms")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
     details = [detail for _profile, detail in options[:3]]
     assert any("+9999 ms" in detail for detail in details)
@@ -148,8 +148,9 @@ def test_per_fps_rows_show_the_exact_reported_rate():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3", "-25 ms")
-    assert options[1] == ("HDR10 | 59 fps | AC-3", "+75 ms")
+    assert options[0] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
+                          "-25 ms")
+    assert options[1] == ("HDR10 | 59 fps | Dolby Digital", "+75 ms")
 
 
 def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
@@ -165,8 +166,9 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All rates | E-AC-3", "-25 ms")
-    assert options[1] == ("Dolby Vision | 23.976 fps | E-AC-3",
+    assert options[0] == ("Dolby Vision | All rates | Dolby Digital Plus",
+                          "-25 ms")
+    assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
                           "+125 ms — inactive")
     assert len(options) == 3               # both entries + clear-all
 
@@ -183,8 +185,10 @@ def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | Other rates | E-AC-3", "-25 ms")
-    assert options[1] == ("Dolby Vision | 23.976 fps | E-AC-3", "+125 ms")
+    assert options[0] == ("Dolby Vision | Other rates | Dolby Digital Plus",
+                          "-25 ms")
+    assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
+                          "+125 ms")
     assert not any(isinstance(opt, tuple) and "inactive" in opt[1]
                    for opt in options)
 
@@ -205,11 +209,11 @@ def test_rows_group_by_hdr_then_codec_then_numeric_rate():
 
     profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
     assert profiles == [
-        "Dolby Vision | All rates | E-AC-3",
-        "Dolby Vision | 23.976 fps | E-AC-3",
-        "Dolby Vision | 119.88 fps | E-AC-3",
+        "Dolby Vision | All rates | Dolby Digital Plus",
+        "Dolby Vision | 23.976 fps | Dolby Digital Plus",
+        "Dolby Vision | 119.88 fps | Dolby Digital Plus",
         "Dolby Vision | 24 fps | TrueHD",
-        "HDR10 | All rates | AC-3",
+        "HDR10 | All rates | Dolby Digital",
     ]
 
 

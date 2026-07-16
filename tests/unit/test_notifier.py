@@ -264,7 +264,7 @@ class TestDeferral:
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("HDR10 | E-AC-3", DURATION_MS)]
+        assert rig.toasts == [("HDR10 | Dolby Digital Plus", DURATION_MS)]
         assert rig.gui.titles == ["#32092: -40 ms"]
         assert session.pending_notification is None
 

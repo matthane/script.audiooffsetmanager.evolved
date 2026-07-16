@@ -165,6 +165,43 @@ def test_display_known_names():
     assert keys.HDR_DISPLAY['hdr10+'] == 'HDR10+'
 
 
+@pytest.mark.parametrize('segment, commercial', [
+    # Dolby family: commercial names, not the E-AC-3/AC-3 spec spellings.
+    ('ac3', 'Dolby Digital'),
+    ('eac3', 'Dolby Digital Plus'),
+    ('eac3_ddp_atmos', 'Dolby Digital Plus Atmos'),
+    ('truehd_atmos', 'TrueHD Atmos'),
+    # DTS family: Kodi's StreamUtils profile names, incl. modern 'dts'
+    # alongside FFmpeg's legacy 'dca' spelling of the same fact.
+    ('dts', 'DTS'),
+    ('dca', 'DTS'),
+    ('dts_es', 'DTS-ES'),
+    ('dts_96_24', 'DTS 96/24'),
+    ('dts_express', 'DTS Express'),
+    ('dtshd_ma', 'DTS-HD MA'),
+    ('dtshd_hra', 'DTS-HD HRA'),
+    ('dtshd_ma_x', 'DTS:X'),
+    ('dtshd_ma_x_imax', 'DTS:X IMAX'),
+    # AAC profile names.
+    ('aac_lc', 'AAC-LC'),
+    ('he_aac', 'HE-AAC'),
+    ('he_aac_v2', 'HE-AAC v2'),
+    ('aac_latm', 'AAC (LATM)'),
+    # Lossless / PCM.
+    ('alac', 'ALAC'),
+    ('vorbis', 'Vorbis'),
+    ('pcm_s24le', 'PCM 24-bit'),
+    ('pcm_bluray', 'PCM (Blu-ray)'),
+])
+def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
+    # The table mirrors Kodi's StreamUtils::GetCodecName vocabulary (what
+    # JSON-RPC currentaudiostream.codec reports, `pt-` stripped) plus
+    # FFmpeg's canonical names on its fallback path. DISPLAY-only: the key
+    # segment stays verbatim, so stored data is untouched by friendly names.
+    assert keys.audio_segment(segment) == segment
+    assert keys.AUDIO_DISPLAY[segment] == commercial
+
+
 def test_describe_key_known():
     assert keys.describe_key('dolbyvision|all|truehd') == \
         'Dolby Vision | All rates | TrueHD'
@@ -180,12 +217,12 @@ def test_describe_key_shows_exact_rate_from_video_fps_metadata():
     # E7 beta4 field feedback: '23 fps' is key identity, not a rate a user
     # recognises — the entry's video_fps metadata renders the EXACT rate.
     assert keys.describe_key('dolbyvision|23|eac3', video_fps=23.976) == \
-        'Dolby Vision | 23.976 fps | E-AC-3'
+        'Dolby Vision | 23.976 fps | Dolby Digital Plus'
     assert keys.describe_key('hdr10|59|ac3', video_fps=59.94) == \
-        'HDR10 | 59.94 fps | AC-3'
+        'HDR10 | 59.94 fps | Dolby Digital'
     # Whole rates render clean (no trailing '.0').
     assert keys.describe_key('hdr10|24|ac3', video_fps=24.0) == \
-        'HDR10 | 24 fps | AC-3'
+        'HDR10 | 24 fps | Dolby Digital'
 
 
 def test_describe_key_all_segment_is_toggle_aware():
@@ -199,7 +236,7 @@ def test_describe_key_all_segment_is_toggle_aware():
         'Dolby Vision | All rates | TrueHD'
     # A numeric segment is unaffected by the toggle.
     assert keys.describe_key('hdr10|23|ac3', video_fps=23.976,
-                             per_fps=True) == 'HDR10 | 23.976 fps | AC-3'
+                             per_fps=True) == 'HDR10 | 23.976 fps | Dolby Digital'
 
 
 def test_describe_key_all_key_ignores_video_fps_metadata():
