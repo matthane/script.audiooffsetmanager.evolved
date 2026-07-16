@@ -28,6 +28,7 @@ No disk I/O happens in the constructor; ``load()`` is the single explicit read.
 """
 
 import json
+import math
 import os
 import time
 from datetime import datetime, timezone
@@ -38,6 +39,15 @@ _SCHEMA_VERSION = 1
 
 def _noop(_message):
     return None
+
+
+def _is_int(value):
+    """True for real ints only — bool is an int subclass and must not pass.
+
+    The single definition of the doctrine guard, shared by every validation
+    site so write-path and load-path rules can never drift apart.
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 class OffsetStore:
@@ -103,7 +113,10 @@ class OffsetStore:
     def _shape_ok(self, data):
         if not isinstance(data, dict):
             return False
-        if not isinstance(data.get("version"), int) or isinstance(data.get("version"), bool):
+        # The schema started at 1: a version of 0 or below never existed and
+        # marks a foreign/scribbled file, which must quarantine rather than
+        # load-and-resave as if it were current data.
+        if not _is_int(data.get("version")) or data.get("version") < 1:
             return False
         if not isinstance(data.get("profiles"), dict):
             return False
@@ -117,7 +130,7 @@ class OffsetStore:
                                 .format(_PREFIX, key))
                 continue
             delay = entry.get("delay_ms")
-            if not isinstance(delay, int) or isinstance(delay, bool):
+            if not _is_int(delay):
                 self._log_debug("{0} dropping entry {1!r} with non-int delay_ms"
                                 .format(_PREFIX, key))
                 continue
@@ -141,6 +154,15 @@ class OffsetStore:
         flagged = self._corruption
         self._corruption = False
         return flagged
+
+    @property
+    def read_only(self):
+        """True when a newer-schema file was found and all writes are refused.
+
+        Public so the management view can say WHY mutations are refused
+        instead of conflating read-only with a persist failure.
+        """
+        return self._read_only
 
     # -- reads ----------------------------------------------------------------
 
@@ -171,8 +193,16 @@ class OffsetStore:
         """
         if not isinstance(key, str) or not key:
             raise ValueError("key must be a non-empty str")
-        if not isinstance(delay_ms, int) or isinstance(delay_ms, bool):
+        if not _is_int(delay_ms):
             raise ValueError("delay_ms must be an int")
+        if video_fps is not None:
+            # Metadata only, but NaN/Infinity would serialize as bare tokens
+            # that are not valid JSON for stricter readers — refuse at the
+            # door rather than poison the file.
+            if isinstance(video_fps, bool) or \
+                    not isinstance(video_fps, (int, float)) or \
+                    not math.isfinite(video_fps):
+                raise ValueError("video_fps must be a finite number or None")
 
         if self._read_only:
             self._log_warning("{0} read-only; refusing set({1!r})"
@@ -210,10 +240,13 @@ class OffsetStore:
         return self._persist()
 
     def clear(self):
-        """Remove all entries; return how many were removed.
+        """Remove all entries; return how many were durably removed.
 
         Persists only when something was actually removed. Refused (returns 0)
-        when read-only.
+        when read-only. A persist failure also returns 0 — the entries would
+        resurrect from disk on the next load, and the mutation-channel ack
+        must not tell the user "cleared N" when the file still holds them
+        (the in-memory removal stands, consistent with set/delete).
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing clear()".format(_PREFIX))
@@ -222,7 +255,8 @@ class OffsetStore:
         if count == 0:
             return 0
         self._profiles = {}
-        self._persist()
+        if not self._persist():
+            return 0
         return count
 
     # -- internals ------------------------------------------------------------

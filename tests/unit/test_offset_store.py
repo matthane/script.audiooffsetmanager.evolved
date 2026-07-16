@@ -63,20 +63,9 @@ def test_delay_values_store_verbatim(tmp_path, value):
     assert type(stored) is int
 
 
-def test_113_is_not_quantized(tmp_path):
-    # No 25 ms / 5 ms snapping: 113 stays 113, not 100 or 125.
-    store, _path, _debug, _warning = make_store(tmp_path)
-    store.load()
-    store.set(KEY, 113)
-    assert store.get(KEY)["delay_ms"] == 113
-
-
-def test_no_range_rule(tmp_path):
-    # 12345 ms is well beyond ±10 s; the store has no range validation.
-    store, _path, _debug, _warning = make_store(tmp_path)
-    store.load()
-    assert store.set(KEY, 12345) is True
-    assert store.get(KEY)["delay_ms"] == 12345
+# The parametrized pin above IS the whole contract: 113 pins "no 25/5 ms
+# snapping" and 12345 pins "no range rule (even beyond ±10 s)" — do not
+# narrow its value list without replacing the coverage.
 
 
 # --- ValueError guards -------------------------------------------------------
@@ -331,6 +320,66 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
     reopened, _p, _d, _w = make_store(tmp_path)
     reopened.load()
     assert reopened.get(KEY)["delay_ms"] == 100
+
+
+def test_clear_reports_persist_failure_as_zero(tmp_path, monkeypatch):
+    # Same contract as delete: a clear whose persist fails must not ack
+    # "cleared N" — the entries resurrect from disk on the next load.
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.set(KEY + "2", 200)
+
+    import resources.lib.aom.store.offset_store as module
+
+    def broken_replace(_src, _dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(module.os, "replace", broken_replace)
+    assert store.clear() == 0
+    monkeypatch.undo()
+
+    assert len(store) == 0  # in-memory removal stands
+    reopened, _p, _d, _w = make_store(tmp_path)
+    reopened.load()
+    assert len(reopened) == 2  # but the file still holds both
+
+
+def test_version_zero_is_quarantined_not_loaded(tmp_path):
+    # The schema started at 1: version 0 (or negative) never existed and
+    # must quarantine like corruption, never load-and-resave as v1 data.
+    store, path, _debug, warning = make_store(tmp_path)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write('{"version": 0, "profiles": {"k|all|a": {"delay_ms": 5}}}')
+    store.load()
+    assert len(store) == 0
+    assert store.pop_corruption() is True
+    assert os.path.exists(path + ".bad")
+
+
+def test_nonfinite_video_fps_is_rejected(tmp_path):
+    # NaN/Infinity would serialize as bare tokens that are not valid JSON.
+    store, _path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    for bad in (float("nan"), float("inf"), float("-inf"), True, "23.976"):
+        with pytest.raises(ValueError):
+            store.set(KEY, 100, video_fps=bad)
+    # Finite numbers and None are fine.
+    assert store.set(KEY, 100, video_fps=23.976) is True
+    assert store.set(KEY, 100, video_fps=24) is True
+    assert store.set(KEY, 100) is True
+
+
+def test_read_only_property_reflects_future_version(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write('{"version": 2, "profiles": {}}')
+    store.load()
+    assert store.read_only is True
+
+    fresh, _p, _d, _w = make_store(tmp_path / "elsewhere")
+    fresh.load()
+    assert fresh.read_only is False
 
 
 def test_delete_reports_persist_failure(tmp_path, monkeypatch):

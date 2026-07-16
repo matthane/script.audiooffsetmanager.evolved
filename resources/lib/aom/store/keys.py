@@ -44,8 +44,10 @@ from resources.lib.aom.domain.formats import UNKNOWN
 # Segment joiner for the composite profile key.
 SEPARATOR = '|'
 
-# Audio strings that mean "Kodi reported nothing here" — collapsed to UNKNOWN.
-_AUDIO_ABSENT = ('', 'none', UNKNOWN)
+# Strings that mean "Kodi reported nothing here" — one absence rule for
+# every axis (a 'none' HDR and a 'none' audio are the same fact; splitting
+# the rule per axis is how one absent value fragments into several keys).
+_ABSENT = ('', 'none', UNKNOWN)
 
 # The one proven, shipped HDR alias. Never grow this speculatively.
 _HDR_ALIASES = {'hlghdr': 'hlg'}
@@ -57,10 +59,13 @@ _HDR_ALIASES = {'hlghdr': 'hlg'}
 HDR_DISPLAY = {
     'dolbyvision': 'Dolby Vision',
     'hdr10': 'HDR10',
-    'hdr10plus': 'HDR10+',
+    # Verbatim acceptance means the '+' survives into the key: 'hdr10+' is
+    # the only spelling the store ever produces ('hdr10plus' was the
+    # settings-id-era rewrite and would be a speculative alias here).
     'hdr10+': 'HDR10+',
     'hlg': 'HLG',
     'sdr': 'SDR',
+    UNKNOWN: 'Unknown',
 }
 
 AUDIO_DISPLAY = {
@@ -74,6 +79,7 @@ AUDIO_DISPLAY = {
     'aac': 'AAC',
     'flac': 'FLAC',
     'opus': 'Opus',
+    UNKNOWN: 'Unknown Format',
 }
 
 
@@ -96,20 +102,23 @@ def audio_segment(raw):
     whitelist, no substring collapse (e.g. 'pcm_s24le' stays 'pcm_s24le').
     """
     segment = normalize_segment(raw)
-    if segment in _AUDIO_ABSENT:
+    if segment in _ABSENT:
         return UNKNOWN
     return segment
 
 
 def hdr_segment(raw):
-    """Normalise an HDR string; apply the lone proven alias, default blank.
+    """Normalise an HDR string; apply the lone proven alias, absence to UNKNOWN.
 
-    'hlghdr' -> 'hlg' is the only alias (shipped detection behaviour). A blank
-    HDR string maps to 'unknown'; choosing 'sdr' for absent HDR is the stream
-    detector's chain-of-evidence job, not this module's.
+    The absence rule is the SAME one audio uses ('', 'none', 'unknown' →
+    UNKNOWN): an HDR axis Kodi reported nothing for must collapse to one
+    sentinel, not fragment across 'none'/'unknown' keys. Choosing 'sdr' for
+    absent HDR is the stream detector's chain-of-evidence job, not this
+    module's. 'hlghdr' -> 'hlg' is the only alias (shipped detection
+    behaviour).
     """
     segment = normalize_segment(raw)
-    if segment == '':
+    if segment in _ABSENT:
         return UNKNOWN
     return _HDR_ALIASES.get(segment, segment)
 
@@ -125,6 +134,9 @@ def fps_segment(fps, per_fps):
     """
     if not per_fps:
         return 'all'
+    if isinstance(fps, bool):
+        # bool is an int subclass: True would silently become segment '1'.
+        raise ValueError("fps_segment: unparseable fps value {!r}".format(fps))
     try:
         return str(int(float(fps)))
     except (TypeError, ValueError):
@@ -141,8 +153,12 @@ def profile_key(hdr_raw, fps, audio_raw, *, per_fps):
 
 
 def all_key(hdr_raw, audio_raw):
-    """The fallback-level key ``<hdr>|all|<audio>`` (fps segment forced 'all')."""
-    return SEPARATOR.join((hdr_segment(hdr_raw), 'all', audio_segment(audio_raw)))
+    """The fallback-level key ``<hdr>|all|<audio>``.
+
+    Delegates to ``profile_key`` with the toggle off (which forces the 'all'
+    segment) so the key shape has exactly one composition point.
+    """
+    return profile_key(hdr_raw, None, audio_raw, per_fps=False)
 
 
 def split_key(key):

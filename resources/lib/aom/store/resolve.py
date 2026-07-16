@@ -36,35 +36,48 @@ EXACT = 'exact'
 FALLBACK = 'fallback'
 MISS = 'miss'
 
-# entry: the stored dict (or None on miss); hit_kind: EXACT/FALLBACK/MISS;
-# key: the key that hit (or, on a miss, the primary key that was tried —
-# useful for the once-per-episode debug line).
-Resolution = namedtuple('Resolution', ['entry', 'hit_kind', 'key'])
+# entry: the stored dict, or None on a miss.
+# hit_kind: EXACT / FALLBACK / MISS.
+# key: the key that HIT — None on a miss (one stable meaning; no
+#      hit/miss-dependent referent).
+# tried: every key consulted, in lookup order — the once-per-episode debug
+#        line logs this so a diagnostician sees the whole chain that missed.
+Resolution = namedtuple('Resolution', ['entry', 'hit_kind', 'key', 'tried'])
 
 
 def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):
-    """Look up the offset entry for the given stream facts.
+    """Look up the offset entry for the given stream facts. Total: never raises.
 
-    ``fps`` is only consulted when ``per_fps`` is true (and must then be
-    parseable); with the toggle off the fps axis does not exist and the
-    single candidate is the ``all`` key.
+    With the toggle off the fps axis does not exist and the single candidate
+    is the ``all`` key (``fps`` is not even parsed). With it on, the exact
+    key is tried first, then the ``all`` key; an fps that cannot be parsed
+    simply means the exact LEVEL is unavailable — the lookup degrades to the
+    fallback level rather than turning a benign miss into an exception.
     """
-    if per_fps:
+    if not per_fps:
+        only_key = keys.all_key(hdr_raw, audio_raw)
+        entry = store.get(only_key)
+        if entry is not None:
+            return Resolution(entry, EXACT, only_key, (only_key,))
+        return Resolution(None, MISS, None, (only_key,))
+
+    tried = []
+    try:
         exact_key = keys.profile_key(hdr_raw, fps, audio_raw, per_fps=True)
+    except ValueError:
+        exact_key = None  # exact level unavailable (unparseable fps)
+    if exact_key is not None:
+        tried.append(exact_key)
         entry = store.get(exact_key)
         if entry is not None:
-            return Resolution(entry, EXACT, exact_key)
-        fallback_key = keys.all_key(hdr_raw, audio_raw)
-        entry = store.get(fallback_key)
-        if entry is not None:
-            return Resolution(entry, FALLBACK, fallback_key)
-        return Resolution(None, MISS, exact_key)
+            return Resolution(entry, EXACT, exact_key, tuple(tried))
 
-    only_key = keys.all_key(hdr_raw, audio_raw)
-    entry = store.get(only_key)
+    fallback_key = keys.all_key(hdr_raw, audio_raw)
+    tried.append(fallback_key)
+    entry = store.get(fallback_key)
     if entry is not None:
-        return Resolution(entry, EXACT, only_key)
-    return Resolution(None, MISS, only_key)
+        return Resolution(entry, FALLBACK, fallback_key, tuple(tried))
+    return Resolution(None, MISS, None, tuple(tried))
 
 
 def write_key(hdr_raw, fps, audio_raw, *, per_fps):

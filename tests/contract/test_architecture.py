@@ -67,17 +67,23 @@ def test_app_exemption_list_is_exact():
         "stale APP_IMPURITY_EXEMPTIONS entries for deleted files: {0}".format(missing)
 
 
+def _in_packages(name, packages):
+    # Package-boundary check: bare startswith would also match sibling
+    # modules that merely share the prefix (aom.domainx, aom.store_adapters).
+    return any(name == pkg or name.startswith(pkg + ".") for pkg in packages)
+
+
 def test_store_is_pure():
     # The sparse offset store is pure Python: the file path is injected, so
     # xbmcvfs never enters; it may lean on the domain layer (formats
     # constants) and itself, nothing else.
+    allowed = ("resources.lib.aom.domain", "resources.lib.aom.store")
     for path in _py_files(AOM / "store"):
         for name in _imports(path):
             assert not name.startswith("xbmc"), \
                 "{0} imports Kodi module {1}".format(path.name, name)
             if name.startswith("resources.lib."):
-                assert name.startswith(("resources.lib.aom.domain",
-                                        "resources.lib.aom.store")), \
+                assert _in_packages(name, allowed), \
                     "{0} imports outside domain/store: {1}".format(path.name, name)
 
 

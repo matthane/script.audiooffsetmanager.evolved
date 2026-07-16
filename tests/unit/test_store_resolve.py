@@ -33,7 +33,8 @@ def test_off_empty_store_is_a_miss(tmp_path):
     got = resolve.resolve(store, "dolbyvision", 23.976, "truehd", per_fps=False)
     assert got.entry is None
     assert got.hit_kind == resolve.MISS
-    assert got.key == "dolbyvision|all|truehd"  # the key that was tried
+    assert got.key is None                       # stable meaning: no hit
+    assert got.tried == ("dolbyvision|all|truehd",)
 
 
 def test_off_specific_entries_are_dormant(tmp_path):
@@ -83,7 +84,9 @@ def test_on_miss_when_neither_level_exists(tmp_path):
     got = resolve.resolve(store, "dolbyvision", 60.0, "truehd", per_fps=True)
     assert got.entry is None
     assert got.hit_kind == resolve.MISS
-    assert got.key == "dolbyvision|60|truehd"
+    assert got.key is None
+    # The whole consulted chain is visible for the debug line.
+    assert got.tried == ("dolbyvision|60|truehd", "dolbyvision|all|truehd")
 
 
 def test_on_fractional_rates_resolve_their_own_keys(tmp_path):
@@ -158,7 +161,28 @@ def test_unheard_of_formats_resolve_like_any_other(tmp_path):
     assert (got.hit_kind, got.entry["delay_ms"]) == (resolve.EXACT, -115)
 
 
-def test_on_with_unparseable_fps_raises(tmp_path):
+def test_on_with_unparseable_fps_degrades_to_the_fallback_level(tmp_path):
+    # resolve() is total: an fps that cannot be parsed means the exact LEVEL
+    # is unavailable, not that lookup should explode — the all key still
+    # applies (a benign miss must never become an exception in the apply
+    # path).
     store = make_store(tmp_path)
+    store.set("sdr|all|aac", -50)
+    got = resolve.resolve(store, "sdr", "abc", "aac", per_fps=True)
+    assert got.entry["delay_ms"] == -50
+    assert got.hit_kind == resolve.FALLBACK
+    assert got.tried == ("sdr|all|aac",)  # exact level never composed
+
+
+def test_on_with_unparseable_fps_and_empty_store_is_a_miss(tmp_path):
+    store = make_store(tmp_path)
+    got = resolve.resolve(store, "sdr", None, "aac", per_fps=True)
+    assert (got.entry, got.hit_kind, got.key) == (None, resolve.MISS, None)
+    assert got.tried == ("sdr|all|aac",)
+
+
+def test_write_key_stays_strict_on_unparseable_fps(tmp_path):
+    # The WRITE side keeps the loud contract: storing under a garbage key
+    # is worse than failing — writers are gated on verified profiles.
     with pytest.raises(ValueError):
-        resolve.resolve(store, "sdr", "abc", "aac", per_fps=True)
+        resolve.write_key("sdr", "abc", "aac", per_fps=True)

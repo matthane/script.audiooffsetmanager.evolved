@@ -52,7 +52,24 @@ def test_hdr_blank_defaults_to_unknown_not_sdr():
     assert keys.hdr_segment('') == 'unknown'
 
 
+def test_hdr_absence_rule_matches_audio():
+    # ONE absence rule for every axis: an HDR reported as 'none'/'unknown'
+    # is the same fact as a blank one and must not fragment into its own
+    # keys ('none|all|truehd' etc.).
+    assert keys.hdr_segment('none') == formats.UNKNOWN
+    assert keys.hdr_segment('unknown') == formats.UNKNOWN
+    assert keys.hdr_segment('NONE') == formats.UNKNOWN
+
+
 # --- `|` separator defense --------------------------------------------------
+
+def test_bool_fps_is_rejected_not_key_1():
+    # bool is an int subclass: True must raise, never become segment '1'.
+    with pytest.raises(ValueError):
+        keys.fps_segment(True, True)
+    with pytest.raises(ValueError):
+        keys.fps_segment(False, True)
+
 
 def test_pipe_in_segment_is_neutralised():
     assert keys.audio_segment('weird|name') == 'weird_name'
