@@ -111,13 +111,17 @@ def test_rows_render_verbatim_signed_milliseconds():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == "Dolby Vision | All rates | TrueHD — -115 ms (user, 2026-07-15)"
-    assert options[1] == "HDR10 | All rates | AC-3 — +9999 ms (user, 2026-07-14)"
-    assert options[2] == "HLG | All rates | E-AC-3 — -2500 ms (user, 2026-07-13)"
+    assert options[0] == ("Dolby Vision | All rates | TrueHD",
+                          "-115 ms (user, 2026-07-15)")
+    assert options[1] == ("HDR10 | All rates | AC-3",
+                          "+9999 ms (user, 2026-07-14)")
+    assert options[2] == ("HLG | All rates | E-AC-3",
+                          "-2500 ms (user, 2026-07-13)")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
-    assert any("+9999 ms" in opt for opt in options)
-    assert any("-115 ms" in opt for opt in options)
-    assert any("-2500 ms" in opt for opt in options)
+    details = [detail for _profile, detail in options[:3]]
+    assert any("+9999 ms" in detail for detail in details)
+    assert any("-115 ms" in detail for detail in details)
+    assert any("-2500 ms" in detail for detail in details)
 
 
 def test_rows_sorted_by_label_with_clear_all_last():
@@ -126,11 +130,11 @@ def test_rows_sorted_by_label_with_clear_all_last():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0].startswith("Dolby Vision")
-    assert options[1].startswith("HDR10")
-    assert options[2].startswith("HLG")
-    # Clear-all is the last row; Cancel/Back is the exit (the router
-    # returns the user to the settings dialog afterwards).
+    assert options[0][0].startswith("Dolby Vision")
+    assert options[1][0].startswith("HDR10")
+    assert options[2][0].startswith("HLG")
+    # Clear-all is the last row and stays a plain string (no detail line);
+    # Cancel/Back is the exit (the router returns to the settings dialog).
     assert options[-1] == "#32126"
 
 
@@ -147,16 +151,42 @@ def test_per_fps_rows_show_the_exact_reported_rate():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3 — "
+    assert options[0] == ("Dolby Vision | 23.976 fps | E-AC-3",
                           "-25 ms (user, 2026-07-15)")
-    assert options[1] == "HDR10 | 59 fps | AC-3 — +75 ms (user, 2026-07-15)"
+    assert options[1] == ("HDR10 | 59 fps | AC-3",
+                          "+75 ms (user, 2026-07-15)")
+
+
+def test_rows_group_by_hdr_then_codec_then_numeric_rate():
+    # The tuned display order: all of one HDR mode together, codecs
+    # alphabetical within it, and each codec's 'All rates' entry before its
+    # per-fps entries in NUMERIC rate order (119 after 23, not before).
+    entries = {
+        "dolbyvision|119|eac3": dict(_entry(1), video_fps=119.88),
+        "dolbyvision|23|eac3": dict(_entry(2), video_fps=23.976),
+        "dolbyvision|all|eac3": _entry(3),
+        "dolbyvision|24|truehd": dict(_entry(4), video_fps=24.0),
+        "hdr10|all|ac3": _entry(5),
+    }
+    view, gui, _ = _build(entries)
+    view.run()
+
+    profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
+    assert profiles == [
+        "Dolby Vision | All rates | E-AC-3",
+        "Dolby Vision | 23.976 fps | E-AC-3",
+        "Dolby Vision | 119.88 fps | E-AC-3",
+        "Dolby Vision | 24 fps | TrueHD",
+        "HDR10 | All rates | AC-3",
+    ]
 
 
 def test_malformed_updated_omits_date_without_crashing():
     entries = {DV: {"delay_ms": 42, "source": "user"}}  # no 'updated'
     view, gui, _ = _build(entries)
     view.run()
-    assert gui.selects[0][1][0] == "Dolby Vision | All rates | TrueHD — +42 ms (user)"
+    assert gui.selects[0][1][0] == ("Dolby Vision | All rates | TrueHD",
+                                    "+42 ms (user)")
 
 
 # -- navigation --------------------------------------------------------------
@@ -185,7 +215,8 @@ def test_delete_flow_sends_exact_key_and_re_reads():
     assert len(gui.selects) == 2
     assert len(gui.selects[0][1]) == 3     # 2 entries + clear
     assert len(gui.selects[1][1]) == 2     # 1 entry + clear
-    assert not any(opt.startswith("Dolby Vision") for opt in gui.selects[1][1])
+    assert not any(isinstance(opt, tuple) and opt[0].startswith("Dolby Vision")
+                   for opt in gui.selects[1][1])
 
 
 def test_delete_confirmation_shows_the_stored_value():

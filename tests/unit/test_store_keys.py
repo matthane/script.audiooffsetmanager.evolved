@@ -204,6 +204,33 @@ def test_describe_key_degrades_to_segment_without_usable_metadata():
             'HDR10+ | 23 fps | AAC'
 
 
+def test_sort_key_groups_hdr_then_codec_then_numeric_rate():
+    ordered = sorted([
+        'hdr10|all|ac3',
+        'dolbyvision|24|truehd',
+        'dolbyvision|119|eac3',
+        'dolbyvision|23|eac3',
+        'dolbyvision|all|eac3',
+    ], key=keys.sort_key)
+    assert ordered == [
+        'dolbyvision|all|eac3',      # 'all' before per-fps rates
+        'dolbyvision|23|eac3',       # numeric: 23 < 119 (not lexicographic)
+        'dolbyvision|119|eac3',
+        'dolbyvision|24|truehd',     # codec groups within the HDR mode
+        'hdr10|all|ac3',
+    ]
+
+
+def test_sort_key_is_total_over_hand_edited_keys():
+    # Unsplittable keys and non-numeric fps segments must sort somewhere
+    # deterministic without raising (verbatim-acceptance doctrine: a
+    # scribbled file renders, never crashes).
+    scribbles = ['not-a-key', 'hdr10|abc|ac3', 'dolbyvision|23|eac3']
+    ordered = sorted(scribbles * 2, key=keys.sort_key)
+    assert ordered == sorted(scribbles * 2, key=keys.sort_key)  # stable
+    assert len(ordered) == 6
+
+
 def test_truehd_atmos_display_name_is_field_observed():
     # E7 beta1 (Kodi 22 beta1/Windows): Atmos-flagged TrueHD reports
     # 'truehd_atmos' verbatim. The alias is DISPLAY-only — the key segment

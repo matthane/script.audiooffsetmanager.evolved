@@ -53,11 +53,24 @@ class Gui:
     def select(self, heading, options):
         """Show a selection list; return the chosen index, -1 on cancel/error.
 
-        The management view's list surface (D6: plain dialogs). -1 (Kodi's
-        cancel value) doubles as the error fallback so a transient GUI
-        failure reads as "user backed out" rather than unwinding the view.
+        The management view's list surface (D6: plain dialogs). Each option
+        is either a plain string (single-line row) or a ``(label, detail)``
+        tuple — any tuple upgrades the whole dialog to Kodi's two-line
+        detail rows (``useDetails``), with strings rendering as
+        detail-less items so mixed lists keep one look. -1 (Kodi's cancel
+        value) doubles as the error fallback so a transient GUI failure
+        reads as "user backed out" rather than unwinding the view.
         """
         try:
+            if any(isinstance(option, tuple) for option in options):
+                items = [
+                    xbmcgui.ListItem(option[0], option[1], offscreen=True)
+                    if isinstance(option, tuple)
+                    else xbmcgui.ListItem(option, offscreen=True)
+                    for option in options
+                ]
+                return xbmcgui.Dialog().select(heading, items,
+                                               useDetails=True)
             return xbmcgui.Dialog().select(heading, options)
         except Exception as e:
             self._log(f"AOMe_Gui: Error showing select dialog: {str(e)}",

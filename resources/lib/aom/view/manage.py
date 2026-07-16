@@ -14,7 +14,9 @@ The seam is three injected callables, wired by the script router:
   ``delay_ms``, ``updated``, ``source``, optional ``video_fps``) and may
   raise :class:`StoreUnreadable` — the file exists but cannot be presented.
 * ``gui`` is the plain-dialog surface (``select``/``yesno``/``ok`` +
-  ``localized``); ``select`` returns the chosen index or -1 on cancel.
+  ``localized``); ``select`` takes plain-string rows and/or
+  ``(label, detail)`` tuples (two-line detail rows) and returns the chosen
+  index, -1 on cancel.
 * ``send_mutation(op, key=None)`` posts a delete/clear over the channel and
   returns the service's ack dict, or ``None`` on timeout — the D5
   report-only signal that the service is not running. There is deliberately
@@ -30,7 +32,7 @@ first-run education: nothing is stored until the user fixes lipsync once.
 
 from collections import namedtuple
 
-from resources.lib.aom.store.keys import describe_key
+from resources.lib.aom.store.keys import describe_key, sort_key
 from resources.lib.aom.store.offset_store import StoreUnreadable
 
 # Localized string ids owned by this view (defined in strings.po).
@@ -64,10 +66,10 @@ _FALLBACKS = {
                   "version cannot show or change them."),
 }
 
-# One presentable entry: the select label (also shown in the delete
-# confirmation — it carries the value), the describe_key text (the
-# deterministic sort key), and the literal store key the delete targets.
-_Row = namedtuple("_Row", "label describe key")
+# One presentable entry: the profile line (row label AND first line of the
+# delete confirmation), the value/meta detail line (second line of both),
+# and the literal store key the delete mutation targets.
+_Row = namedtuple("_Row", "describe detail key")
 
 
 def _noop(_message):
@@ -110,7 +112,9 @@ class ManageView:
             self._log("AOMe_ManageView: rendering {0} stored offset(s)"
                       .format(len(rows)))
 
-            options = [row.label for row in rows]
+            # Entry rows are (profile, detail) tuples -> two-line detail
+            # rows; the clear-all action stays a plain string row.
+            options = [(row.describe, row.detail) for row in rows]
             options.append(self._gui.localized(_LABEL_CLEAR_ALL))
 
             # Cancel/Back is the exit; the router then reopens the settings
@@ -139,14 +143,17 @@ class ManageView:
     # -- rendering ------------------------------------------------------------
 
     def _build_rows(self, entries):
-        """Rows for every entry, sorted deterministically by display label."""
-        rows = []
-        for key, entry in entries.items():
-            describe = self._describe(key, entry)
-            rows.append(_Row(self._label(describe, entry), describe, key))
-        # (describe, key) makes the order total even if two keys ever share a
-        # display label — the list must not shuffle between renders.
-        rows.sort(key=lambda row: (row.describe, row.key))
+        """Rows for every entry, in the grouped display order.
+
+        ``keys.sort_key`` groups by HDR type, then codec, then rate ('all'
+        first, numeric order) — total even over hand-edited keys, so the
+        list never shuffles between renders.
+        """
+        rows = [
+            _Row(self._describe(key, entry), self._detail(entry), key)
+            for key, entry in entries.items()
+        ]
+        rows.sort(key=lambda row: sort_key(row.key))
         return rows
 
     @staticmethod
@@ -165,7 +172,8 @@ class ManageView:
             return key
 
     @classmethod
-    def _label(cls, describe, entry):
+    def _detail(cls, entry):
+        """The value/meta line: '-115 ms (user, 2026-07-15)'."""
         delay = entry.get("delay_ms")
         sign = "+" if isinstance(delay, int) and delay > 0 else ""
         source = entry.get("source", "")
@@ -174,7 +182,7 @@ class ManageView:
             meta = "({0}, {1})".format(source, date)
         else:
             meta = "({0})".format(source)
-        return "{0} — {1}{2} ms {3}".format(describe, sign, delay, meta)
+        return "{0}{1} ms {2}".format(sign, delay, meta)
 
     @staticmethod
     def _date_part(updated):
@@ -192,9 +200,10 @@ class ManageView:
     # -- actions --------------------------------------------------------------
 
     def _confirm_delete(self, heading, row):
-        # The full row label, not just the profile: the confirmation must
-        # show WHAT value is being deleted (field feedback on beta4).
-        message = self._gui.localized(_MSG_CONFIRM_DELETE) + "\n" + row.label
+        # Both row lines, not just the profile: the confirmation must show
+        # WHAT value is being deleted (field feedback on beta4).
+        message = (self._gui.localized(_MSG_CONFIRM_DELETE)
+                   + "\n" + row.describe + "\n" + row.detail)
         if not self._gui.yesno(heading, message):
             return _DECLINED
         self._log("AOMe_ManageView: requesting delete of {0}".format(row.key))

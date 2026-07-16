@@ -266,6 +266,8 @@ class FakeGui:
         self.titles.append(title)
 
     def select(self, heading, options):
+        # Options may be plain strings or (label, detail) two-line tuples,
+        # recorded verbatim — mirroring the real adapter's dual shape.
         self.selects.append((heading, list(options)))
         if self.select_answers:
             return self.select_answers.pop(0)

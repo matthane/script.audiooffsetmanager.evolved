@@ -203,6 +203,37 @@ def describe_key(key, video_fps=None):
         hdr_name, _display_fps(fps, video_fps), audio_name)
 
 
+def sort_key(key):
+    """Deterministic display ordering: HDR type, then codec, then rate.
+
+    Groups the management view's rows the way a user scans them — all of
+    one HDR mode together, codecs alphabetical within it, and each codec's
+    'All rates' entry before its per-fps entries in NUMERIC rate order
+    (string-sorting '119' before '23' is exactly the bug this avoids).
+    Display names (case-folded) drive the alpha ordering so the on-screen
+    grouping matches the sort. Total over hand-edited files: an
+    unsplittable key sorts by its raw text; a non-numeric fps segment
+    sorts after the numeric rates; the raw key is the final tie-break.
+    """
+    try:
+        hdr, fps, audio = split_key(key)
+    except ValueError:
+        return (key.lower(), '', (0, 0), key)
+    if fps == 'all':
+        fps_rank = (0, 0)
+    else:
+        try:
+            fps_rank = (1, int(fps))
+        except ValueError:
+            fps_rank = (2, 0)
+    return (
+        HDR_DISPLAY.get(hdr, hdr).lower(),
+        AUDIO_DISPLAY.get(audio, audio).lower(),
+        fps_rank,
+        key,
+    )
+
+
 def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
     """Toast/log summary straight from profile facts (no key needed).
 
