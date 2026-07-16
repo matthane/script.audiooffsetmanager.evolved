@@ -42,7 +42,18 @@ MISS = 'miss'
 #      hit/miss-dependent referent).
 # tried: every key consulted, in lookup order — the once-per-episode debug
 #        line logs this so a diagnostician sees the whole chain that missed.
-Resolution = namedtuple('Resolution', ['entry', 'hit_kind', 'key', 'tried'])
+class Resolution(namedtuple('Resolution',
+                            ['entry', 'hit_kind', 'key', 'tried'])):
+    __slots__ = ()
+
+    @property
+    def ms(self):
+        """The verbatim stored ms, or None on a miss — consumers read this
+        instead of indexing the entry dict (the dict shape stays inside the
+        store package)."""
+        if self.entry is None:
+            return None
+        return self.entry['delay_ms']
 
 
 def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):

@@ -38,8 +38,6 @@ importing any legacy ``resources.lib.<module>`` fails
 import xbmc
 import xbmcaddon
 
-from resources.lib.aom.store import resolve as store_resolve
-
 ADDON_ID = 'script.audiooffsetmanagerevolved'
 
 
@@ -146,53 +144,5 @@ class Settings:
     def debug_logging_enabled(self):
         return self.get_bool('enable_debug_logging')
 
-
-class OffsetTable:
-    """The sparse-store adapter — the seam the applier and watcher speak to.
-
-    Keys are composed AT CALL TIME from the profile's verbatim facts plus
-    the LIVE ``per_fps_offsets`` toggle (freshness doctrine: never a
-    captured key, never conditional on lookup history — D4). Lookup routes
-    through ``resolve.resolve`` (exact -> all -> miss per D3); writes route
-    through ``resolve.write_key`` — the ONLY sanctioned write-key
-    derivation (carry-forward rule from the E1 review).
-    """
-
-    def __init__(self, store, settings):
-        self._store = store
-        self._settings = settings
-
-    def resolve(self, profile):
-        """Look up the entry for the profile: a ``resolve.Resolution``."""
-        return store_resolve.resolve(
-            self._store, profile.hdr_type, profile.video_fps,
-            profile.audio_format,
-            per_fps=self._settings.per_fps_offsets_enabled())
-
-    def write_key(self, profile):
-        """The D4 write key for the profile RIGHT NOW, or None if not
-        composable (unparseable fps under per-fps — callers gate on
-        completeness first, so this is a belt-and-braces None)."""
-        try:
-            return store_resolve.write_key(
-                profile.hdr_type, profile.video_fps, profile.audio_format,
-                per_fps=self._settings.per_fps_offsets_enabled())
-        except ValueError:
-            return None
-
-    def get_at(self, key):
-        """The entry stored at an exact key (or None) — no fallback chain."""
-        return self._store.get(key)
-
-    def store(self, profile, ms):
-        """Store a user adjustment; returns the key written, or None.
-
-        The exact reported rate rides along as entry metadata for the
-        management view.
-        """
-        key = self.write_key(profile)
-        if key is None:
-            return None
-        if not self._store.set(key, ms, video_fps=profile.video_fps):
-            return None
-        return key
+# (The OffsetTable adapter moved to aom/store/table.py — it stopped being a
+# Kodi-settings concern when offsets moved into the sparse store; E2 review.)

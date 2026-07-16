@@ -14,8 +14,14 @@ events on the dispatcher thread:
 * ``StreamStabilized`` — releases a held provisional toast, but only if the
   profile still has the identity it was held under: a profile that changed
   underneath drops the stale toast (freshness doctrine — never announce a
-  stale stream). The identity is re-derived FRESH from ``session.profile``
-  at release time.
+  stale stream). Identity uses ``policies.stream_identity`` with the LIVE
+  ``per_fps_offsets`` toggle — the SAME notion the detector's same-stream
+  refresh uses — so an fps wiggle the offset system deliberately ignores
+  (toggle off) can never drop a toast for an apply that really happened
+  (E2 review finding: ``profile.identity()`` here disagreed with the
+  detector exactly when the toggle was off). The held profile rides on the
+  hold whole, and both sides of the comparison are derived fresh at
+  release time.
 * ``UserOffsetSaved`` — a manual adjustment the AdjustmentWatcher stored.
   Toasts from the event's own profile/ms (captured at store time on the
   dispatcher thread); session/settings are deliberately NOT re-read.
@@ -33,6 +39,7 @@ layer: stdlib + ``resources.lib.aom`` only.
 import time
 
 from resources.lib.aom.app import events
+from resources.lib.aom.domain import policies
 from resources.lib.aom.domain.stream_state import StreamState
 from resources.lib.aom.store import keys as store_keys
 
@@ -67,10 +74,10 @@ class Notifier:
             return
         session = self._sessions.current
         if event.provisional:
-            # Held until the stream stabilizes; the release path re-derives
-            # the identity from the live profile and drops the toast if it
-            # changed underneath.
-            session.pending_notification = (event.profile.identity(), event.ms)
+            # Held until the stream stabilizes; the WHOLE profile rides on
+            # the hold so the release can compare identities at the
+            # granularity in force THEN (toggle read at release instant).
+            session.pending_notification = (event.profile, event.ms)
             self._log("AOM_Notifier: holding provisional notification until "
                       "the stream stabilizes")
             return
@@ -87,11 +94,13 @@ class Notifier:
         # session is genuinely STABLE.
         if session.stream_state is not StreamState.STABLE:
             return
-        pending_identity, pending_ms = session.pending_notification
-        # Read the profile FRESH: a profile that changed underneath must not
-        # release a toast against a stale identity (freshness doctrine).
+        pending_profile, pending_ms = session.pending_notification
+        # Read the profile FRESH, and compare at the granularity the
+        # OFFSET system uses right now (the detector's same-stream notion):
+        # with per_fps off, an fps wiggle is not a stream change and must
+        # not drop the toast for an apply that really happened.
         profile = session.profile
-        if profile is None or pending_identity != profile.identity():
+        if profile is None or not self._same_stream(pending_profile, profile):
             session.pending_notification = None
             return
         session.pending_notification = None
@@ -114,12 +123,22 @@ class Notifier:
 
     # -- internals --------------------------------------------------------------
 
+    def _same_stream(self, held, current):
+        """Offset-relevant identity at the granularity in force RIGHT NOW."""
+        per_fps = self._settings.per_fps_offsets_enabled()
+        return (policies.stream_identity(held, per_fps)
+                == policies.stream_identity(current, per_fps))
+
     def _toast(self, string_id, ms, profile):
         if not self._settings.notifications_enabled():
             return
 
         now = self._clock()
-        key = (string_id, profile.identity(), ms)
+        # Dedupe at the same offset-relevant granularity: with per_fps off
+        # an fps wiggle must not defeat the window and re-toast a duplicate.
+        identity = policies.stream_identity(
+            profile, self._settings.per_fps_offsets_enabled())
+        key = (string_id, identity, ms)
         # _last_toast and _last_toast_at are set in lockstep, and a real key
         # (a tuple) never equals the None sentinel, so the key comparison
         # alone guards the subtraction.

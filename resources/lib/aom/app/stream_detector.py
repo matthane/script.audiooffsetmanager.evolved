@@ -61,6 +61,7 @@ Pure app layer: Kodi I/O goes through the injected gateway, settings reads
 through the injected facade; no Kodi imports, log sinks are injected.
 """
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -116,6 +117,13 @@ def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
 
     try:
         fps_value = float(raw_fps)
+        # A rate must be finite and positive to count as detected: 'nan'/
+        # 'inf' parse but would blow up fps_int()/key composition later, and
+        # a reported 0 is the decoder's not-locked-yet placeholder — storing
+        # under an <hdr>|0|<audio> key would strand the offset on a bucket
+        # that never recurs (the classic int()+bucket gate refused both).
+        if not math.isfinite(fps_value) or fps_value <= 0:
+            fps_value = None
     except (ValueError, TypeError):
         fps_value = None
 
@@ -129,8 +137,11 @@ def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
         hdr_source = 'fallback'
 
     hdr_type = keys.hdr_segment(hdr_raw)
-    if hdr_type == formats.UNKNOWN or hdr_type == INFOLABEL_HDR.lower():
-        # Absent (or echoed) HDR reading: the chain-of-evidence default.
+    if hdr_type == formats.UNKNOWN:
+        # Absent HDR reading: the chain-of-evidence default. (Echo shapes
+        # never reach here: the primary branch is taken only after
+        # _is_valid_infolabel screened its echo, and an unresolved fallback
+        # reads '' — absence — rather than an echo.)
         hdr_type = 'sdr'
         hdr_source = 'default-sdr'
 

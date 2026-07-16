@@ -45,8 +45,9 @@ from resources.lib.aom.kodi.gui import Gui
 from resources.lib.aom.kodi.log import KodiLogger
 from resources.lib.aom.kodi.monitor_bridge import MonitorBridge
 from resources.lib.aom.kodi.player_bridge import PlayerBridge
-from resources.lib.aom.kodi.settings import ADDON_ID, OffsetTable, Settings
+from resources.lib.aom.kodi.settings import ADDON_ID, Settings
 from resources.lib.aom.store.offset_store import OffsetStore
+from resources.lib.aom.store.table import OffsetTable
 
 STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
 

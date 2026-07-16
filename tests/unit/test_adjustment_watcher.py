@@ -466,6 +466,30 @@ class TestEligibilityAndChain:
         assert not rig.watching
         assert rig.logged('no longer eligible')
 
+    def test_read_only_store_is_not_watched(self, rig):
+        # E2 review finding: a permanently unwritable store (newer-schema
+        # file after a downgrade) must stop the learn loop outright, not
+        # re-detect and re-fail the same adjustment every quiescence cycle.
+        rig.offset_table.read_only = True
+        rig.start(make_profile())
+        rig.set_delay('-0.050 s')
+        rig.arm()
+        assert not rig.watching
+
+    def test_successful_store_clears_the_miss_dedupe(self, rig):
+        # E2 review finding: the applier's once-per-chain miss log dedupes
+        # on session.miss_announced; a store WRITE invalidates that chain
+        # (delete -> re-teach -> delete must re-log its miss).
+        profile = make_profile()
+        rig.begin(profile, baseline_delay='0.000 s')
+        rig.session.miss_announced = (KEY_A,)          # a prior miss episode
+
+        rig.observe_foreign('-0.050 s')
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == [(KEY_A, -50)]
+        assert rig.session.miss_announced is None      # chain invalidated
+
     def test_paused_is_not_watched(self, rig):
         # The global pause (D9) stops learning too: a paused addon must not
         # write store entries behind the user's back.

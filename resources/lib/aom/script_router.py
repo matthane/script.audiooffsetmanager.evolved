@@ -17,19 +17,17 @@ Routes:
   the addon opens the full settings dialog, the natural hub).
 """
 
-import sys
-
 import xbmcaddon
 
 from resources.lib.aom.kodi.settings import ADDON_ID
 
 
 def handle_script_call():
-    """Route the RunScript argument (the script process's entry point)."""
-    argument = sys.argv[1] if len(sys.argv) > 1 else ''
-    if argument == 'manage_offsets':
-        # Phase E4 lands the management view here; settings is the interim
-        # target so the action button always does something sensible.
-        xbmcaddon.Addon(ADDON_ID).openSettings()
-        return
+    """Route the RunScript argument (the script process's entry point).
+
+    Every route currently lands on the settings dialog. Phase E4 splits
+    ``manage_offsets`` (read via ``sys.argv[1]``) out to the management
+    view; until the targets actually differ there is deliberately no
+    branch to mis-wire.
+    """
     xbmcaddon.Addon(ADDON_ID).openSettings()

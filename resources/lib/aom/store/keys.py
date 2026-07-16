@@ -138,8 +138,10 @@ def fps_segment(fps, per_fps):
         # bool is an int subclass: True would silently become segment '1'.
         raise ValueError("fps_segment: unparseable fps value {!r}".format(fps))
     try:
+        # OverflowError: int(float('inf')) — non-finite rates are unparseable
+        # too (the detector screens them, but this module is a public seam).
         return str(int(float(fps)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError("fps_segment: unparseable fps value {!r}".format(fps))
 
 

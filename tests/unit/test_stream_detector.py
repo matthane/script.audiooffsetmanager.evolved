@@ -194,11 +194,15 @@ class TestDeriveStreamFacts:
         # Open-ended: 48 is a first-class rate, not an 'unknown' reject.
         assert derive(raw_fps='48').profile.fps_int() == 48
 
-        # Unparseable -> None (blocks completeness downstream).
-        for bad in ('', 'x'):
+        # Unparseable -> None (blocks completeness downstream). Degenerate
+        # rates count as undetected too (E2 review): 'nan'/'inf' parse as
+        # floats but would blow up key composition, and 0 is the decoder's
+        # not-locked-yet placeholder — storing under <hdr>|0|<audio> would
+        # strand the offset on a bucket that never recurs.
+        for bad in ('', 'x', 'nan', 'inf', '-inf', '0', '0.000000', '-24'):
             facts = derive(raw_fps=bad)
-            assert facts.profile.video_fps is None
-            assert facts.profile.fps_int() is None
+            assert facts.profile.video_fps is None, bad
+            assert facts.profile.fps_int() is None, bad
 
     def test_open_audio_keys_verbatim(self):
         # The whitelist and its substring matching are gone: what Kodi

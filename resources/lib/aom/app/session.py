@@ -61,7 +61,7 @@ class PlaybackSession:
     # same-profile AV event re-apply and re-notify). It is both the applier's
     # dedupe guard and the watcher's self-echo reference.
     applied: tuple = None
-    pending_notification: tuple = None      # (profile identity, delay_ms) awaiting STABLE
+    pending_notification: tuple = None      # (held profile, delay_ms) awaiting STABLE
     # The applier's miss-dedupe: the last consulted-key chain announced as a
     # lookup miss, so a stable stream re-stabilizing does not re-log the
     # same "no stored offset" line (one debug line per distinct chain).

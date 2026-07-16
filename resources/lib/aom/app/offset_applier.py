@@ -98,7 +98,7 @@ class OffsetApplier:
             return
 
         key = resolution.key
-        delay_ms = resolution.entry['delay_ms']
+        delay_ms = resolution.ms
 
         if session.applied == (key, delay_ms):
             self._log(f"AOM_OffsetApplier: Offset already applied for "

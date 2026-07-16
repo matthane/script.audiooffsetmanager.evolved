@@ -41,12 +41,16 @@ class FakeSettings:
     def __init__(self, enabled=True, duration_ms=DURATION_MS):
         self.enabled = enabled
         self.duration = duration_ms
+        self.per_fps = False
 
     def notifications_enabled(self):
         return self.enabled
 
     def notification_duration_ms(self):
         return self.duration
+
+    def per_fps_offsets_enabled(self):
+        return self.per_fps
 
 
 class Rig:
@@ -154,7 +158,7 @@ class TestImmediateApply:
     def test_non_provisional_clears_any_prior_pending(self, rig):
         profile = make_profile()
         session = rig.start(profile)
-        session.pending_notification = (profile.identity(), -999)
+        session.pending_notification = (profile, -999)
 
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-50,
@@ -176,7 +180,7 @@ class TestDeferral:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile.identity(), -75)
+        assert session.pending_notification == (profile, -75)
         assert rig.toasts == []
 
         # Detector marks STABLE, THEN posts StreamStabilized (queue order).
@@ -226,7 +230,7 @@ class TestDeferral:
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
         assert rig.toasts == []
-        assert session.pending_notification == (profile.identity(), -75)
+        assert session.pending_notification == (profile, -75)
 
     def test_newest_pending_wins_across_provisional_applies(self, rig):
         # A provisional apply under A, then a profile change and a NEW
@@ -238,13 +242,13 @@ class TestDeferral:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile_a, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile_a.identity(), -75)
+        assert session.pending_notification == (profile_a, -75)
 
         session.profile = profile_b
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile_b, ms=-40,
                                       provisional=True))
-        assert session.pending_notification == (profile_b.identity(), -40)
+        assert session.pending_notification == (profile_b, -40)
 
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
@@ -304,7 +308,7 @@ class TestStaleSessions:
         profile = make_profile()
         session = rig.start(profile)
         dead_id = session.session_id
-        session.pending_notification = (profile.identity(), -50)
+        session.pending_notification = (profile, -50)
         rig.post(events.PlaybackStopped())
 
         rig.post(events.StreamStabilized(session_id=dead_id))
@@ -369,7 +373,7 @@ class TestSettingsGate:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile.identity(), -75)
+        assert session.pending_notification == (profile, -75)
         assert rig.toasts == []
 
         # Release still clears pending, still no toast.
@@ -394,3 +398,41 @@ class TestSignRendering:
                                       profile=profile, ms=ms, provisional=False))
 
         assert rig.toasts == [(f"#32092: {rendered}\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+
+
+class TestIdentityGranularity:
+
+    def test_held_toast_survives_fps_wiggle_when_per_fps_off(self, rig):
+        # E2 review finding: with per_fps OFF the detector treats an fps
+        # re-read as the SAME stream (silent profile refresh) — the held
+        # toast must use the same identity notion and still release.
+        session = rig.start(make_profile(video_fps=23.976))
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+        assert session.pending_notification is not None
+
+        # The detector's silent incidental-field refresh: fps wiggles across
+        # the integer boundary, offset-relevant identity unchanged.
+        session.profile = make_profile(video_fps=24.0)
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert len(rig.toasts) == 1                    # toast NOT dropped
+
+    def test_held_toast_drops_on_fps_change_when_per_fps_on(self, rig):
+        # With per_fps ON the rate IS offset-relevant: a changed rate means
+        # the held toast describes a stale stream and must drop.
+        rig.settings.per_fps = True
+        session = rig.start(make_profile(video_fps=23.976))
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+
+        session.profile = make_profile(video_fps=24.0)
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert rig.toasts == []                        # stale toast dropped
+        assert session.pending_notification is None
+

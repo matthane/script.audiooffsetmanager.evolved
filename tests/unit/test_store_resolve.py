@@ -186,3 +186,15 @@ def test_write_key_stays_strict_on_unparseable_fps(tmp_path):
     # is worse than failing — writers are gated on verified profiles.
     with pytest.raises(ValueError):
         resolve.write_key("sdr", "abc", "aac", per_fps=True)
+
+
+def test_resolution_ms_accessor_keeps_entry_shape_internal(tmp_path):
+    # Consumers read .ms instead of indexing entry['delay_ms'] (E2 review:
+    # the entry dict shape stays inside the store package).
+    store = make_store(tmp_path)
+    store.set("sdr|all|aac", -115)
+    hit = resolve.resolve(store, "sdr", None, "aac", per_fps=False)
+    assert hit.ms == -115
+    miss = resolve.resolve(store, "sdr", None, "flac", per_fps=False)
+    assert miss.ms is None
+

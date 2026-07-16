@@ -130,7 +130,12 @@ class AdjustmentWatcher:
         """
         return (profile is not None
                 and self._settings.remember_adjustments_enabled()
-                and not self._settings.pause_enabled())
+                and not self._settings.pause_enabled()
+                # A permanently unwritable store (newer-schema file after a
+                # downgrade) must stop the learn loop outright — otherwise
+                # every quiescence cycle re-detects and re-fails the same
+                # adjustment forever (E2 review finding).
+                and not self._offsets.read_only)
 
     # -- eligibility triggers (dispatcher thread) -------------------------------
 
@@ -268,8 +273,7 @@ class AdjustmentWatcher:
             session.watch_baseline_ms = observed_ms
             return
 
-        existing = self._offsets.get_at(write_key)
-        if existing is not None and existing['delay_ms'] == observed_ms:
+        if self._offsets.stored_ms_at(write_key) == observed_ms:
             # Already the stored value (e.g. re-dialed to the configured
             # offset): account for it, emit nothing.
             session.watch_baseline_ms = observed_ms
@@ -277,6 +281,9 @@ class AdjustmentWatcher:
                       f"for {write_key}; nothing to do")
             return
 
+        # store() re-derives the key internally; both derivations run inside
+        # this one handler on the one dispatcher thread, so no settings
+        # change can interleave — they are the same key by construction.
         stored_key = self._offsets.store(profile, observed_ms)
         if stored_key is None:
             # The value is still foreign; leave the baseline untouched so the
@@ -289,6 +296,10 @@ class AdjustmentWatcher:
         # The user's value is now the applied value too, so the applier's
         # dedupe guard stays honest.
         session.applied = (stored_key, observed_ms)
+        # The store just changed: any remembered miss-chain is stale (a
+        # delete->re-teach->delete cycle must re-log its miss, not be
+        # swallowed by session-lifetime dedupe — E2 review finding).
+        session.miss_announced = None
         self._log(f"AOM_AdjustmentWatcher: Stored audio offset "
                   f"{observed_ms}ms for {stored_key}")
         self._dispatcher.post(events.UserOffsetSaved(

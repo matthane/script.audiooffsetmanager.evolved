@@ -124,7 +124,7 @@ def test_startup_apply_is_provisional_then_released_on_stable(rig):
     assert notified == []                              # ...but held (provisional)
     assert session.stream_state is StreamState.STABILIZING
     assert session.applied == ('dolbyvision|all|truehd', -125)
-    assert session.pending_notification == (('dolbyvision', 23, 'truehd'), -125)
+    assert session.pending_notification == (session.profile, -125)
     assert session.profile.describe() == 'dolbyvision|23|truehd'
 
     _settle(runtime, clock)
@@ -215,7 +215,7 @@ def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
     assert session.applied == ('dolbyvision|all|eac3', -125)
     assert session.stream_state is StreamState.STABILIZING
     assert len(notified) == 1                          # held until re-stable
-    assert session.pending_notification == (('dolbyvision', 23, 'eac3'), -125)
+    assert session.pending_notification == (session.profile, -125)
 
     _settle(runtime, clock)
     assert session.stream_state is StreamState.STABLE

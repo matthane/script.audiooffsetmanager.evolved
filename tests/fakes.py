@@ -151,18 +151,35 @@ class FakeFacade:
 class FakeOffsetTable:
     """Scriptable stand-in for the store-backed ``OffsetTable`` adapter.
 
-    Backed by a plain dict (key -> ms) and a ``per_fps`` flag mirroring the
-    facade's toggle (tests set both through ``FakeFacade`` when they share
-    one; standalone uses set ``per_fps`` directly). ``resolve``/``write_key``
-    reuse the REAL pure functions from ``aom.store.resolve`` so the fake
-    cannot drift from the decision table; only persistence is faked.
+    Backed by a plain dict (key -> ms). ``resolve``/``write_key`` reuse the
+    REAL pure functions from ``aom.store.resolve`` so the fake cannot drift
+    from the decision table; only persistence is faked. Pass the rig's
+    ``FakeFacade`` as ``facade`` so the per-fps toggle has ONE source of
+    truth shared with every other consumer (a fake-only split between
+    detector identity and table keys cannot exist in the real runtime);
+    standalone uses may set ``per_fps`` directly instead.
     """
 
-    def __init__(self, per_fps=False):
+    def __init__(self, per_fps=False, facade=None):
         self.offsets = {}            # key -> ms
         self.stored = []             # (key, ms), in store order
         self.store_ok = True
-        self.per_fps = per_fps
+        self.read_only = False
+        self._facade = facade
+        self._per_fps = per_fps
+
+    @property
+    def per_fps(self):
+        if self._facade is not None:
+            return self._facade.per_fps
+        return self._per_fps
+
+    @per_fps.setter
+    def per_fps(self, value):
+        if self._facade is not None:
+            self._facade.per_fps = value
+        else:
+            self._per_fps = value
 
     # dict-shaped store protocol for resolve.resolve
     def get(self, key):
@@ -187,6 +204,9 @@ class FakeOffsetTable:
 
     def get_at(self, key):
         return self.get(key)
+
+    def stored_ms_at(self, key):
+        return self.offsets.get(key)
 
     def store(self, profile, ms):
         if not self.store_ok:
