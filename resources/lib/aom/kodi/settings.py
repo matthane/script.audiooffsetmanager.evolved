@@ -40,6 +40,12 @@ import xbmcaddon
 
 ADDON_ID = 'script.audiooffsetmanagerevolved'
 
+# The sparse offset store's on-disk home. Lives beside ADDON_ID (addon
+# identity constants) because BOTH processes need it: the service runtime
+# builds the OffsetStore on it, the script router points the management
+# view's read-only reader at it.
+STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
+
 
 class Settings:
     """Typed access to the addon settings store over Kodi's live proxy."""
