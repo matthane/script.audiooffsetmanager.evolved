@@ -125,8 +125,11 @@ class FakeFacade:
     table's key composition; ``seek_configs`` maps a seek reason to its
     (enabled, seconds) pair, defaulting every reason to (True, 4);
     ``remember_adjustments`` / ``paused`` gate the adjustment watcher and
-    (paused) the applier. Offset reads/writes live on ``FakeOffsetTable``
-    (matching the real split: ``aom.kodi.settings.Settings`` + ``OffsetTable``).
+    (paused) the applier; ``notify_apply`` / ``notify_learn`` /
+    ``notification_ms`` cover the Notifier's per-kind toast gates and
+    duration (D10 defaults: both gates ON). Offset reads/writes live on
+    ``FakeOffsetTable`` (matching the real split:
+    ``aom.kodi.settings.Settings`` + ``OffsetTable``).
     """
 
     def __init__(self, per_fps=False):
@@ -134,6 +137,9 @@ class FakeFacade:
         self.seek_configs = {}
         self.remember_adjustments = True
         self.paused = False
+        self.notify_apply = True
+        self.notify_learn = True
+        self.notification_ms = 5000
 
     def per_fps_offsets_enabled(self):
         return self.per_fps
@@ -146,6 +152,15 @@ class FakeFacade:
 
     def seek_back_config(self, reason):
         return self.seek_configs.get(reason, (True, 4))
+
+    def notify_apply_enabled(self):
+        return self.notify_apply
+
+    def notify_learn_enabled(self):
+        return self.notify_learn
+
+    def notification_duration_ms(self):
+        return self.notification_ms
 
 
 class FakeOffsetTable:

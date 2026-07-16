@@ -77,9 +77,14 @@ class ServiceRuntime:
             log_debug=self.logger.debug, log_warning=self.logger.warning)
         self.store.load()
         if self.store.pop_corruption():
-            self.gui.notification(
-                self.gui.localized(STRING_STORE_CORRUPTED),
-                CORRUPTION_NOTICE_MS)
+            # localized() degrades to '' on a transient failure, and this
+            # notice is the user's ONLY signal that stored offsets were
+            # reset — fall back to the English source string rather than
+            # raising a blank toast (E3 review).
+            message = self.gui.localized(STRING_STORE_CORRUPTED) or (
+                "Stored offsets were unreadable and were reset "
+                "(backup kept as offsets.json.bad)")
+            self.gui.notification(message, CORRUPTION_NOTICE_MS)
         self.offsets = OffsetTable(self.store, self.settings)
 
         self.dispatcher = Dispatcher(

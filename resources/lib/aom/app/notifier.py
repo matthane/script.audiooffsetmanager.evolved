@@ -83,7 +83,8 @@ class Notifier:
                       "the stream stabilizes")
             return
         session.pending_notification = None
-        self._toast(STRING_OFFSET_APPLIED, event.ms, event.profile)
+        self._toast(STRING_OFFSET_APPLIED, event.ms, event.profile,
+                    enabled=self._settings.notify_apply_enabled)
 
     def _on_stream_stabilized(self, event):
         if not self._sessions.is_alive(event.session_id):
@@ -105,7 +106,8 @@ class Notifier:
             session.pending_notification = None
             return
         session.pending_notification = None
-        self._toast(STRING_OFFSET_APPLIED, pending_ms, profile)
+        self._toast(STRING_OFFSET_APPLIED, pending_ms, profile,
+                    enabled=self._settings.notify_apply_enabled)
         self._log("AOM_Notifier: Released pending offset notification after "
                   "stream stabilization")
 
@@ -120,7 +122,8 @@ class Notifier:
         self._sessions.current.pending_notification = None
         # The payload is the profile/ms captured at store time by the watcher;
         # do NOT re-read session/settings for the message.
-        self._toast(STRING_OFFSET_SAVED, event.ms, event.profile)
+        self._toast(STRING_OFFSET_SAVED, event.ms, event.profile,
+                    enabled=self._settings.notify_learn_enabled)
 
     # -- internals --------------------------------------------------------------
 
@@ -130,14 +133,14 @@ class Notifier:
         return (policies.stream_identity(held, per_fps)
                 == policies.stream_identity(current, per_fps))
 
-    def _toast(self, string_id, ms, profile):
+    def _toast(self, string_id, ms, profile, *, enabled):
         # D10: each toast kind is gated by its own toggle, so muting the
         # routine apply announcements never silences the learn feedback
-        # (or vice versa).
-        if string_id == STRING_OFFSET_SAVED:
-            if not self._settings.notify_learn_enabled():
-                return
-        elif not self._settings.notify_apply_enabled():
+        # (or vice versa). ``enabled`` is the gate READ (the bound settings
+        # accessor, evaluated here at fire time), passed by the call site —
+        # which knows its kind statically — so a future toast kind can never
+        # silently inherit another kind's toggle (E3 review).
+        if not enabled():
             return
 
         now = self._clock()

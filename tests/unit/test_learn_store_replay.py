@@ -118,7 +118,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     toasts = []
     monkeypatch.setattr(
         runtime.notifier, '_toast',
-        lambda string_id, ms, profile: toasts.append(
+        lambda string_id, ms, profile, enabled=None: toasts.append(
             (string_id, ms, profile.describe())))
 
     # The watcher's typed store signal, captured so learn flows can assert the
@@ -347,6 +347,11 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
     rig = build()
 
     assert notifications                            # user was told
+    # ...and told SOMETHING: localized() degrades to '' (the kodistubs
+    # Addon does exactly that), and this notice is the only signal the
+    # offsets were reset — the English fallback must fill a blank body
+    # (E3 review pin).
+    assert 'offsets.json.bad' in notifications[0][0]
     assert (tmp_path / 'offsets.json.bad').exists()  # junk quarantined
     assert len(rig.runtime.store) == 0              # started empty
     assert not store_path.exists()                  # the junk file is gone

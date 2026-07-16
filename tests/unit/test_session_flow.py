@@ -94,7 +94,7 @@ def rig(monkeypatch):
     notified = []
     monkeypatch.setattr(
         runtime.notifier, '_toast',
-        lambda string_id, ms, profile: notified.append(
+        lambda string_id, ms, profile, enabled=None: notified.append(
             (string_id, ms, profile.describe())))
 
     # The dispatcher stays un-started and is pumped manually; every component
