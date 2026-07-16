@@ -37,7 +37,7 @@ importing any legacy ``resources.lib.<module>`` fails
 import xbmc
 import xbmcaddon
 
-ADDON_ID = 'script.audiooffsetmanager'
+ADDON_ID = 'script.audiooffsetmanagerevolved'
 
 
 class Settings:

@@ -324,7 +324,7 @@ def _action_button(setting_id, label, help_id, script_arg, dependencies):
         [("id", setting_id), ("type", "action"), ("label", label), ("help", help_id)],
         children=[
             _level("0"),
-            _data("RunScript(script.audiooffsetmanager,{0})".format(script_arg)),
+            _data("RunScript(script.audiooffsetmanagerevolved,{0})".format(script_arg)),
             _control_button_action(),
             dependencies,
         ],
@@ -550,7 +550,7 @@ def _emit_advanced(out):
 def build_settings_text():
     """Return the full settings.xml text (LF-terminated)."""
     out = [XML_DECLARATION, '<settings version="1">',
-           '{0}<section id="script.audiooffsetmanager">'.format(_indent(1))]
+           '{0}<section id="script.audiooffsetmanagerevolved">'.format(_indent(1))]
 
     _emit_onboarding(out)
 

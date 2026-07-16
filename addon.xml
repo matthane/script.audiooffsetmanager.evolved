@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager" version="2.0.0~beta1" name="Audio Offset Manager" provider-name="matthane">
+<addon id="script.audiooffsetmanagerevolved" version="0.9.0" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,14 +7,11 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v2.0.0 (2026-07-15)
-- More reliable offset application: stream changes are detected and verified before offsets are applied, eliminating misapplied offsets during playback startup and format switches
-- Manual offset adjustments are now detected from any input method (keymaps, remotes, JSON-RPC), not just the Kodi audio settings dialog
-- Smarter notifications that wait for the stream to settle instead of firing on transient states
-- Improved coexistence with PM4K (Plexmod for Kodi): seek-backs are announced via the script.audiooffsetmanager.seeking window property
+        <news>v0.9.0 (2026-07-15)
+- AOM Evolved development bootstrap (pre-release; never published)
         </news>
-        <summary lang="en_GB">Dynamically manages audio offsets</summary>
-        <description lang="en_GB">This add-on intelligently adjusts the audio offset based on the detected HDR type, audio format, and FPS type according to user-configured settings, along with other helpful features</description>
+        <summary lang="en_GB">Fix lipsync once — Evolved remembers it per stream profile</summary>
+        <description lang="en_GB">Adjust Kodi's audio offset during playback the way you always have. AOM Evolved remembers the value for that stream's HDR type, audio format, and refresh rate, then re-applies it automatically on every matching playback. Includes seek-back after adjustments, playback notifications, and a management view of everything it has learned.</description>
         <platform>all</platform>
         <license>GPL-3.0-or-later</license>
         <assets>

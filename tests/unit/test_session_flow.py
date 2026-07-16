@@ -243,7 +243,7 @@ def test_resume_seek_waits_for_stable_and_quiet_window_from_start(rig, monkeypat
     _settle(runtime, clock, 0.5)              # t=2.0: quiet -> seek executes
 
     assert gateway.seeks == [(4, 1)]          # configured length, live player
-    assert 'script.audiooffsetmanager.seeking' not in gateway.window_properties
+    assert 'script.audiooffsetmanagerevolved.seeking' not in gateway.window_properties
     assert session.seek_history['resume'] == pytest.approx(2.0)
 
 

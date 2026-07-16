@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <settings version="1">
-    <section id="script.audiooffsetmanager">
+    <section id="script.audiooffsetmanagerevolved">
         <category id="onboarding" label="32057" help="">
             <group id="1" label="32055" help="">
                 <!-- Addon onboarding -->
@@ -11,7 +11,7 @@
                 </setting>
                 <setting id="play_test_video" type="action" label="32059" help="32060">
                     <level>0</level>
-                    <data>RunScript(script.audiooffsetmanager,play_test_video)</data>
+                    <data>RunScript(script.audiooffsetmanagerevolved,play_test_video)</data>
                     <control type="button" format="action">
                         <close>true</close>
                     </control>
@@ -21,7 +21,7 @@
                 </setting>
                 <setting id="bypass_test_video" type="action" label="32082" help="32083">
                     <level>0</level>
-                    <data>RunScript(script.audiooffsetmanager,bypass_test_video)</data>
+                    <data>RunScript(script.audiooffsetmanagerevolved,bypass_test_video)</data>
                     <control type="button" format="action">
                         <close>true</close>
                     </control>
@@ -7718,7 +7718,7 @@
                 </setting>
                 <setting id="re-validate" type="action" label="32063" help="32064">
                     <level>0</level>
-                    <data>RunScript(script.audiooffsetmanager,play_test_video)</data>
+                    <data>RunScript(script.audiooffsetmanagerevolved,play_test_video)</data>
                     <control type="button" format="action">
                         <close>true</close>
                     </control>

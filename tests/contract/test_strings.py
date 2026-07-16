@@ -18,7 +18,7 @@ SETTINGS_XML = REPO_ROOT / "resources" / "settings.xml"
 STRINGS_PO = REPO_ROOT / "resources" / "language" / "resource.language.en_gb" / "strings.po"
 
 _PO_ID_RE = re.compile(r'msgctxt\s+"#(\d+)"')
-# 32xxx ids as used in Python (e.g. "$ADDON[script.audiooffsetmanager 32092]"),
+# 32xxx ids as used in Python (e.g. "$ADDON[<addon-id> 32092]"),
 # bounded so longer digit runs don't partially match.
 _PY_STRING_ID_RE = re.compile(r"(?<!\d)(32\d{3})(?!\d)")
 

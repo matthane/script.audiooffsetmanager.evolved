@@ -5,7 +5,7 @@ exactly one Kodi GUI call and returns, guarded so a transient GUI-layer
 failure degrades to a log line rather than unwinding the caller mid-handler.
 
 String resolution goes through ``getLocalizedString`` rather than the legacy
-``$ADDON[script.audiooffsetmanager <id>]`` label macros the NotificationHandler
+``$ADDON[<addon-id> <id>]`` label macros the NotificationHandler
 used — a Phase 7 work item: the app-layer Notifier now owns message assembly
 and hands this surface a fully-resolved string, so the macro indirection is
 gone.
