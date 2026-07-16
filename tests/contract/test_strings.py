@@ -60,6 +60,12 @@ PO_IDS = _po_ids()
 SETTINGS_IDS = sorted(_settings_label_help_ids(), key=int)
 PYTHON_IDS = sorted(_python_string_ids(), key=int)
 
+# Reverse direction: the durable form of the E3 prune. Every id DEFINED in
+# strings.po must be REFERENCED somewhere (settings.xml label/help or addon
+# Python source); an orphaned entry — a string nothing renders — fails here.
+REFERENCED_IDS = set(SETTINGS_IDS) | set(PYTHON_IDS)
+PO_IDS_SORTED = sorted(PO_IDS, key=int)
+
 
 def test_strings_po_defines_ids():
     assert PO_IDS, "no msgctxt ids parsed from strings.po"
@@ -84,5 +90,14 @@ def test_settings_label_help_id_defined_in_po(string_id):
 def test_python_string_id_defined_in_po(string_id):
     assert string_id in PO_IDS, (
         "Python source references string #{0} not defined in strings.po"
+        .format(string_id)
+    )
+
+
+@pytest.mark.parametrize("string_id", PO_IDS_SORTED)
+def test_po_id_is_referenced(string_id):
+    assert string_id in REFERENCED_IDS, (
+        "strings.po defines #{0} but nothing references it "
+        "(settings.xml label/help or addon Python source) — orphaned entry"
         .format(string_id)
     )
