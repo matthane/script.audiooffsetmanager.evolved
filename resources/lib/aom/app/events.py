@@ -143,6 +143,24 @@ class OffsetApplied:
 
 
 @dataclass(frozen=True)
+class UnsavedOffsetDiscarded:
+    """The zero-reset discarded a manual adjustment that was never stored.
+
+    Posted by the applier's miss path (D3 amendment, E7): when an
+    unlearned profile resets the delay to baseline and the value in force
+    DIVERGED from the last AOM apply, the difference was the user's hand
+    — remember-adjustments off, or a stream change inside the quiescence
+    window. The Notifier raises the "Offset not saved" toast so the user
+    knows why their adjustment vanished; a reset of pure AOM residue posts
+    nothing (silent by design). ``ms`` is the discarded value, for the
+    toast/log only — it is never written anywhere.
+    """
+    session_id: int
+    profile: object  # StreamProfile
+    ms: int
+
+
+@dataclass(frozen=True)
 class UserOffsetSaved:
     """The adjustment watcher stored a user's manual offset change.
 

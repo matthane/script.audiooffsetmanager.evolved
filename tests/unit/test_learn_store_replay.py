@@ -293,12 +293,15 @@ def test_fallback_then_specialize_per_fps(build, tmp_path):
 
 # --- Scenario 5: delete during playback --------------------------------------
 
-def test_delete_mid_session_is_a_miss_no_op(build, tmp_path):
+def test_delete_mid_session_resets_to_baseline(build, tmp_path):
     # A seeded offset applies; the entry is then deleted mid-session (the E4
-    # mutation channel's move). The next stabilization re-resolves to a MISS:
-    # no additional RPC, and Kodi's delay is NOT reset to 0 (a miss leaves it
-    # exactly where the earlier apply put it). A fresh runtime then applies
-    # nothing.
+    # mutation channel's move). The next stabilization re-resolves to a MISS
+    # — and because the addon HAS acted on this session, the D3 amendment
+    # resets the delay to Kodi's 0 baseline (deleting an entry means its
+    # effect goes away). The discarded value equals our own apply, so the
+    # reset is SILENT (no UnsavedOffsetDiscarded). A fresh runtime against
+    # the now-empty file then applies nothing at all (P1: no action yet, so
+    # the miss leaves Kodi's delay untouched).
     _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
     rig = build()                                    # loads the seed
 
@@ -309,6 +312,10 @@ def test_delete_mid_session_is_a_miss_no_op(build, tmp_path):
     assert rig.applied == [(1, -115)]               # seeded offset applied
     session = rig.runtime.session_tracker.current
 
+    discarded = []
+    rig.runtime.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                     discarded.append)
+
     # Mutation channel: drop the entry from under the live session.
     assert rig.runtime.store.delete('dolbyvision|all|truehd') is True
 
@@ -316,9 +323,18 @@ def test_delete_mid_session_is_a_miss_no_op(build, tmp_path):
         events.StreamStabilized(session_id=session.session_id))
     rig.runtime.dispatcher.run_pending()
 
-    # No ADDITIONAL apply, and specifically no reset-to-zero RPC.
-    assert rig.applied == [(1, -115)]
-    assert (1, 0) not in rig.applied
+    # The reset RPC lands, silently (our own residue — no toast event).
+    assert rig.applied == [(1, -115), (1, 0)]
+    assert session.applied == (None, 0)
+    assert discarded == []
+
+    # Idempotent: another stabilization with the delay already at 0 does
+    # not re-issue the reset.
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '0.000 s'
+    rig.runtime.dispatcher.post(
+        events.StreamStabilized(session_id=session.session_id))
+    rig.runtime.dispatcher.run_pending()
+    assert rig.applied == [(1, -115), (1, 0)]
 
     # A fresh runtime against the now-empty file applies nothing.
     replay = build()

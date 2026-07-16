@@ -224,3 +224,11 @@ msgstr ""
 msgctxt "#32131"
 msgid "The stored offsets were saved by a newer version of this addon. They are preserved untouched, but this version cannot show or change them."
 msgstr ""
+
+msgctxt "#32132"
+msgid "Offset not saved"
+msgstr ""
+
+msgctxt "#32133"
+msgid "Reset to 0 ms — nothing stored for this stream"
+msgstr ""

@@ -29,15 +29,25 @@ Notifier hold the toast until stabilization. This component never toasts.
 
 Offsets come from the injected ``OffsetTable`` (the sparse-store adapter):
 ``resolve(profile)`` returns a ``Resolution`` whose ``hit_kind`` is
-exact/fallback/miss. **A miss is a no-op** (D3): no RPC, Kodi's delay stays
-untouched, and one debug line per distinct consulted chain — never a spam
-stream (``session.miss_announced`` dedupes repeats within an episode).
+exact/fallback/miss. **A miss is a no-op until the addon has acted on the
+session, then a zero-reset** (D3 as amended at E7): before the first AOM
+apply/store, a miss leaves Kodi's delay completely untouched (a fresh
+install must never clobber the user's/Kodi's own per-file delay). After
+that, the delay in force is AOM-owned or belongs to the PREVIOUS profile,
+so an unlearned profile resets it to Kodi's 0 baseline — silently when the
+discarded value is our own residue, with a typed
+``UnsavedOffsetDiscarded`` (the "Offset not saved" toast) when it diverged
+from the last apply, i.e. contained a manual adjustment that never reached
+the store. Either way, one debug line per distinct consulted chain — never
+a spam stream (``session.miss_announced`` dedupes repeats within an
+episode), and the reset is idempotent (a delay already at 0 is left alone).
 
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
 """
 
 from resources.lib.aom.app import events
+from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
 from resources.lib.aom.domain import policies
 from resources.lib.aom.domain.stream_state import StreamState
 
@@ -87,14 +97,15 @@ class OffsetApplier:
 
         resolution = self._offsets.resolve(profile)
         if resolution.entry is None:
-            # D3: a miss applies NOTHING — Kodi's delay stays untouched.
-            # One debug line per distinct consulted chain, not per event.
+            # D3 (amended): one debug line per distinct consulted chain,
+            # then the miss policy — untouched before the addon's first
+            # action of the session, zero-reset after.
             if session.miss_announced != resolution.tried:
                 session.miss_announced = resolution.tried
                 self._log(f"AOMe_OffsetApplier: no stored offset for "
                           f"{profile.describe()} (tried "
-                          f"{', '.join(resolution.tried)}); leaving Kodi's "
-                          f"delay untouched")
+                          f"{', '.join(resolution.tried)})")
+            self._reset_if_owned(session, profile)
             return
 
         key = resolution.key
@@ -125,6 +136,50 @@ class OffsetApplier:
         self._dispatcher.post(events.OffsetApplied(
             session_id=session.session_id, profile=profile, ms=delay_ms,
             provisional=provisional))
+
+    def _reset_if_owned(self, session, profile):
+        """The miss policy's second half (D3 amendment, E7 field call).
+
+        ``session.applied is None`` means the addon has not touched this
+        session: whatever delay exists belongs to the user or to Kodi's
+        per-file memory, and a fresh/untaught profile must never clobber
+        it (P1). Once we HAVE acted, the delay in force was set for the
+        PREVIOUS profile — stale residue under the per-profile model — so
+        an unlearned profile returns to Kodi's 0 baseline. The reset is
+        idempotent: a delay already reading 0 is left alone, which also
+        makes the retry pass on re-stabilization a no-op.
+        """
+        if session.applied is None:
+            return
+
+        raw = self._gateway.infolabel(AdjustmentWatcher.INFOLABEL_AUDIO_DELAY)
+        current_ms = policies.parse_delay_ms(raw)
+        if current_ms == 0:
+            return
+
+        # Divergence from the last apply means the value being discarded
+        # contains a manual adjustment that never reached the store
+        # (remember off, or a stream change inside the quiescence window).
+        # An unreadable delay resets silently — never toast on a hiccup.
+        discarded = None
+        if current_ms is not None and current_ms != session.applied[1]:
+            discarded = current_ms
+
+        previous_applied = session.applied
+        session.applied = (None, 0)
+        if not self._gateway.set_audio_delay(profile.player_id, 0.0):
+            session.applied = previous_applied
+            self._warn("AOMe_OffsetApplier: baseline reset RPC failed; "
+                       "will retry on the next stabilization")
+            return
+
+        self._log(f"AOMe_OffsetApplier: reset delay to 0ms for unlearned "
+                  f"{profile.describe()} (was "
+                  f"{'unreadable' if current_ms is None else current_ms}ms)")
+        if discarded is not None:
+            self._dispatcher.post(events.UnsavedOffsetDiscarded(
+                session_id=session.session_id, profile=profile,
+                ms=discarded))
 
     def _should_apply(self, profile):
         """Resolve the inputs and log the reason; the decision is the policy's."""

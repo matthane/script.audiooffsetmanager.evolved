@@ -270,3 +270,124 @@ class TestGating:
         rig.post(events.ProfileChanged(session_id=999))
         assert rig.gateway.applied == []
         assert rig.announced == []
+
+
+class TestZeroReset:
+    """D3 amendment (E7): miss = no-op until AOM acts, then zero-reset."""
+
+    DELAY_LABEL = 'Player.AudioDelay'
+
+    def _switch_to_unlearned(self, rig, session):
+        """Learned profile applied, then the stream becomes an unlearned one."""
+        rig.profile_changed()                        # applies ALL_KEY value
+        session.profile = make_profile(audio_format='ac3')
+        session.miss_announced = None                # fresh episode
+        rig.profile_changed()                        # resolves to a miss
+
+    def test_first_miss_of_a_session_touches_nothing(self, rig):
+        # P1: no prior AOM action -> the miss leaves Kodi's delay (and any
+        # per-file memory the user relies on) completely alone.
+        profile = make_profile()
+        rig.start(profile, offset_ms=None)           # empty store
+        rig.gateway.infolabels[self.DELAY_LABEL] = '0.175 s'
+
+        rig.profile_changed()
+
+        assert rig.gateway.applied == []             # no RPC of any kind
+
+    def test_miss_after_apply_resets_to_baseline_silently(self, rig):
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        # Kodi echoes our own apply: pure AOM residue.
+        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+
+        self._switch_to_unlearned(rig, session)
+
+        assert rig.gateway.applied == [(1, -0.125), (1, 0.0)]
+        assert session.applied == (None, 0)
+        assert discarded == []                       # silent: our residue
+        assert rig.logged('reset delay to 0ms')
+
+    def test_divergent_delay_posts_unsaved_discarded(self, rig):
+        # The value in force contains a manual adjustment that never
+        # reached the store (remember off, or inside the quiescence
+        # window): the reset still happens, and the typed event carries
+        # the discarded value for the "Offset not saved" toast.
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.050 s'  # user's hand
+
+        self._switch_to_unlearned(rig, session)
+
+        assert rig.gateway.applied[-1] == (1, 0.0)
+        assert len(discarded) == 1
+        assert discarded[0].ms == -50
+        assert discarded[0].session_id == session.session_id
+        assert discarded[0].profile == session.profile
+
+    def test_delay_already_at_baseline_is_left_alone(self, rig):
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=0)    # stored 0 applies
+        rig.gateway.infolabels[self.DELAY_LABEL] = '0.000 s'
+
+        self._switch_to_unlearned(rig, session)
+
+        # The stored-0 apply happened; NO reset RPC followed it.
+        assert rig.gateway.applied == [(1, 0.0)]
+        assert session.applied == (ALL_KEY, 0)       # apply record intact
+
+    def test_unreadable_delay_resets_silently(self, rig):
+        # A parse hiccup can't distinguish residue from a manual value:
+        # the doctrine's action (reset) still runs, the toast never does.
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        rig.gateway.infolabels[self.DELAY_LABEL] = 'garbage'
+
+        self._switch_to_unlearned(rig, session)
+
+        assert rig.gateway.applied[-1] == (1, 0.0)
+        assert discarded == []
+
+    def test_failed_reset_rpc_restores_applied_for_retry(self, rig):
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+        rig.profile_changed()                        # apply lands
+
+        calls = []
+
+        def failing(player_id, seconds):
+            calls.append((player_id, seconds))
+            return False
+
+        rig.gateway.set_audio_delay = failing
+        session.profile = make_profile(audio_format='ac3')
+        session.miss_announced = None
+        rig.profile_changed()
+
+        assert calls == [(1, 0.0)]
+        # applied restored so the retry pass re-attempts the reset.
+        assert session.applied == (ALL_KEY, -125)
+        assert any('reset RPC failed' in line for line in rig.warnings)
+
+    def test_paused_addon_never_resets(self, rig):
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        rig.gateway.infolabels[self.DELAY_LABEL] = '-0.125 s'
+        rig.profile_changed()
+
+        rig.settings.paused = True
+        session.profile = make_profile(audio_format='ac3')
+        session.miss_announced = None
+        rig.profile_changed()
+
+        assert rig.gateway.applied == [(1, -0.125)]  # only the apply

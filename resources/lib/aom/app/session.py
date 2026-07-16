@@ -53,13 +53,16 @@ class PlaybackSession:
     # codec blip that reverted) — legacy's duplicate-codec filter never
     # fired for those either.
     profile_changed_since_stabilized: bool = False
-    # (setting_key, delay_ms) — what we believe Kodi's audio delay is set to.
-    # TWO sanctioned writers, both on the dispatcher thread: OffsetManager
-    # records it BEFORE each apply RPC (restoring on failure), and the
-    # AdjustmentWatcher updates it when it stores a user's manual value (the
-    # user's value IS the applied value; skipping this would make the next
-    # same-profile AV event re-apply and re-notify). It is both the applier's
-    # dedupe guard and the watcher's self-echo reference.
+    # (store_key, delay_ms) — what we believe Kodi's audio delay is set to.
+    # The key is None after a baseline zero-reset (D3 amendment: the 0 in
+    # force belongs to no stored profile). Writers, all on the dispatcher
+    # thread: the OffsetApplier records it BEFORE each apply/reset RPC
+    # (restoring on failure), and the AdjustmentWatcher updates it when it
+    # stores a user's manual value (the user's value IS the applied value;
+    # skipping this would make the next same-profile AV event re-apply and
+    # re-notify). It is the applier's dedupe guard, the watcher's self-echo
+    # reference, AND the miss policy's "has AOM acted on this session" flag
+    # (None = untouched, so a miss must leave Kodi's delay alone — P1).
     applied: tuple = None
     pending_notification: tuple = None      # (held profile, delay_ms) awaiting STABLE
     # The applier's miss-dedupe: the last consulted-key chain announced as a

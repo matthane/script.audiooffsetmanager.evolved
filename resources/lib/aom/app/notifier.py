@@ -51,6 +51,11 @@ STRING_OFFSET_SAVED = 32093
 # runtime with the typed StoreCorrupted event, per the E4 ledger).
 STRING_STORE_CORRUPTED = 32121
 CORRUPTION_NOTICE_MS = 7000
+# "Offset not saved" / "Reset to 0 ms — nothing stored for this stream":
+# the zero-reset discarded a manual adjustment that never reached the
+# store (D3 amendment, E7).
+STRING_OFFSET_NOT_SAVED = 32132
+STRING_RESET_BASELINE = 32133
 
 
 class Notifier:
@@ -73,6 +78,8 @@ class Notifier:
         dispatcher.subscribe(events.UserOffsetSaved, self._on_user_offset_saved)
         dispatcher.subscribe(events.StreamStabilized, self._on_stream_stabilized)
         dispatcher.subscribe(events.StoreCorrupted, self._on_store_corrupted)
+        dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                             self._on_unsaved_discarded)
 
     # -- handlers (dispatcher thread) -------------------------------------------
 
@@ -130,6 +137,27 @@ class Notifier:
         # do NOT re-read session/settings for the message.
         self._toast(STRING_OFFSET_SAVED, event.ms, event.profile,
                     enabled=self._settings.notify_learn_enabled)
+
+    def _on_unsaved_discarded(self, event):
+        if not self._sessions.is_alive(event.session_id):
+            return
+        # Save-related feedback, so it lives under the LEARN gate (D3
+        # amendment): the user's manual adjustment was discarded by the
+        # zero-reset because it never reached the store — the toast is the
+        # "why did my offset vanish" answer. Deliberately outside the
+        # dedupe window (it fires once per reset by construction) and with
+        # English fallbacks (its whole content is the explanation).
+        if not self._settings.notify_learn_enabled():
+            return
+        title = self._gui.localized(STRING_OFFSET_NOT_SAVED) or (
+            "Offset not saved")
+        message = self._gui.localized(STRING_RESET_BASELINE) or (
+            "Reset to 0 ms — nothing stored for this stream")
+        self._gui.notification(message,
+                               self._settings.notification_duration_ms(),
+                               title=title)
+        self._log(f"AOMe_Notifier: {title} — discarded unstored "
+                  f"{event.ms}ms for {event.profile.describe()}")
 
     def _on_store_corrupted(self, _event):
         # An error notice, not a per-kind toast: deliberately outside the
