@@ -198,3 +198,63 @@ def test_resolution_ms_accessor_keeps_entry_shape_internal(tmp_path):
     miss = resolve.resolve(store, "sdr", None, "flac", per_fps=False)
     assert miss.ms is None
 
+
+
+# --- reset markers on the consulted chain (D3 second amendment, E7) -----------
+
+def test_marked_miss_carries_the_reset_key(tmp_path):
+    store = make_store(tmp_path)
+    store.set("dolbyvision|all|truehd", 175)
+    store.delete("dolbyvision|all|truehd")
+    got = resolve.resolve(store, "dolbyvision", 23.976, "truehd",
+                          per_fps=False)
+    assert got.hit_kind == resolve.MISS
+    assert got.reset_keys == ("dolbyvision|all|truehd",)
+
+
+def test_on_marked_miss_collects_both_levels(tmp_path):
+    store = make_store(tmp_path)
+    store.set("dolbyvision|23|truehd", 175)
+    store.set("dolbyvision|all|truehd", -25)
+    store.delete("dolbyvision|23|truehd")
+    store.delete("dolbyvision|all|truehd")
+    got = resolve.resolve(store, "dolbyvision", 23.976, "truehd",
+                          per_fps=True)
+    assert got.hit_kind == resolve.MISS
+    assert got.reset_keys == ("dolbyvision|23|truehd",
+                              "dolbyvision|all|truehd")
+
+
+def test_deleted_exact_over_kept_fallback_hits_and_carries_the_marker(tmp_path):
+    # The kept 'all' entry WINS (the user kept it deliberately); the stale
+    # exact marker travels for the applier's silent consumption.
+    store = make_store(tmp_path)
+    store.set("dolbyvision|23|truehd", 175)
+    store.set("dolbyvision|all|truehd", -25)
+    store.delete("dolbyvision|23|truehd")
+    got = resolve.resolve(store, "dolbyvision", 23.976, "truehd",
+                          per_fps=True)
+    assert got.hit_kind == resolve.FALLBACK
+    assert got.entry["delay_ms"] == -25
+    assert got.reset_keys == ("dolbyvision|23|truehd",)
+
+
+def test_unmarked_resolutions_carry_no_reset_keys(tmp_path):
+    store = make_store(tmp_path)
+    store.set("dolbyvision|all|truehd", 175)
+    hit = resolve.resolve(store, "dolbyvision", 23.976, "truehd",
+                          per_fps=False)
+    assert hit.reset_keys == ()
+    miss = resolve.resolve(store, "hdr10", 24.0, "ac3", per_fps=False)
+    assert miss.reset_keys == ()
+
+
+def test_dormant_marker_is_invisible_while_the_toggle_is_off(tmp_path):
+    # A deleted per-fps key is not consulted with the toggle off — same
+    # dormancy rule as the entries themselves, in both directions.
+    store = make_store(tmp_path)
+    store.set("dolbyvision|23|truehd", 175)
+    store.delete("dolbyvision|23|truehd")
+    got = resolve.resolve(store, "dolbyvision", 23.976, "truehd",
+                          per_fps=False)
+    assert got.reset_keys == ()

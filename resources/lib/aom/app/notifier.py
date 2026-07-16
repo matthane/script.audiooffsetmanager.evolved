@@ -56,6 +56,10 @@ CORRUPTION_NOTICE_MS = 7000
 # store (D3 amendment, E7).
 STRING_OFFSET_NOT_SAVED = 32132
 STRING_RESET_BASELINE = 32133
+# "Reset to 0 ms — stored offset was deleted": a reset marker fired (D3
+# second amendment, E7) — the deletion made in the management view just
+# completed on this playback.
+STRING_RESET_DELETED = 32134
 
 
 class Notifier:
@@ -80,6 +84,8 @@ class Notifier:
         dispatcher.subscribe(events.StoreCorrupted, self._on_store_corrupted)
         dispatcher.subscribe(events.UnsavedOffsetDiscarded,
                              self._on_unsaved_discarded)
+        dispatcher.subscribe(events.DeletedProfileReset,
+                             self._on_deleted_reset)
 
     # -- handlers (dispatcher thread) -------------------------------------------
 
@@ -158,6 +164,22 @@ class Notifier:
                                title=title)
         self._log(f"AOMe_Notifier: {title} — discarded unstored "
                   f"{event.ms}ms for {event.profile.describe()}")
+
+    def _on_deleted_reset(self, event):
+        if not self._sessions.is_alive(event.session_id):
+            return
+        # Store-related feedback like _on_unsaved_discarded, so it lives
+        # under the same LEARN gate, outside the dedupe window (one-shot
+        # by construction: the marker is consumed before the post), and
+        # with an English fallback (the message IS the explanation).
+        if not self._settings.notify_learn_enabled():
+            return
+        message = self._gui.localized(STRING_RESET_DELETED) or (
+            "Reset to 0 ms — stored offset was deleted")
+        self._gui.notification(message,
+                               self._settings.notification_duration_ms())
+        self._log(f"AOMe_Notifier: {message} — wiped {event.ms}ms for "
+                  f"{event.profile.describe()}")
 
     def _on_store_corrupted(self, _event):
         # An error notice, not a per-kind toast: deliberately outside the

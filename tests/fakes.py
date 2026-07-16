@@ -178,6 +178,8 @@ class FakeOffsetTable:
     def __init__(self, per_fps=False, facade=None):
         self.offsets = {}            # key -> ms
         self.stored = []             # (key, ms), in store order
+        self.resets = set()          # keys with a pending deletion reset
+        self.consumed = []           # consume_reset calls, in order
         self.store_ok = True
         self.read_only = False
         self._facade = facade
@@ -201,6 +203,14 @@ class FakeOffsetTable:
         if key in self.offsets:
             return {'delay_ms': self.offsets[key]}
         return None
+
+    def reset_pending(self, key):
+        return key in self.resets
+
+    def consume_reset(self, key):
+        self.consumed.append(key)
+        self.resets.discard(key)
+        return True
 
     def resolve(self, profile):
         from resources.lib.aom.store import resolve as store_resolve
@@ -231,6 +241,7 @@ class FakeOffsetTable:
             return None
         self.stored.append((key, ms))
         self.offsets[key] = ms
+        self.resets.discard(key)     # a fresh value supersedes a pending reset
         return key
 
 

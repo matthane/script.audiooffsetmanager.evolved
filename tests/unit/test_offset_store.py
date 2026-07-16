@@ -164,8 +164,13 @@ def test_clear_returns_count_and_persists_empty(tmp_path):
     reopened, _p, _d, _w = make_store(tmp_path)
     reopened.load()
     assert len(reopened) == 0
+    # Clear-all leaves a reset marker per removed key (D3 second
+    # amendment): the "expect 0 next time" contract holds for clear too.
     on_disk = json.loads(open(path, "r", encoding="utf-8").read())
-    assert on_disk == {"version": 1, "profiles": {}}
+    assert on_disk == {"version": 1, "profiles": {},
+                       "resets": sorted([KEY, "other|24|ac3"])}
+    assert reopened.reset_pending(KEY)
+    assert reopened.reset_pending("other|24|ac3")
 
 
 def test_clear_on_empty_writes_nothing(tmp_path):
@@ -549,3 +554,97 @@ def test_read_profiles_filters_malformed_entries_like_load(tmp_path):
 
     entries = _read_profiles(str(path))
     assert set(entries) == {KEY}
+
+
+# --- reset markers (D3 second amendment, E7) ----------------------------------
+
+def test_delete_leaves_a_persisted_reset_marker(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    assert store.delete(KEY) is True
+    assert store.reset_pending(KEY)
+
+    reopened, _p, _d, _w = make_store(tmp_path)
+    reopened.load()
+    assert reopened.reset_pending(KEY)
+    on_disk = json.loads(open(path, "r", encoding="utf-8").read())
+    assert on_disk["resets"] == [KEY]
+
+
+def test_consume_reset_removes_the_marker_durably(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.delete(KEY)
+    assert store.consume_reset(KEY) is True
+    assert not store.reset_pending(KEY)
+
+    reopened, _p, _d, _w = make_store(tmp_path)
+    reopened.load()
+    assert not reopened.reset_pending(KEY)
+    # An empty marker set writes NO resets section: the file shape is
+    # byte-compatible with the pre-marker format.
+    on_disk = json.loads(open(path, "r", encoding="utf-8").read())
+    assert "resets" not in on_disk
+
+
+def test_consume_of_absent_marker_touches_no_disk(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    before = open(path, "rb").read()
+    assert store.consume_reset("never|all|deleted") is True
+    assert open(path, "rb").read() == before
+
+
+def test_set_supersedes_a_pending_reset(tmp_path):
+    # Re-learning the profile before it plays again cancels the promised
+    # 0: the fresh value is the user's newest intent.
+    store, _path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.delete(KEY)
+    assert store.reset_pending(KEY)
+    store.set(KEY, -75)
+    assert not store.reset_pending(KEY)
+
+    reopened, _p, _d, _w = make_store(tmp_path)
+    reopened.load()
+    assert not reopened.reset_pending(KEY)
+    assert reopened.get(KEY)["delay_ms"] == -75
+
+
+def test_scribbled_resets_section_degrades_to_no_markers(tmp_path):
+    # Hand-edited files: a foreign resets shape drops with a debug line,
+    # never crashes and never invents a spurious 0.
+    path = str(tmp_path / "offsets.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"version": 1,
+                   "profiles": {KEY: {"delay_ms": 5}},
+                   "resets": {"not": "a list"}}, handle)
+    store, _path, debug, _warning = make_store(tmp_path)
+    store.load()
+    assert store.get(KEY)["delay_ms"] == 5
+    assert not store.reset_pending(KEY)
+    assert any("non-list resets" in line for line in debug)
+
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"version": 1, "profiles": {},
+                   "resets": [KEY, 7, "", None]}, handle)
+    store2, _p2, debug2, _w2 = make_store(tmp_path)
+    store2.load()
+    assert store2.reset_pending(KEY)
+    assert sum("non-string reset marker" in line for line in debug2) == 3
+
+
+def test_read_profiles_never_shows_reset_markers(tmp_path):
+    # The management view lists offsets; a pending reset is not an offset.
+    from resources.lib.aom.store.offset_store import read_profiles
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.set("other|24|ac3", 50)
+    store.delete(KEY)
+    entries = read_profiles(path)
+    assert set(entries) == {"other|24|ac3"}

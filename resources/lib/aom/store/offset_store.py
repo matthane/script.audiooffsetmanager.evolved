@@ -23,6 +23,15 @@ Design decisions worth stating up front:
   flushes and ``fsync``s it, then ``os.replace``s it over the target — the
   swap is atomic on POSIX and NTFS, so a power loss on an HTPC box leaves
   either the old file or the new one, never a half-written one.
+* **Deletion leaves a reset marker.** ``delete``/``clear`` record the removed
+  key(s) in a ``resets`` section (E7 field decision): the user who deletes a
+  profile expects 0 the NEXT time that format plays, but Kodi's own per-file
+  memory still holds the old applied value — the marker lets the applier
+  force the 0 once, bypassing the P1 "never act first" guard for exactly the
+  keys the user removed. Markers are consumed by the applier, superseded by
+  a new ``set`` for the key, and invisible to the management view (they are
+  not offsets). The section is additive: absent in old files, ignored (and
+  dropped on next persist) by older builds — no schema bump.
 
 No disk I/O happens in the constructor; ``load()`` is the single explicit read.
 """
@@ -141,6 +150,7 @@ class OffsetStore:
         self._log_debug = log_debug or _noop
         self._log_warning = log_warning or _noop
         self._profiles = {}
+        self._resets = set()
         self._read_only = False
         self._corruption = False
 
@@ -160,6 +170,7 @@ class OffsetStore:
         except FileNotFoundError:
             # Normal first run: nothing on disk yet.
             self._profiles = {}
+            self._resets = set()
             return
         except OSError as error:
             self._log_warning("{0} unreadable ({1}); quarantining"
@@ -186,17 +197,41 @@ class OffsetStore:
             # writes so a downgrade can never overwrite newer data.
             self._read_only = True
             self._profiles = {}
+            self._resets = set()
             self._log_warning("{0} file version {1} > {2}; read-only"
                               .format(_PREFIX, version, _SCHEMA_VERSION))
             return
 
         self._profiles = self._load_entries(data["profiles"])
+        self._resets = self._load_resets(data.get("resets"))
 
     def _shape_ok(self, data):
         return _shape_ok(data)
 
     def _load_entries(self, profiles):
         return _load_entries(profiles, self._log_debug)
+
+    def _load_resets(self, raw):
+        """Validate the resets section: a list of non-empty key strings.
+
+        Anything else (absent section, foreign type, scribbled elements) is
+        dropped with a debug line — a bad marker degrades to 'no pending
+        reset', never to a crash or a spurious 0.
+        """
+        if raw is None:
+            return set()
+        if not isinstance(raw, list):
+            self._log_debug("{0} dropping non-list resets section"
+                            .format(_PREFIX))
+            return set()
+        markers = set()
+        for key in raw:
+            if isinstance(key, str) and key:
+                markers.add(key)
+            else:
+                self._log_debug("{0} dropping non-string reset marker {1!r}"
+                                .format(_PREFIX, key))
+        return markers
 
     def _quarantine(self):
         """Move a corrupt file aside and start empty but writable."""
@@ -208,6 +243,7 @@ class OffsetStore:
             self._log_warning("{0} could not rename to .bad ({1})"
                               .format(_PREFIX, error))
         self._profiles = {}
+        self._resets = set()
         self._corruption = True
 
     def pop_corruption(self):
@@ -279,6 +315,9 @@ class OffsetStore:
             entry["video_fps"] = video_fps
 
         self._profiles[key] = entry
+        # A fresh value supersedes any pending reset for the key: the user
+        # re-learned the profile before it was ever played back.
+        self._resets.discard(key)
         if not self._persist():
             return False
         return True
@@ -286,10 +325,13 @@ class OffsetStore:
     def delete(self, key):
         """Remove ``key`` if present and persist; True only when both happen.
 
-        A miss touches no disk (returns False). Refused when read-only. A
-        persist failure also returns False — the entry would resurrect from
-        disk on the next load, and the mutation-channel ack must not claim
-        otherwise (the removal stays in memory, consistent with ``set``).
+        The removed key is recorded as a reset marker (see the module
+        docstring): the applier forces the delay to 0 the next time the
+        key is consulted and misses. A miss touches no disk (returns
+        False). Refused when read-only. A persist failure also returns
+        False — the entry would resurrect from disk on the next load, and
+        the mutation-channel ack must not claim otherwise (the removal
+        stays in memory, consistent with ``set``).
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing delete({1!r})"
@@ -298,16 +340,20 @@ class OffsetStore:
         if key not in self._profiles:
             return False
         del self._profiles[key]
+        self._resets.add(key)
         return self._persist()
 
     def clear(self):
         """Remove all entries; return how many were durably removed.
 
-        Persists only when something was actually removed. Refused (returns 0)
-        when read-only. A persist failure also returns 0 — the entries would
-        resurrect from disk on the next load, and the mutation-channel ack
-        must not tell the user "cleared N" when the file still holds them
-        (the in-memory removal stands, consistent with set/delete).
+        Every removed key is recorded as a reset marker, same as
+        ``delete`` (the "expect 0 next time" contract holds for clear-all
+        too). Persists only when something was actually removed. Refused
+        (returns 0) when read-only. A persist failure also returns 0 — the
+        entries would resurrect from disk on the next load, and the
+        mutation-channel ack must not tell the user "cleared N" when the
+        file still holds them (the in-memory removal stands, consistent
+        with set/delete).
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing clear()".format(_PREFIX))
@@ -315,10 +361,32 @@ class OffsetStore:
         count = len(self._profiles)
         if count == 0:
             return 0
+        self._resets.update(self._profiles)
         self._profiles = {}
         if not self._persist():
             return 0
         return count
+
+    # -- reset markers ----------------------------------------------------------
+
+    def reset_pending(self, key):
+        """True when ``key`` was deleted and its forced 0 has not run yet."""
+        return key in self._resets
+
+    def consume_reset(self, key):
+        """Discard the reset marker for ``key`` and persist the removal.
+
+        Called by the applier once it has acted on the marker (forced the
+        0, found the delay already there, or applied a surviving fallback
+        entry that overwrote the residue anyway). Consuming an absent
+        marker is a no-op returning True. A persist failure returns False;
+        the in-memory removal stands and the reset simply repeats after a
+        restart — it is idempotent by construction.
+        """
+        if key not in self._resets:
+            return True
+        self._resets.discard(key)
+        return self._persist()
 
     # -- internals ------------------------------------------------------------
 
@@ -335,6 +403,10 @@ class OffsetStore:
         is returned so the caller can react to the durability miss.
         """
         payload = {"version": _SCHEMA_VERSION, "profiles": self._profiles}
+        if self._resets:
+            # Additive section: written only when markers exist, so a store
+            # with none persists byte-identically to the pre-marker format.
+            payload["resets"] = sorted(self._resets)
         blob = json.dumps(payload, indent=2, sort_keys=True)
         tmp = self._path + ".tmp"
         try:

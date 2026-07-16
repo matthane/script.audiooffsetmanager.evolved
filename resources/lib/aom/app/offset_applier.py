@@ -42,6 +42,19 @@ the store. Either way, one debug line per distinct consulted chain — never
 a spam stream (``session.miss_announced`` dedupes repeats within an
 episode), and the reset is idempotent (a delay already at 0 is left alone).
 
+**Deleted profiles override the wait-until-acted gate** (D3 second
+amendment, E7 field decision): a miss whose consulted chain carries reset
+markers (``Resolution.reset_keys`` — the user deleted those keys in the
+management view) forces the delay to 0 IMMEDIATELY, first action or not.
+The user's deletion is the authorization the P1 guard otherwise waits for;
+without this, Kodi's per-file memory keeps replaying the deleted offset.
+The forced 0 consumes the markers (one-shot), posts a typed
+``DeletedProfileReset`` when a nonzero value was actually wiped (the
+Notifier's confirmation toast), and stays silent when the delay was
+already 0. A marker on a key consulted BEFORE a hit (deleted exact entry,
+kept ``all`` fallback) is consumed silently after the hit applies — the
+fallback the user kept overwrites the residue anyway.
+
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
 """
@@ -99,13 +112,17 @@ class OffsetApplier:
         if resolution.entry is None:
             # D3 (amended): one debug line per distinct consulted chain,
             # then the miss policy — untouched before the addon's first
-            # action of the session, zero-reset after.
+            # action of the session, zero-reset after; a chain carrying
+            # reset markers forces the 0 regardless (second amendment).
             if session.miss_announced != resolution.tried:
                 session.miss_announced = resolution.tried
                 self._log(f"AOMe_OffsetApplier: no stored offset for "
                           f"{profile.describe()} (tried "
                           f"{', '.join(resolution.tried)})")
-            self._reset_if_owned(session, profile)
+            if resolution.reset_keys:
+                self._reset_deleted(session, profile, resolution.reset_keys)
+            else:
+                self._reset_if_owned(session, profile)
             return
 
         key = resolution.key
@@ -133,9 +150,54 @@ class OffsetApplier:
         self._log(f"AOMe_OffsetApplier: Applied {delay_ms}ms for {key} "
                   f"(hit={resolution.hit_kind}, provisional={provisional}); "
                   f"{session.describe()}")
+        # A stale marker under a hit (deleted exact entry, kept fallback):
+        # the applied value overwrote any residue, so the marker's job is
+        # done — consume silently.
+        self._consume_markers(resolution.reset_keys)
         self._dispatcher.post(events.OffsetApplied(
             session_id=session.session_id, profile=profile, ms=delay_ms,
             provisional=provisional))
+
+    def _reset_deleted(self, session, profile, reset_keys):
+        """Force the 0 a deletion promised (D3 second amendment).
+
+        Runs on a miss whose consulted chain carries reset markers,
+        BYPASSING the ``session.applied`` gate: the user's delete in the
+        management view is the authorization P1 otherwise waits for. The
+        forced 0 is one-shot — markers are consumed on success and on the
+        already-0 case; a failed RPC keeps them so the next stabilization
+        retries naturally.
+        """
+        raw = self._gateway.infolabel(AdjustmentWatcher.INFOLABEL_AUDIO_DELAY)
+        current_ms = policies.parse_delay_ms(raw)
+        if current_ms == 0:
+            # Nothing visible to do; the marker is spent all the same.
+            self._consume_markers(reset_keys)
+            return
+
+        # applied-before-RPC contract, same as every other apply path.
+        previous_applied = session.applied
+        session.applied = (None, 0)
+        if not self._gateway.set_audio_delay(profile.player_id, 0.0):
+            session.applied = previous_applied
+            self._warn("AOMe_OffsetApplier: deleted-profile reset RPC "
+                       "failed; will retry on the next stabilization")
+            return
+
+        self._consume_markers(reset_keys)
+        self._log(f"AOMe_OffsetApplier: reset delay to 0ms for deleted "
+                  f"{profile.describe()} (was "
+                  f"{'unreadable' if current_ms is None else current_ms}ms; "
+                  f"markers {', '.join(reset_keys)})")
+        # An unreadable delay resets silently — never toast on a hiccup.
+        if current_ms is not None:
+            self._dispatcher.post(events.DeletedProfileReset(
+                session_id=session.session_id, profile=profile,
+                ms=current_ms))
+
+    def _consume_markers(self, reset_keys):
+        for key in reset_keys:
+            self._offsets.consume_reset(key)
 
     def _reset_if_owned(self, session, profile):
         """The miss policy's second half (D3 amendment, E7 field call).

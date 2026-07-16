@@ -45,6 +45,10 @@ class OffsetTable:
             profile.audio_format,
             per_fps=self._settings.per_fps_offsets_enabled())
 
+    def consume_reset(self, key):
+        """Discard a pending reset marker (applier acted on it)."""
+        return self._store.consume_reset(key)
+
     def write_key(self, profile):
         """The D4 write key for the profile RIGHT NOW, or None if not
         composable (unparseable fps under per-fps — callers gate on

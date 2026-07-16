@@ -11,10 +11,16 @@ can exist:
                             else <hdr>|all|<audio>       -> fallback
                             else                         -> miss
 
-A miss means the caller applies NOTHING (Kodi's delay stays untouched).
-Specific-fps entries are dormant while the toggle is OFF; `all` entries
-remain reachable while it is ON (as the fallback level) — flipping the
-toggle is non-destructive in both directions.
+A miss means the caller applies NOTHING (Kodi's delay stays untouched) —
+UNLESS a consulted key carries a reset marker (the user deleted it; D3
+second amendment, E7): ``reset_keys`` names every consulted key with a
+pending reset so the applier can force the 0 the deletion promised. A key
+consulted BEFORE a hit can carry a marker too (deleted exact entry over a
+kept ``all`` fallback); the hit wins — the fallback was kept deliberately
+and its apply overwrites any residue — and the applier consumes the stale
+marker silently. Specific-fps entries are dormant while the toggle is
+OFF; `all` entries remain reachable while it is ON (as the fallback
+level) — flipping the toggle is non-destructive in both directions.
 
 WRITE (D4) — one rule, zero history-dependence: the write key is derived
 at store instant from the CURRENT profile facts plus the CURRENT toggle
@@ -24,7 +30,8 @@ form of the stale-key doctrine: fresh derivation, single writer, no
 carried state.
 
 Pure Python: composes ``keys`` and consumes an ``OffsetStore``-shaped
-object (``get(key) -> entry | None``); no Kodi anywhere.
+object (``get(key) -> entry | None``, ``reset_pending(key) -> bool``);
+no Kodi anywhere.
 """
 
 from collections import namedtuple
@@ -42,8 +49,14 @@ MISS = 'miss'
 #      hit/miss-dependent referent).
 # tried: every key consulted, in lookup order — the once-per-episode debug
 #        line logs this so a diagnostician sees the whole chain that missed.
+# reset_keys: consulted keys carrying a pending reset marker, in lookup
+#             order — non-empty on a miss means "force 0, not no-op".
+#             Defaulted to () so hand-built Resolutions (tests, seams)
+#             stay valid; resolve() always fills it explicitly.
 class Resolution(namedtuple('Resolution',
-                            ['entry', 'hit_kind', 'key', 'tried'])):
+                            ['entry', 'hit_kind', 'key', 'tried',
+                             'reset_keys'],
+                            defaults=((),))):
     __slots__ = ()
 
     @property
@@ -69,8 +82,9 @@ def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):
         only_key = keys.all_key(hdr_raw, audio_raw)
         entry = store.get(only_key)
         if entry is not None:
-            return Resolution(entry, EXACT, only_key, (only_key,))
-        return Resolution(None, MISS, None, (only_key,))
+            return Resolution(entry, EXACT, only_key, (only_key,), ())
+        return Resolution(None, MISS, None, (only_key,),
+                          _pending((only_key,), store))
 
     tried = []
     try:
@@ -81,14 +95,23 @@ def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):
         tried.append(exact_key)
         entry = store.get(exact_key)
         if entry is not None:
-            return Resolution(entry, EXACT, exact_key, tuple(tried))
+            return Resolution(entry, EXACT, exact_key, tuple(tried), ())
 
     fallback_key = keys.all_key(hdr_raw, audio_raw)
     tried.append(fallback_key)
     entry = store.get(fallback_key)
     if entry is not None:
-        return Resolution(entry, FALLBACK, fallback_key, tuple(tried))
-    return Resolution(None, MISS, None, tuple(tried))
+        # A marker on the exact level (deleted) under a kept fallback: the
+        # hit wins, the marker travels for silent consumption.
+        return Resolution(entry, FALLBACK, fallback_key, tuple(tried),
+                          _pending(tried[:-1], store))
+    return Resolution(None, MISS, None, tuple(tried),
+                      _pending(tried, store))
+
+
+def _pending(consulted, store):
+    """The consulted keys carrying reset markers, in lookup order."""
+    return tuple(key for key in consulted if store.reset_pending(key))
 
 
 def write_key(hdr_raw, fps, audio_raw, *, per_fps):
