@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta5" name="AOM Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta6" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,17 +7,16 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v1.0.0~beta5 (2026-07-16)
-- Manage view: two-line rows (profile above, value/source/date below) grouped by HDR type, then codec, then rate
+        <news>v1.0.0~beta6 (2026-07-16)
+- Manage view: "Other rates" replaces "All rates" while per-refresh-rate offsets are on (the specific rate wins; "all" is the fallback)
+- Manage view: per-fps rows are tagged "inactive" while the toggle is off (stored but not applied)
+- Manage view: rows show just the offset value (source/date noise removed)
+
+v1.0.0~beta5 (2026-07-16)
+- Manage view: two-line rows (profile above, value below) grouped by HDR type, then codec, then rate
 - Manage view: per-fps rows show the exact reported rate (23.976, not 23)
 - Manage view: the delete confirmation shows the stored value
 - Manage view: removed the redundant "Back to settings" row (Cancel/Back returns to settings)
-
-v1.0.0~beta4 (2026-07-16)
-- Unlearned stream profiles now reset the audio offset to 0 once the addon has acted, instead of letting a previous stream's offset stick
-- "Offset not saved" notification when an unstored manual adjustment is discarded by that reset
-- The manage-offsets view returns to the addon settings when closed and gains a "Back to settings" row
-
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
