@@ -69,16 +69,20 @@ def test_unknown_route_falls_back_to_settings():
     assert RecordingAddon.instances[0].opened == 1
 
 
-def test_manage_offsets_routes_to_the_view(monkeypatch):
+def test_manage_offsets_runs_the_view_then_returns_to_settings(monkeypatch):
+    # Record how many openSettings() calls had happened when the view ran:
+    # the settings dialog must reopen AFTER the view exits (the manage
+    # button closed it via <close>true</close>), never before — the view
+    # must not render on top of a pending save-on-close.
     calls = []
-    monkeypatch.setattr(script_router, '_manage_offsets',
-                        lambda: calls.append(True))
+    monkeypatch.setattr(
+        script_router, '_manage_offsets',
+        lambda: calls.append(sum(a.opened for a in RecordingAddon.instances)))
 
     script_router.handle_script_call(['script.py', 'manage_offsets'])
 
-    assert calls == [True]
-    # D13: the view route must NOT bounce through the settings dialog.
-    assert all(a.opened == 0 for a in RecordingAddon.instances)
+    assert calls == [0]                    # view ran, settings still closed
+    assert sum(a.opened for a in RecordingAddon.instances) == 1
 
 
 def test_manage_offsets_composition(monkeypatch, tmp_path):

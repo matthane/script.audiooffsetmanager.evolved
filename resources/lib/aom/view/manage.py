@@ -43,6 +43,7 @@ _LABEL_CLEAR_ALL = 32126
 _MSG_UNREADABLE = 32127    # StoreUnreadable (corrupt: will be quarantined)
 _MSG_MUTATION_FAILED = 32128
 _MSG_FUTURE = 32131        # StoreUnreadable(future=True): preserved, not shown
+_LABEL_BACK = 32134        # labeled exit row ("Back to settings")
 
 # English fallbacks for the dialogs whose ENTIRE content is one localized
 # string: localized() degrades to '' on a transient failure, and a blank
@@ -112,9 +113,15 @@ class ManageView:
 
             options = [row.label for row in rows]
             options.append(self._gui.localized(_LABEL_CLEAR_ALL))
+            # The select dialog's built-in button says "Cancel" (skin-owned
+            # wording the Python API cannot change), which misreads for a
+            # view where leaving is the normal outcome — so the labeled exit
+            # is a row. Both paths return; the router then reopens the
+            # settings dialog the manage button closed.
+            options.append(self._gui.localized(_LABEL_BACK))
 
             choice = self._gui.select(heading, options)
-            if choice < 0:
+            if choice < 0 or choice == len(rows) + 1:
                 return
 
             if choice == len(rows):

@@ -13,6 +13,11 @@ Routes:
   delete/clear, P6), reached from the settings dialog's action button.
 - anything else / no argument — open the addon settings (D13: launching
   the addon opens the full settings dialog, the natural hub).
+
+Every route ends in the settings dialog: the manage button closes it on
+press (``<close>true</close>``, the write-ordering doctrine), so reopening
+after the view exits returns the user to where they came from instead of
+dropping them back into Kodi.
 """
 
 import sys
@@ -39,7 +44,8 @@ def handle_script_call(argv=None):
     route = args[1] if len(args) > 1 else ''
     if route == 'manage_offsets':
         _manage_offsets()
-        return
+        # ...then fall through: the manage button closed the settings
+        # dialog, so every exit from the view lands back in it.
     xbmcaddon.Addon(ADDON_ID).openSettings()
 
 
