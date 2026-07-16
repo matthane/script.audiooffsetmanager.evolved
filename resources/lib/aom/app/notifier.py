@@ -12,10 +12,10 @@ events on the dispatcher thread:
   ``StreamStabilized``. A non-provisional apply toasts immediately and clears
   any pending hold.
 * ``StreamStabilized`` — releases a held provisional toast, but only if the
-  profile still keys the same setting id it was held under: a profile that
-  changed underneath drops the stale toast (settings-doctrine — never toast a
-  stale key). The setting id is re-derived FRESH from ``session.profile`` at
-  release time.
+  profile still has the identity it was held under: a profile that changed
+  underneath drops the stale toast (freshness doctrine — never announce a
+  stale stream). The identity is re-derived FRESH from ``session.profile``
+  at release time.
 * ``UserOffsetSaved`` — a manual adjustment the AdjustmentWatcher stored.
   Toasts from the event's own profile/ms (captured at store time on the
   dispatcher thread); session/settings are deliberately NOT re-read.

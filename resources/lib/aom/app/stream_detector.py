@@ -23,8 +23,8 @@ scheduled events — never as sleeps:
   changed → re-adopt + re-verify; lost → regress to STABILIZING and let the
   verify loop chase it.
 
-Every gather posts ``StreamProbed`` platform facts for the PlatformRecorder
-(legacy parity: StreamInfo stored capabilities on every gather).
+Every gather posts ``StreamProbed`` platform facts — log-only observability
+now (the PlatformRecorder dissolved with the stored capability flags; P3).
 
 "Same stream" is judged on the OFFSET-RELEVANT identity
 (``policies.stream_identity``, consulted at compare instant with the live

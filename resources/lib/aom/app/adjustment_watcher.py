@@ -14,12 +14,12 @@ self-scheduled ``WatchTick`` events. No threads, no dialog IDs, no
 open/close state machine — every source of an adjustment is caught because
 we watch the VALUE, not the GUI that (sometimes) sets it.
 
-Eligibility (``_eligible``) mirrors legacy ``OffsetManager._should_start_
-active_monitor``: a profile exists, active monitoring is enabled, the HDR and
-FPS axes are known, and the HDR type is enabled. This is deliberately a
-PARTIAL unknown-check — HDR + FPS, not audio — for legacy parity; the store
-path (``_store``) re-validates the WHOLE profile (``policies.is_complete``)
-before writing, so an audio-unknown stream is still watched but never stored.
+Eligibility (``_eligible``) is deliberately minimal: a profile exists,
+learning is on ("remember manual adjustments" — the promoted core of the
+product, P2), and the addon is not paused (D9). No axis-gating happens here
+— the store path (``_store``) re-validates the WHOLE profile
+(``policies.is_complete``) before writing, so an incomplete stream is
+watched but never stored.
 
 Baseline rule: ``session.watch_baseline_ms`` is the last delay value we have
 ACCOUNTED FOR (our own apply, or a value already stored). Only a CHANGE away
@@ -47,7 +47,7 @@ adjust-back-to-the-original before quiescence stores nothing.
 
 Self-echo suppression: an automatic apply is a JSON-RPC player call, so our
 own applied value shows up in the infolabel just like a user's would. The
-applier records ``session.applied = (setting_id, delay_ms)`` BEFORE issuing
+applier records ``session.applied = (store_key, delay_ms)`` BEFORE issuing
 the RPC precisely so ``observed == session.applied[1]`` here is always
 current; a match is our own value — baseline-refresh, never store. A
 corollary (reviewed, accepted): an automatic apply landing INSIDE a pending

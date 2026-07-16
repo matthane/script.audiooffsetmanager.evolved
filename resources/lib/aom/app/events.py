@@ -88,11 +88,14 @@ class VerifyStream:
 
 @dataclass(frozen=True)
 class StreamProbed:
-    """A detection pass observed the platform (consumed by PlatformRecorder).
+    """A detection pass observed the platform (log-only observability).
 
-    Posted on EVERY gather — probes, AV-change re-probes, and verifications —
-    matching legacy StreamInfo, which stored platform capabilities on every
-    gather. Carries facts, not decisions: the recorder owns the writes.
+    Posted on EVERY gather — probes, AV-change re-probes, and verifications.
+    The fields are facts about what the platform reported; nothing stores
+    them anymore (the PlatformRecorder dissolved with the capability flags —
+    capability gating is emergent from the store, P3). They stay on the
+    event because field logs showing WHICH detection path fired are the
+    debugging lifeline.
     """
     session_id: int
     platform_hdr_full: bool

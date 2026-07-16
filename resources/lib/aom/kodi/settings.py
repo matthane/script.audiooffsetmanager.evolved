@@ -25,9 +25,10 @@ never rewrite it as ``xbmcaddon.Addon(...).getSettings()``.
 Faithful port of the legacy semantics, with two deliberate upgrades noted as
 Phase 7 work: the bare ``except:`` clauses become ``except Exception`` here, and
 the ``AOM_SettingsManager`` log prefix becomes ``AOM_Settings``. The
-read-before-write skip in the ``store_*_if_changed`` helpers is load-bearing and
-preserved verbatim: it keeps the settings-dialog clobber surface minimal (no
-write means nothing for a dialog save-on-close to fight over) per the doctrine.
+``store_*_if_changed`` helpers keep the read-before-write skip for BEHAVIOR
+settings (the only kind that lives here now — offsets moved to the sparse
+store, P4): no write means nothing for a dialog save-on-close to fight
+over. Their next runtime caller is the E4 coexistence once-flag.
 
 This layer may import ``xbmc*``/``xbmcaddon`` and ``resources.lib.aom.*`` only;
 importing any legacy ``resources.lib.<module>`` fails

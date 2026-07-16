@@ -1,10 +1,24 @@
-# Test-suite triage ledger (Phase E0)
+# Test-suite triage ledger (Phase E0; reconciled through E2)
 
 Fate of every test file inherited from `redesign/2.0` (896 tests at branch
 cut), per the Evolved design (EVOLVED.md — local-only, git-excluded).
 Deletion happens **in the phase that deletes the feature** (E2/E3), never
 here; until then dying tests stay present and passing. Reconciled by an
 Explore sweep at the end of E2 and E3.
+
+**E2 reconciliation (2026-07-15):** every REWRITE(E2)/DIES(E2) fate below
+has happened — `test_platform_recorder.py` and
+`test_audio_format_matching.py` deleted (the latter ahead of its E1/E2
+window, with the whitelist itself); the applier/watcher/policies/detector/
+profile/kodi-settings/runtime/session-flow suites rewritten against the
+store (`test_notifier.py` stayed KEEP as ledgered — identity/summary
+touch-ups only); `test_settings_matrix.py` lost only its detector-coupling
+test (the XML oracle survives until E3); `test_strings.py`'s
+parametrization shrank by onboarding's six string ids (32094–32099)
+automatically. NEW since branch cut: `test_offset_store.py`,
+`test_store_keys.py`, `test_store_resolve.py` (E1 store layer) and
+`test_learn_store_replay.py` (E2, 7 end-to-end store scenarios).
+Remaining fates are all E3.
 
 Categories: **KEEP** (survives as-is) · **DIES(phase)** (deleted with its
 feature) · **REWRITE(phase)** (replaced in-phase per the key-schema
