@@ -70,6 +70,9 @@ HDR_DISPLAY = {
 
 AUDIO_DISPLAY = {
     'truehd': 'TrueHD',
+    # Observed verbatim on Kodi 22 beta1/Windows (E7 beta1): Atmos-flagged
+    # TrueHD reports its own codec string. DISPLAY-only — never matched on.
+    'truehd_atmos': 'TrueHD Atmos',
     'eac3': 'E-AC-3',
     'ac3': 'AC-3',
     'dtshd_ma': 'DTS-HD MA',

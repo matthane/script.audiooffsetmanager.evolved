@@ -163,10 +163,10 @@ class Notifier:
             return
 
         now = self._clock()
+        per_fps = self._settings.per_fps_offsets_enabled()
         # Dedupe at the same offset-relevant granularity: with per_fps off
         # an fps wiggle must not defeat the window and re-toast a duplicate.
-        identity = policies.stream_identity(
-            profile, self._settings.per_fps_offsets_enabled())
+        identity = policies.stream_identity(profile, per_fps)
         key = (string_id, identity, ms)
         # _last_toast and _last_toast_at are set in lockstep, and a real key
         # (a tuple) never equals the None sentinel, so the key comparison
@@ -175,13 +175,23 @@ class Notifier:
                 now - self._last_toast_at < self.DEDUPE_SECONDS:
             return
 
+        # Toast shape (E7 field fix, beta1 on Windows): the saved/applied
+        # line rides as the toast TITLE and the profile summary is the
+        # whole message — packing both into the message with a newline made
+        # Kodi's single-line label auto-scroll (perceived as flashing) and
+        # truncate the codec off the end. The rate is shown only when it is
+        # offset-relevant (per_fps ON): with the toggle off the value lives
+        # under the all-rates key, and "23.976 fps" would both mislead and
+        # crowd out the codec.
         sign = '+' if ms > 0 else ''
+        heading = f"{self._gui.localized(string_id)}: {sign}{ms} ms"
         summary = store_keys.profile_summary(
-            profile.hdr_type, profile.audio_format, profile.video_fps)
-        message = (f"{self._gui.localized(string_id)}: {sign}{ms} ms\n"
-                   f"{summary}")
+            profile.hdr_type, profile.audio_format,
+            profile.video_fps if per_fps else None)
 
-        self._gui.notification(message, self._settings.notification_duration_ms())
-        self._log(f"AOM_Notifier: {message}")
+        self._gui.notification(summary,
+                               self._settings.notification_duration_ms(),
+                               title=heading)
+        self._log(f"AOM_Notifier: {heading} — {summary}")
         self._last_toast = key
         self._last_toast_at = now

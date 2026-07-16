@@ -135,11 +135,14 @@ def test_manual_save_supersedes_a_held_provisional_toast(rig):
     rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                     profile=profile, ms=50))
     assert session.pending_notification is None       # hold superseded
-    assert rig.toasts == [("#32093: +50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+    # per_fps is OFF in the rig: the rate is omitted from the summary and
+    # the saved line rides as the toast TITLE (E7 beta1 field fix).
+    assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+    assert rig.gui.titles == ["#32093: +50 ms"]
 
     rig.mark_stable(session)
     rig.post(events.StreamStabilized(session_id=session.session_id))
-    assert rig.toasts == [("#32093: +50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+    assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
     # No stale "applied +30" ever surfaces.
 
 
@@ -157,7 +160,8 @@ class TestImmediateApply:
                                       profile=profile, ms=-125,
                                       provisional=False))
 
-        assert rig.toasts == [("#32092: -125 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.gui.titles == ["#32092: -125 ms"]
         assert session.pending_notification is None
 
     def test_non_provisional_clears_any_prior_pending(self, rig):
@@ -169,7 +173,8 @@ class TestImmediateApply:
                                       profile=profile, ms=-50,
                                       provisional=False))
         assert session.pending_notification is None
-        assert rig.toasts == [("#32092: -50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.gui.titles == ["#32092: -50 ms"]
 
 
 # ============================================================================
@@ -192,7 +197,8 @@ class TestDeferral:
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("#32092: -75 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.gui.titles == ["#32092: -75 ms"]
         assert session.pending_notification is None
         assert rig.logged("Released pending offset notification")
 
@@ -258,7 +264,8 @@ class TestDeferral:
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("#32092: -40 ms\nHDR10 | 23.976 fps | E-AC-3", DURATION_MS)]
+        assert rig.toasts == [("HDR10 | E-AC-3", DURATION_MS)]
+        assert rig.gui.titles == ["#32092: -40 ms"]
         assert session.pending_notification is None
 
 
@@ -278,7 +285,8 @@ class TestUserOffsetSaved:
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=event_profile, ms=60))
 
-        assert rig.toasts == [("#32093: +60 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.gui.titles == ["#32093: +60 ms"]
 
 
 # ============================================================================
@@ -359,8 +367,8 @@ class TestDedupe:
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=profile, ms=-50))
         assert len(rig.toasts) == 2
-        assert rig.toasts[0][0].startswith(f"#{STRING_OFFSET_APPLIED}")
-        assert rig.toasts[1][0].startswith(f"#{STRING_OFFSET_SAVED}")
+        assert rig.gui.titles[0].startswith(f"#{STRING_OFFSET_APPLIED}")
+        assert rig.gui.titles[1].startswith(f"#{STRING_OFFSET_SAVED}")
 
 
 # ============================================================================
@@ -398,7 +406,7 @@ class TestSettingsGate:
                                         profile=profile, ms=-115))
 
         assert len(rig.toasts) == 1
-        assert rig.toasts[0][0].startswith(f"#{STRING_OFFSET_SAVED}")
+        assert rig.gui.titles[0].startswith(f"#{STRING_OFFSET_SAVED}")
 
     def test_learn_gate_off_still_toasts_apply(self, rig):
         rig.settings.learn_enabled = False
@@ -410,7 +418,7 @@ class TestSettingsGate:
                                       provisional=False))
 
         assert len(rig.toasts) == 1
-        assert rig.toasts[0][0].startswith(f"#{STRING_OFFSET_APPLIED}")
+        assert rig.gui.titles[0].startswith(f"#{STRING_OFFSET_APPLIED}")
 
     def test_learn_gate_off_suppresses_saved_toast(self, rig):
         rig.settings.learn_enabled = False
@@ -463,7 +471,41 @@ class TestSignRendering:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=ms, provisional=False))
 
-        assert rig.toasts == [(f"#32092: {rendered}\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.gui.titles == [f"#32092: {rendered}"]
+
+
+class TestToastShape:
+    # E7 beta1 field fix (Kodi 22 beta1 / Windows): the saved/applied line
+    # rides as the toast TITLE and the message is ONLY the profile summary
+    # — a newline-packed single message made Kodi's label auto-scroll
+    # (perceived as flashing) and truncated the codec off the end.
+
+    def test_rate_is_omitted_when_per_fps_is_off(self, rig):
+        # With the toggle off the value lives under the all-rates key:
+        # showing "23.976 fps" both misleads and crowds out the codec.
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        message, _duration = rig.toasts[0]
+        assert message == "Dolby Vision | TrueHD"
+        assert "fps" not in message
+        assert "\n" not in message
+
+    def test_rate_is_shown_when_per_fps_is_on(self, rig):
+        rig.settings.per_fps = True
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        assert rig.toasts == [("Dolby Vision | 23.976 fps | TrueHD",
+                               DURATION_MS)]
+        assert rig.gui.titles == ["#32093: -100 ms"]
 
 
 class TestIdentityGranularity:

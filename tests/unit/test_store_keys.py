@@ -174,3 +174,13 @@ def test_describe_key_known():
 def test_describe_key_unknown_segments_render_verbatim():
     assert keys.describe_key('x-future-hdr|48|x-future-codec') == \
         'x-future-hdr | 48 fps | x-future-codec'
+
+
+def test_truehd_atmos_display_name_is_field_observed():
+    # E7 beta1 (Kodi 22 beta1/Windows): Atmos-flagged TrueHD reports
+    # 'truehd_atmos' verbatim. The alias is DISPLAY-only — the key segment
+    # stays verbatim, so stored data is untouched by the friendly name.
+    assert keys.audio_segment('truehd_atmos') == 'truehd_atmos'
+    assert keys.AUDIO_DISPLAY['truehd_atmos'] == 'TrueHD Atmos'
+    assert keys.profile_summary('dolbyvision', 'truehd_atmos') == \
+        'Dolby Vision | TrueHD Atmos'

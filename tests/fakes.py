@@ -247,6 +247,7 @@ class FakeGui:
 
     def __init__(self):
         self.notifications = []          # (message, duration_ms)
+        self.titles = []                 # title per notification (lockstep)
         self.localized_strings = {}      # optional overrides: id -> str
         self.select_answers = []         # scripted select() replies (FIFO)
         self.yesno_answers = []          # scripted yesno() replies (FIFO)
@@ -258,9 +259,11 @@ class FakeGui:
         return self.localized_strings.get(string_id, f"#{string_id}")
 
     def notification(self, message, duration_ms, title=None, icon=None):
-        # title/icon mirror the real Gui's optional params; recorded toasts
-        # keep the 2-tuple shape the suites assert on.
+        # Recorded toasts keep the 2-tuple shape the suites assert on; the
+        # title (None = the real Gui's addon-name default) is recorded in
+        # lockstep for the suites that pin the heading.
         self.notifications.append((message, duration_ms))
+        self.titles.append(title)
 
     def select(self, heading, options):
         self.selects.append((heading, list(options)))
