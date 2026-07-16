@@ -111,7 +111,7 @@ def test_rows_render_verbatim_signed_milliseconds():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All rates | TrueHD", "-115 ms")
+    assert options[0] == ("Dolby Vision | All rates | Dolby TrueHD", "-115 ms")
     assert options[1] == ("HDR10 | All rates | Dolby Digital", "+9999 ms")
     assert options[2] == ("HLG | All rates | Dolby Digital Plus", "-2500 ms")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
@@ -212,7 +212,7 @@ def test_rows_group_by_hdr_then_codec_then_numeric_rate():
         "Dolby Vision | All rates | Dolby Digital Plus",
         "Dolby Vision | 23.976 fps | Dolby Digital Plus",
         "Dolby Vision | 119.88 fps | Dolby Digital Plus",
-        "Dolby Vision | 24 fps | TrueHD",
+        "Dolby Vision | 24 fps | Dolby TrueHD",
         "HDR10 | All rates | Dolby Digital",
     ]
 
@@ -224,7 +224,7 @@ def test_bare_entry_renders_without_meta_fields():
     entries = {DV: {"delay_ms": 42}}
     view, gui, _ = _build(entries)
     view.run()
-    assert gui.selects[0][1][0] == ("Dolby Vision | All rates | TrueHD",
+    assert gui.selects[0][1][0] == ("Dolby Vision | All rates | Dolby TrueHD",
                                     "+42 ms")
 
 
@@ -271,7 +271,7 @@ def test_delete_confirmation_shows_the_stored_value():
     heading, message = gui.yesnos[0]
     assert heading == "#32115"
     assert "-115 ms" in message
-    assert "Dolby Vision | All rates | TrueHD" in message
+    assert "Dolby Vision | All rates | Dolby TrueHD" in message
 
 
 def test_deleting_last_entry_lands_on_empty_state():

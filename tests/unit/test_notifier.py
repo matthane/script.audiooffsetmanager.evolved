@@ -30,7 +30,7 @@ DURATION_MS = 3000
 
 def make_profile(hdr_type='dolbyvision', audio_format='truehd',
                  video_fps=23.976, player_id=1):
-    """A complete profile; summary 'Dolby Vision | 23.976 fps | TrueHD'."""
+    """A complete profile; summary 'Dolby Vision | 23.976 fps | Dolby TrueHD'."""
     return StreamProfile(hdr_type=hdr_type, audio_format=audio_format,
                          video_fps=video_fps, player_id=player_id,
                          audio_channels=8)
@@ -137,12 +137,12 @@ def test_manual_save_supersedes_a_held_provisional_toast(rig):
     assert session.pending_notification is None       # hold superseded
     # per_fps is OFF in the rig: the rate is omitted from the summary and
     # the saved line rides as the toast TITLE (E7 beta1 field fix).
-    assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+    assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
     assert rig.gui.titles == ["#32093: +50 ms"]
 
     rig.mark_stable(session)
     rig.post(events.StreamStabilized(session_id=session.session_id))
-    assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+    assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
     # No stale "applied +30" ever surfaces.
 
 
@@ -160,7 +160,7 @@ class TestImmediateApply:
                                       profile=profile, ms=-125,
                                       provisional=False))
 
-        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
         assert rig.gui.titles == ["#32092: -125 ms"]
         assert session.pending_notification is None
 
@@ -173,7 +173,7 @@ class TestImmediateApply:
                                       profile=profile, ms=-50,
                                       provisional=False))
         assert session.pending_notification is None
-        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
         assert rig.gui.titles == ["#32092: -50 ms"]
 
 
@@ -197,7 +197,7 @@ class TestDeferral:
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
         assert rig.gui.titles == ["#32092: -75 ms"]
         assert session.pending_notification is None
         assert rig.logged("Released pending offset notification")
@@ -285,7 +285,7 @@ class TestUserOffsetSaved:
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=event_profile, ms=60))
 
-        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
         assert rig.gui.titles == ["#32093: +60 ms"]
 
 
@@ -519,7 +519,7 @@ class TestSignRendering:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=ms, provisional=False))
 
-        assert rig.toasts == [("Dolby Vision | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("Dolby Vision | Dolby TrueHD", DURATION_MS)]
         assert rig.gui.titles == [f"#32092: {rendered}"]
 
 
@@ -539,7 +539,7 @@ class TestToastShape:
                                         profile=profile, ms=-100))
 
         message, _duration = rig.toasts[0]
-        assert message == "Dolby Vision | TrueHD"
+        assert message == "Dolby Vision | Dolby TrueHD"
         assert "fps" not in message
         assert "\n" not in message
 
@@ -551,7 +551,7 @@ class TestToastShape:
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=profile, ms=-100))
 
-        assert rig.toasts == [("Dolby Vision | 23.976 fps | TrueHD",
+        assert rig.toasts == [("Dolby Vision | 23.976 fps | Dolby TrueHD",
                                DURATION_MS)]
         assert rig.gui.titles == ["#32093: -100 ms"]
 

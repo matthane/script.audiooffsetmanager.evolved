@@ -78,10 +78,11 @@ HDR_DISPLAY = {
 # unlisted codec renders verbatim, so this table can grow or shrink without
 # touching stored data.
 AUDIO_DISPLAY = {
-    # Dolby family. TrueHD keeps its bare commercial name (field-observed
-    # style since E7 beta1: 'truehd_atmos' is reported verbatim by Kodi 22).
-    'truehd': 'TrueHD',
-    'truehd_atmos': 'TrueHD Atmos',
+    # Dolby family, consistently branded ('truehd_atmos' and
+    # 'eac3_ddp_atmos' are Kodi's verbatim profile reports; the former
+    # field-observed on Kodi 22 beta1 in E7 beta1).
+    'truehd': 'Dolby TrueHD',
+    'truehd_atmos': 'Dolby TrueHD Atmos',
     'eac3': 'Dolby Digital Plus',
     'eac3_ddp_atmos': 'Dolby Digital Plus Atmos',
     'ac3': 'Dolby Digital',

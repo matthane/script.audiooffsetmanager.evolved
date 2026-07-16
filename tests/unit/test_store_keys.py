@@ -161,7 +161,7 @@ def test_segment_functions_are_idempotent():
 # --- Display helpers --------------------------------------------------------
 
 def test_display_known_names():
-    assert keys.AUDIO_DISPLAY['truehd'] == 'TrueHD'
+    assert keys.AUDIO_DISPLAY['truehd'] == 'Dolby TrueHD'
     assert keys.HDR_DISPLAY['hdr10+'] == 'HDR10+'
 
 
@@ -170,7 +170,8 @@ def test_display_known_names():
     ('ac3', 'Dolby Digital'),
     ('eac3', 'Dolby Digital Plus'),
     ('eac3_ddp_atmos', 'Dolby Digital Plus Atmos'),
-    ('truehd_atmos', 'TrueHD Atmos'),
+    ('truehd', 'Dolby TrueHD'),
+    ('truehd_atmos', 'Dolby TrueHD Atmos'),
     # DTS family: Kodi's StreamUtils profile names, incl. modern 'dts'
     # alongside FFmpeg's legacy 'dca' spelling of the same fact.
     ('dts', 'DTS'),
@@ -204,7 +205,7 @@ def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
 
 def test_describe_key_known():
     assert keys.describe_key('dolbyvision|all|truehd') == \
-        'Dolby Vision | All rates | TrueHD'
+        'Dolby Vision | All rates | Dolby TrueHD'
     assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
 
 
@@ -231,9 +232,9 @@ def test_describe_key_all_segment_is_toggle_aware():
     # it renders 'Other rates'. OFF: 'all' is the only key consulted and
     # 'All rates' is literally true (the default).
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=True) == \
-        'Dolby Vision | Other rates | TrueHD'
+        'Dolby Vision | Other rates | Dolby TrueHD'
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=False) == \
-        'Dolby Vision | All rates | TrueHD'
+        'Dolby Vision | All rates | Dolby TrueHD'
     # A numeric segment is unaffected by the toggle.
     assert keys.describe_key('hdr10|23|ac3', video_fps=23.976,
                              per_fps=True) == 'HDR10 | 23.976 fps | Dolby Digital'
@@ -243,7 +244,7 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
     # 'all' is the identity: the entry's rate is just the last store
     # instant's, not what the key matches.
     assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976) == \
-        'Dolby Vision | All rates | TrueHD'
+        'Dolby Vision | All rates | Dolby TrueHD'
 
 
 def test_describe_key_degrades_to_segment_without_usable_metadata():
@@ -287,6 +288,6 @@ def test_truehd_atmos_display_name_is_field_observed():
     # 'truehd_atmos' verbatim. The alias is DISPLAY-only — the key segment
     # stays verbatim, so stored data is untouched by the friendly name.
     assert keys.audio_segment('truehd_atmos') == 'truehd_atmos'
-    assert keys.AUDIO_DISPLAY['truehd_atmos'] == 'TrueHD Atmos'
+    assert keys.AUDIO_DISPLAY['truehd_atmos'] == 'Dolby TrueHD Atmos'
     assert keys.profile_summary('dolbyvision', 'truehd_atmos') == \
-        'Dolby Vision | TrueHD Atmos'
+        'Dolby Vision | Dolby TrueHD Atmos'
