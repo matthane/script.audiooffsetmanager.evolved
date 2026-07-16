@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanagerevolved" version="0.9.0" name="AOM Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta1" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,8 +7,12 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v0.9.0 (2026-07-15)
-- AOM Evolved development bootstrap (pre-release; never published)
+        <news>v1.0.0~beta1 (2026-07-15)
+- First beta of AOM Evolved (local test build; never published)
+- Learn loop: manual offset adjustments are remembered per stream profile and re-applied automatically
+- Sparse JSON offset store with per-refresh-rate toggle, verbatim format acceptance
+- Management view (settings button): inspect and remove learned offsets
+- One-time warning when the classic Audio Offset Manager is also enabled
         </news>
         <summary lang="en_GB">Fix lipsync once — Evolved remembers it per stream profile</summary>
         <description lang="en_GB">Adjust Kodi's audio offset during playback the way you always have. AOM Evolved remembers the value for that stream's HDR type, audio format, and refresh rate, then re-applies it automatically on every matching playback. Includes seek-back after adjustments, playback notifications, and a management view of everything it has learned.</description>
