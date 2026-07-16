@@ -176,6 +176,14 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
+                <!-- Internal once-flag (level 4, never rendered): set after
+                     the classic-AOM coexistence warning has shown once.
+                     Behavior state, not offset data. -->
+                <setting id="coexistence_warned" type="boolean" label="">
+                    <level>4</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
             </group>
         </category>
     </section>

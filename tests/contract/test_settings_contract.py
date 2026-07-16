@@ -90,6 +90,7 @@ def _collect_python_read_ids():
     exercise("notify_learn_enabled")
     exercise("notification_duration_ms")
     exercise("debug_logging_enabled")
+    exercise("coexistence_warned")
     for reason in SeekScheduler.REASONS:
         exercise("seek_back_config", reason)
 

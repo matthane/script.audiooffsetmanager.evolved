@@ -157,5 +157,13 @@ class Settings:
     def debug_logging_enabled(self):
         return self.get_bool('enable_debug_logging')
 
+    def coexistence_warned(self):
+        """The classic-AOM coexistence warning's once-flag (§3.6).
+
+        Behavior STATE, not offset data — a hidden level-4 bool in
+        settings.xml, written through store_boolean_if_changed after the
+        warning actually shows (its first runtime caller)."""
+        return self.get_bool('coexistence_warned')
+
 # (The OffsetTable adapter moved to aom/store/table.py — it stopped being a
 # Kodi-settings concern when offsets moved into the sparse store; E2 review.)

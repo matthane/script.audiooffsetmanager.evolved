@@ -51,6 +51,13 @@ from resources.lib.aom.kodi.settings import ADDON_ID, STORE_PATH, Settings
 from resources.lib.aom.store.offset_store import OffsetStore
 from resources.lib.aom.store.table import OffsetTable
 
+# The classic addon this one supersedes: both enabled at once can apply
+# audio offsets twice, so the service warns ONCE per install (§3.6; the
+# once-flag is behavior state in settings, never offset data).
+CLASSIC_ADDON_ID = 'script.audiooffsetmanager'
+STRING_COEXISTENCE_HEADING = 32129
+STRING_COEXISTENCE_BODY = 32130
+
 
 class ServiceRuntime:
     def __init__(self):
@@ -128,10 +135,37 @@ class ServiceRuntime:
         self.logger.debug_escalation = debug
         self.dispatcher.log_runtimes = debug
 
+    def _maybe_warn_coexistence(self):
+        """One-time classic-AOM coexistence warning (§3.6, the folded E5).
+
+        Probes only while the once-flag is unset, and writes the flag ONLY
+        after the dialog actually showed — a transient probe failure (or
+        classic being installed later) still warns on a future start. Runs
+        from run() after the dispatcher starts: the modal ok blocks only
+        this service thread, never the dispatcher, and the settings dialog
+        cannot be open this early (write-ordering doctrine holds).
+        """
+        if self.settings.coexistence_warned():
+            return
+        if not self.gateway.addon_enabled(CLASSIC_ADDON_ID):
+            return
+        # localized() degrades to '' on failure; a warning that renders
+        # blank teaches nothing, so both strings carry English fallbacks.
+        heading = self.gui.localized(STRING_COEXISTENCE_HEADING) or (
+            "Classic Audio Offset Manager detected")
+        body = self.gui.localized(STRING_COEXISTENCE_BODY) or (
+            "AOM Evolved and the classic Audio Offset Manager are both "
+            "enabled. Running both can apply audio offsets twice — "
+            "consider disabling the classic addon.")
+        self.gui.ok(heading, body)
+        self.settings.store_boolean_if_changed('coexistence_warned', True)
+        self.logger.debug("AOM_Runtime: coexistence warning shown")
+
     def run(self):
         self.dispatcher.start()
         self.logger.debug("AOM_Runtime: service started")
 
+        self._maybe_warn_coexistence()
         self.monitor.waitForAbort()
 
         self.logger.debug("AOM_Runtime: abort requested; shutting down")

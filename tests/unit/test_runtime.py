@@ -108,3 +108,65 @@ def test_settings_changed_refreshes_cached_debug_flags(runtime, monkeypatch):
     runtime.dispatcher.run_pending()
     assert runtime.logger.debug_escalation is False
     assert runtime.dispatcher.log_runtimes is False
+
+
+# --- coexistence warning (section 3.6, folded E5) ------------------------------
+
+class TestCoexistenceWarning:
+
+    def _rig(self, runtime, monkeypatch, *, warned, classic_enabled):
+        probes = []
+        oks = []
+        writes = []
+        monkeypatch.setattr(runtime.settings, 'coexistence_warned',
+                            lambda: warned)
+        monkeypatch.setattr(
+            runtime.gateway, 'addon_enabled',
+            lambda addon_id: probes.append(addon_id) or classic_enabled)
+        monkeypatch.setattr(
+            runtime.gui, 'ok',
+            lambda heading, message: oks.append((heading, message)))
+        monkeypatch.setattr(
+            runtime.settings, 'store_boolean_if_changed',
+            lambda setting_id, value: writes.append((setting_id, value))
+            or True)
+        return probes, oks, writes
+
+    def test_warns_once_and_sets_flag_when_classic_enabled(self, runtime,
+                                                           monkeypatch):
+        probes, oks, writes = self._rig(runtime, monkeypatch,
+                                        warned=False, classic_enabled=True)
+
+        runtime._maybe_warn_coexistence()
+
+        assert probes == ['script.audiooffsetmanager']
+        assert len(oks) == 1
+        # kodistubs' getLocalizedString returns '' -> the English fallbacks
+        # must fill both halves (a blank warning teaches nothing).
+        heading, message = oks[0]
+        assert 'Classic Audio Offset Manager' in heading
+        assert 'both' in message and 'disabling' in message
+        # The once-flag is written ONLY after the dialog actually showed.
+        assert writes == [('coexistence_warned', True)]
+
+    def test_flag_set_skips_even_the_probe(self, runtime, monkeypatch):
+        probes, oks, writes = self._rig(runtime, monkeypatch,
+                                        warned=True, classic_enabled=True)
+
+        runtime._maybe_warn_coexistence()
+
+        assert probes == []
+        assert oks == []
+        assert writes == []
+
+    def test_classic_absent_warns_nothing_and_keeps_flag_unset(self, runtime,
+                                                               monkeypatch):
+        # The flag stays unset so classic installed LATER still warns.
+        probes, oks, writes = self._rig(runtime, monkeypatch,
+                                        warned=False, classic_enabled=False)
+
+        runtime._maybe_warn_coexistence()
+
+        assert probes == ['script.audiooffsetmanager']
+        assert oks == []
+        assert writes == []

@@ -290,3 +290,34 @@ class TestWindowProperties:
         gw.clear_window_property("AOM.Signal")
         assert gw.window_property("AOM.Signal") == ""
         assert "AOM.Signal" not in gw._home_window.props
+
+
+# --- addon_enabled (the coexistence probe, section 3.6) ------------------------
+
+class TestAddonEnabled:
+
+    def test_enabled_addon_answers_true(self, monkeypatch):
+        gw, rec = _make_gateway(monkeypatch, response={
+            "result": {"addon": {"addonid": "script.audiooffsetmanager",
+                                 "enabled": True}}})
+        assert gw.addon_enabled("script.audiooffsetmanager") is True
+        assert rec.requests[0]["method"] == "Addons.GetAddonDetails"
+        assert rec.requests[0]["params"] == {
+            "addonid": "script.audiooffsetmanager",
+            "properties": ["enabled"]}
+
+    def test_disabled_addon_answers_false(self, monkeypatch):
+        gw, _rec = _make_gateway(monkeypatch, response={
+            "result": {"addon": {"enabled": False}}})
+        assert gw.addon_enabled("script.audiooffsetmanager") is False
+
+    def test_missing_addon_error_answers_false(self, monkeypatch):
+        # Kodi answers a JSON-RPC error for an unknown addon id.
+        gw, _rec = _make_gateway(monkeypatch, response={
+            "error": {"code": -32602, "message": "Invalid params."}})
+        assert gw.addon_enabled("script.audiooffsetmanager") is False
+
+    def test_exception_answers_false_single_shot(self, monkeypatch):
+        gw, rec = _make_gateway(monkeypatch, raises=RuntimeError("rpc down"))
+        assert gw.addon_enabled("script.audiooffsetmanager") is False
+        assert rec.call_count == 1

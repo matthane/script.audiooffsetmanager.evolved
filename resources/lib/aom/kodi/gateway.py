@@ -181,6 +181,38 @@ class KodiGateway:
             self._log(f"AOM_Gateway: Error executing seek command: {str(e)}", xbmc.LOGERROR)
             return False
 
+    def addon_enabled(self, addon_id):
+        """True when ``addon_id`` is installed AND enabled; False otherwise.
+
+        Single ``Addons.GetAddonDetails`` call (the coexistence probe,
+        §3.6). A missing addon is a JSON-RPC error response — that and any
+        exception answer False: "not enabled" is the safe reading of every
+        failure (the once-flag is only set after a warning actually shows,
+        so a transient error just retries next service start).
+        """
+        try:
+            response = self._execute_rpc({
+                "jsonrpc": "2.0",
+                "method": "Addons.GetAddonDetails",
+                "params": {
+                    "addonid": addon_id,
+                    "properties": ["enabled"]
+                },
+                "id": 1
+            })
+
+            if "error" in response:
+                self._log(f"AOM_Gateway: {addon_id} not installed",
+                          xbmc.LOGDEBUG)
+                return False
+
+            addon = response.get("result", {}).get("addon", {})
+            return bool(addon.get("enabled", False))
+        except Exception as e:
+            self._log(f"AOM_Gateway: Error probing addon {addon_id}: "
+                      f"{str(e)}", xbmc.LOGERROR)
+            return False
+
     def notify_all(self, sender, message, data):
         """Broadcast a ``JSONRPC.NotifyAll`` message; return success.
 

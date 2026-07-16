@@ -264,6 +264,14 @@ class TestIntentReads:
         assert settings.debug_logging_enabled() is True
         assert spy.calls == [('enable_debug_logging',)]
 
+    def test_coexistence_warned(self):
+        settings, _ = _make_settings()
+        spy = self._spy_bool(settings)
+        assert settings.coexistence_warned() is True
+        # Default False: an unreadable flag means "warn again" — the
+        # warning is idempotent-annoying at worst, silence is worse.
+        assert spy.calls == [('coexistence_warned',)]
+
     def test_seek_back_config_maps_ids(self):
         settings, _ = _make_settings()
         settings.get_bool = _Spy(result=True)

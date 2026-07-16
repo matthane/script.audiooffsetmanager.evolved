@@ -184,3 +184,11 @@ msgstr ""
 msgctxt "#32121"
 msgid "Stored offsets were unreadable and were reset (backup kept as offsets.json.bad)"
 msgstr ""
+
+msgctxt "#32129"
+msgid "Classic Audio Offset Manager detected"
+msgstr ""
+
+msgctxt "#32130"
+msgid "AOM Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice — consider disabling the classic addon."
+msgstr ""
