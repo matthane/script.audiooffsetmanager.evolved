@@ -120,7 +120,7 @@ def test_rows_render_verbatim_signed_milliseconds():
     assert any("-2500 ms" in opt for opt in options)
 
 
-def test_rows_sorted_by_label_with_clear_all_then_back_last():
+def test_rows_sorted_by_label_with_clear_all_last():
     entries = {HLG: _entry(1), DV: _entry(2), HDR10: _entry(3)}
     view, gui, _ = _build(entries)
     view.run()
@@ -129,10 +129,9 @@ def test_rows_sorted_by_label_with_clear_all_then_back_last():
     assert options[0].startswith("Dolby Vision")
     assert options[1].startswith("HDR10")
     assert options[2].startswith("HLG")
-    assert options[3] == "#32126"
-    # The labeled exit row: the select dialog's built-in Cancel wording is
-    # skin-owned, so the view provides its own properly-worded way out.
-    assert options[4] == "#32134"
+    # Clear-all is the last row; Cancel/Back is the exit (the router
+    # returns the user to the settings dialog afterwards).
+    assert options[-1] == "#32126"
 
 
 def test_malformed_updated_omits_date_without_crashing():
@@ -154,19 +153,6 @@ def test_cancel_exits_without_channel_traffic():
     assert len(gui.selects) == 1
 
 
-def test_back_row_exits_without_channel_traffic():
-    # The labeled exit (last row, after clear-all) behaves exactly like
-    # Cancel: no confirmation, no channel traffic, single render.
-    entries = {DV: _entry(-115)}
-    gui = FakeGui()
-    gui.select_answers = [2]         # rows=1, clear=1 -> back row is index 2
-    view, gui, service = _build(entries, gui=gui)
-    view.run()
-    assert service.calls == []
-    assert gui.yesnos == []
-    assert len(gui.selects) == 1
-
-
 def test_delete_flow_sends_exact_key_and_re_reads():
     entries = {DV: _entry(-115), HDR10: _entry(200)}
     gui = FakeGui()
@@ -177,10 +163,10 @@ def test_delete_flow_sends_exact_key_and_re_reads():
 
     assert service.calls == [("delete", DV)]
     # The store was re-read after the mutation: two renders, the second with
-    # one fewer entry row (plus the clear-all and back rows).
+    # one fewer entry row (plus the clear-all row).
     assert len(gui.selects) == 2
-    assert len(gui.selects[0][1]) == 4     # 2 entries + clear + back
-    assert len(gui.selects[1][1]) == 3     # 1 entry + clear + back
+    assert len(gui.selects[0][1]) == 3     # 2 entries + clear
+    assert len(gui.selects[1][1]) == 2     # 1 entry + clear
     assert not any(opt.startswith("Dolby Vision") for opt in gui.selects[1][1])
 
 

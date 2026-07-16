@@ -232,7 +232,3 @@ msgstr ""
 msgctxt "#32133"
 msgid "Reset to 0 ms — nothing stored for this stream"
 msgstr ""
-
-msgctxt "#32134"
-msgid "Back to settings"
-msgstr ""
