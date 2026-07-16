@@ -1,22 +1,51 @@
-# D11 observed-format corpus — raw strings seen in real logs.
-# Destination: tests/data/observed_formats.txt on evolved/1.0 (E0 item 6).
-# Format: <box>\t<source-line-kind>\t<raw-string>
-# Harvested 2026-07-15. Grows during E7 soak.
+# Observed-format REFERENCE SNAPSHOT (D11) — harvested 2026-07-15.
+#
+# Role (re-scoped per the D11 refinement to verbatim acceptance): this file
+# is reference material, NOT a test driver. The key codec accepts reported
+# strings as presented (case-fold + trim only, no whitelist, no alias
+# table), so there is nothing corpus-shaped to assert. E1's tests pin
+# verbatim roundtrips instead, and the detector logs raw gateway strings
+# so field logs reveal fragmentation if it ever happens.
+#
+# Provenance caveat (why harvesting was abandoned): classic logs contain
+# almost no gateway-raw strings. AOM's own "probed StreamProfile(...)"
+# lines are POST-normalization; Kodi's decoder log lines use a different
+# internal vocabulary than the JSON-RPC/infolabel surfaces AOM actually
+# reads. Only the gamut value is logged verbatim.
+#
+# Format: <box>\t<kind>\t<string>
 
-# ---- Windows box (Kodi 21.2, non-HDR display) — kodi.log + kodi.old.log ----
-# Codec strings (Kodi "Creating audio stream (codec: ...)" + ffmpeg decoder open)
-windows	audio-codec	truehd
-windows	video-codec	hevc
-windows	video-codec	HEVC
-# HDR: primary infolabel Player.Process(video.source.hdr.type) unresolved on
-# this box (display not HDR capable); fallback VideoPlayer.HdrType reported:
-windows	hdr-fallback	dolbyvision
-# Gamut infolabel Player.Process(amlogic.eoft_gamut): not available (expected — amlogic-only)
-windows	gamut	(unresolved)
-# Derived profile observed: hdr_type='dolbyvision', fps_type='all'(override off),
-#   audio_format='truehd', video_fps=23, channels=8
+# ---- Windows box (Kodi 21.2, non-HDR display) ----
+windows	log-audio-decoder	truehd
+windows	log-video-codec	hevc
+# Fallback infolabel path in use (primary unresolved, platform_hdr_full=False);
+# derived hdr observed: dolbyvision. Gamut infolabel unresolved (amlogic-only).
 
-# ---- CoreELEC box (192.168.0.56, Kodi 21.3, amlogic — HDR-primary + HLG gamut) ----
-# PENDING: needs SSH session (password requested from user). Expect richer set:
-# passthrough codec names, pt-* decoder lines, amlogic gamut strings, hdr10/hlg/
-# hdr10plus primary-infolabel values.
+# ---- CoreELEC box (192.168.0.56, Kodi 21.3, amlogic — HDR-primary, HLG gamut) ----
+# Gamut strings — the ONLY verbatim gateway-raw values in classic logs
+# (Player.Process(amlogic.eoft_gamut), logged as-is; input to the HLG sniff):
+coreelec	raw-gamut	DV-Std default
+coreelec	raw-gamut	HLG BT.2020nc
+coreelec	raw-gamut	SDR BT.709
+# HDR spellings seen in Kodi's/amlogic's own log lines (adjacent surface,
+# indicative of real-world case variance, not gateway-raw):
+coreelec	log-hdr	dolbyvision
+coreelec	log-hdr	hlg
+coreelec	log-hdr	sdr
+coreelec	log-hdr	hdr10
+coreelec	log-hdr	hdr10plus
+coreelec	log-hdr	HDR10+
+coreelec	log-hdr	HDR10Plus
+coreelec	log-hdr	HDR10plus
+coreelec	log-hdr	Dolby Vision
+coreelec	log-hdr	DOVI
+coreelec	log-audio-decoder	aac
+# NOTE: that aac session surfaced as audio_format='pcm' in the derived
+# profile — the classic whitelist collapse observed in the wild; under
+# verbatim acceptance aac keys as itself.
+#
+# Derived coverage observed (post-normalization; documents what the boxes
+# actually produce): dolbyvision|{all,23}|{ac3,eac3,truehd},
+# hdr10plus|all|truehd, hlg|all|pcm, sdr|all|pcm (the pcm ones likely aac);
+# hdr_source=primary with platform_hdr_full=True on CoreELEC;
+# video_fps 23/24/30/59; audio_channels 2/6/8.

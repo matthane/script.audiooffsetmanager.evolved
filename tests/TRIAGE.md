@@ -31,7 +31,7 @@ decision table).
 | test_runtime.py | REWRITE(E2) | Composition gains the store (path injection, load-at-start) |
 | test_stream_detector.py | REWRITE(E2, partial) | Probe/verify orchestration KEEPS; `fps_override_enabled(hdr_type)` per-HDR callable becomes the global `per_fps_offsets` read; fps bucket-whitelist assertions become integer-truncation assertions (open fps axis); platform-write consumers gone but `StreamProbed` posting stays |
 | test_stream_profile.py | REWRITE(E1/E2) | `setting_id()` (`hdr_fps_audio` settings-id format) becomes the store key codec (`hdr\|fps\|audio` via `aom/store/keys.py`); `summary()` display coverage KEEPS |
-| test_audio_format_matching.py | REWRITE(E1) | `_derive_audio_format` ordered-substring whitelist becomes the open-vocabulary normalization layer; the eac3-before-ac3 ordering lesson carries into corpus-driven tests |
+| test_audio_format_matching.py | DIES(E1/E2) | `_derive_audio_format`'s ordered-substring whitelist is deleted outright (verbatim acceptance — nothing is matched against anything); replaced by verbatim-roundtrip pins in the new key tests |
 | test_formats.py | REWRITE(E1) | `formats.py` demoted to display names + normalization rules + picker vocabulary; whitelist-role assertions DIE |
 | test_platform_recorder.py | DIES(E2) | Component dissolves — platform capability writes are cut (P3) |
 
@@ -56,6 +56,9 @@ decision table).
   the E8 README draft.
 - **Classic screenshots/icon/fanart retained as placeholders** — final
   assets are publishing-plan scope (E8 handoff notes).
-- `tests/data/observed_formats.txt` is the D11 corpus (Windows harvested
-  2026-07-15; CoreELEC pending; grows during E7). It drives the E1
-  normalization tests.
+- `tests/data/observed_formats.txt` is a **reference snapshot**, not a
+  test driver (D11 refined to verbatim acceptance — no whitelist, no alias
+  table; both boxes harvested 2026-07-15). E1's key tests pin verbatim
+  roundtrips + the two documented normalization rules (`hlghdr`→`hlg`,
+  empty→`sdr`); the detector gains a raw-string debug log line for
+  fragmentation observability.
