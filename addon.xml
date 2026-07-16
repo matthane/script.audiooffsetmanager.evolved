@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta3" name="AOM Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta4" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,7 +7,12 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v1.0.0~beta3 (2026-07-15)
+        <news>v1.0.0~beta4 (2026-07-16)
+- Unlearned stream profiles now reset the audio offset to 0 once the addon has acted, instead of letting a previous stream's offset stick
+- "Offset not saved" notification when an unstored manual adjustment is discarded by that reset
+- The manage-offsets view returns to the addon settings when closed and gains a "Back to settings" row
+
+v1.0.0~beta3 (2026-07-15)
 - Log lines now use the AOMe_ prefix so Evolved is distinguishable from classic AOM in a shared kodi.log
 
 v1.0.0~beta2 (2026-07-15)
