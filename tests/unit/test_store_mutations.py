@@ -270,3 +270,56 @@ def test_bridge_treats_empty_data_as_empty_request(bridge_rig):
     # Decodes to {} -> op None -> rejected loudly downstream.
     assert dispatcher.posted == [events.StoreMutationRequested(
         op=None, key=None, request_id=None)]
+
+
+# --- the full wire, both processes -----------------------------------------------
+
+def test_channel_end_to_end_across_both_processes(tmp_path, monkeypatch):
+    """client.send -> bridge -> handler -> ack -> client, over the real wire
+    shapes.
+
+    Pins the FIELD CONTRACT (op/key/request_id out; ok/detail/op/request_id
+    back) across BOTH endpoints at once, so a one-sided rename cannot pass
+    while each side's own tests stay green (E4 review: the payload shape is
+    convention, this test is its oracle). The two legs are delivered exactly
+    as Kodi would: method 'Other.<message>', data re-serialized as JSON.
+    """
+    import json
+    from resources.lib.aom.kodi.mutation_client import MutationClient
+
+    r = Rig(tmp_path)
+    r.store.set(KEY_A, -115)
+    bridge = MonitorBridge(r.dispatcher)
+
+    requests = []
+
+    class ClientGateway:
+        """The script->service leg, played by Kodi's announce bus."""
+
+        def notify_all(self, sender, message, data):
+            requests.append(data)
+            bridge.onNotification(sender, 'Other.' + message,
+                                  json.dumps(data))
+            return True
+
+    client = MutationClient(ClientGateway(), log=lambda m, level=None: None)
+
+    # The service->script leg: the handler's ack callable delivers to the
+    # client the same way Kodi would.
+    r.handler._ack = lambda payload: client.onNotification(
+        ADDON_ID, 'Other.' + ACK_MESSAGE, json.dumps(payload))
+
+    # send() polls between pumps; each poll slice runs the service's
+    # dispatcher once (the two processes' interleaving, compressed).
+    monkeypatch.setattr(
+        MutationClient, 'waitForAbort',
+        lambda self, timeout=0: r.dispatcher.run_pending() or False)
+
+    reply = client.send('delete', key=KEY_A)
+
+    assert reply is not None, "the ack never crossed the wire"
+    assert reply['ok'] is True
+    assert reply['detail'] == 'deleted'
+    assert reply['op'] == 'delete'
+    assert reply['request_id'] == requests[0]['request_id']
+    assert r.store.get(KEY_A) is None

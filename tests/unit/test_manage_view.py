@@ -43,6 +43,10 @@ class FakeService:
             ack = self._acks.pop(0)
         else:
             ack = {"ok": True, "detail": "cleared" if op == "clear" else "deleted"}
+        if isinstance(ack, dict) and "op" not in ack:
+            # Faithful to the real handler: every ack is stamped with the
+            # (whitelisted) op it answers.
+            ack = dict(ack, op=op)
         if ack is not None and ack.get("ok"):
             if op == "delete":
                 self.entries.pop(key, None)
@@ -190,7 +194,7 @@ def test_declined_delete_sends_nothing_and_loops():
     assert len(gui.selects) == 2     # looped back and re-rendered
 
 
-def test_clear_flow_sends_clear_none():
+def test_clear_flow_sends_clear_none_and_exits_quietly():
     entries = {DV: _entry(-115), HDR10: _entry(200)}
     gui = FakeGui()
     gui.select_answers = [2]         # the clear-all row (index == len(rows))
@@ -199,7 +203,11 @@ def test_clear_flow_sends_clear_none():
     view.run()
 
     assert service.calls == [("clear", None)]
-    assert gui.oks == [("#32115", "#32122")]   # cleared store -> empty state
+    # E4 review: a deliberate clear exits WITHOUT the first-run education
+    # empty state ("nothing stored yet" right after the user emptied the
+    # store reads as data loss, not success).
+    assert gui.oks == []
+    assert len(gui.selects) == 1
 
 
 def test_declined_clear_sends_nothing_and_loops():
@@ -272,3 +280,48 @@ def test_only_delete_and_clear_ops_are_ever_emitted():
     assert ops == ["delete", "clear"]
     assert all(op in ("delete", "clear") for op in ops)
     assert "set" not in ops
+
+
+# -- E4 review pins ------------------------------------------------------------
+
+def test_future_schema_store_shows_preserved_wording_not_quarantine():
+    # A newer-schema file is PRESERVED by the service (read-only), never
+    # quarantined: the view must not promise the corrupt case's reset.
+    def reader():
+        raise StoreUnreadable("newer schema version 2", future=True)
+
+    gui = FakeGui()
+    view = ManageView(reader, gui, lambda op, key=None: None)
+    view.run()
+    assert gui.oks == [("#32115", "#32131")]
+
+
+def test_missing_delete_target_is_satisfied_silently():
+    # The entry raced away (playback learning / another session): intent
+    # satisfied, refreshed list is the feedback — no error dialog.
+    entries = {DV: _entry(-115)}
+    gui = FakeGui()
+    gui.select_answers = [0]
+    gui.yesno_answers = [True]
+    view, gui, service = _build(
+        entries, acks=[{"ok": False, "detail": "missing"}], gui=gui)
+    view.run()
+
+    assert service.calls == [("delete", DV)]
+    # No failure dialog for 'missing'; the loop lands on the (unchanged)
+    # store's next render — here the entry is still present because the
+    # failed ack changed nothing, so the second select shows it again.
+    assert all("#32128" not in message for _h, message in gui.oks)
+
+
+def test_blank_localization_falls_back_to_english():
+    # localized() degrades to '' on a transient failure; the full-content
+    # dialogs must never render blank (same doctrine as the corruption
+    # and coexistence notices).
+    gui = FakeGui()
+    gui.localized_strings[32122] = ''
+    view, gui, service = _build({}, gui=gui)
+    view.run()
+
+    heading, message = gui.oks[0]
+    assert "Evolved learns as you adjust" in message

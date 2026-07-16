@@ -20,6 +20,7 @@ import sys
 import xbmcaddon
 import xbmcvfs
 
+from resources.lib.aom.kodi.gateway import KodiGateway
 from resources.lib.aom.kodi.gui import Gui
 from resources.lib.aom.kodi.log import KodiLogger
 from resources.lib.aom.kodi.mutation_client import MutationClient
@@ -54,8 +55,9 @@ def _manage_offsets():
     settings = Settings(log=logger)
     logger.debug_escalation = settings.debug_logging_enabled()
     gui = Gui(log=logger)
-    client = MutationClient(log=logger)
+    client = MutationClient(KodiGateway(log=logger), log=logger)
     store_path = xbmcvfs.translatePath(STORE_PATH)
-    view = ManageView(lambda: read_profiles(store_path), gui, client.send,
-                      log_debug=logger.debug)
+    view = ManageView(
+        lambda: read_profiles(store_path, log_debug=logger.debug),
+        gui, client.send, log_debug=logger.debug)
     view.run()

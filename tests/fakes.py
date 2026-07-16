@@ -276,3 +276,4 @@ class FakeGui:
 
     def ok(self, heading, message):
         self.oks.append((heading, message))
+        return True

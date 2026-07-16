@@ -301,16 +301,14 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
     original = open(path, "rb").read()
 
     import resources.lib.aom.store.offset_store as module
-    real_replace = os.replace
-    calls = {"n": 0}
 
-    def flaky_replace(src, dst):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise OSError("simulated replace failure")
-        return real_replace(src, dst)
+    def broken_replace(src, dst):
+        # PERSISTENT failure: every attempt (including the E4 sharing-
+        # violation retries) fails, so the persist genuinely misses.
+        raise OSError("simulated replace failure")
 
-    monkeypatch.setattr(module.os, "replace", flaky_replace)
+    monkeypatch.setattr(module.os, "replace", broken_replace)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
     assert store.set(KEY, 999) is False
     monkeypatch.undo()
 
@@ -320,6 +318,54 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
     reopened, _p, _d, _w = make_store(tmp_path)
     reopened.load()
     assert reopened.get(KEY)["delay_ms"] == 100
+
+
+def test_transient_replace_failure_is_retried_and_recovers(tmp_path,
+                                                           monkeypatch):
+    # E4 review: on Windows a concurrent reader (the management view's
+    # read_profiles in the script process) holding offsets.json open makes
+    # os.replace fail with a sharing violation for a sub-millisecond
+    # window. One transient failure must not lose the write.
+    store, path, _debug, warning = make_store(tmp_path)
+    store.load()
+
+    import resources.lib.aom.store.offset_store as module
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated sharing violation")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(module.os, "replace", flaky_replace)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    assert store.set(KEY, -115) is True
+    assert warning == []
+    monkeypatch.undo()
+
+    reopened, _p, _d, _w = make_store(tmp_path)
+    reopened.load()
+    assert reopened.get(KEY)["delay_ms"] == -115
+
+
+def test_read_profiles_names_dropped_entries_through_log_debug(tmp_path):
+    # E4 review: load() names every dropped entry; the reader must too, or
+    # a hand-edited entry vanishes from the management view untraceably.
+    path = tmp_path / "offsets.json"
+    path.write_text(json.dumps({"version": 1, "profiles": {
+        KEY: {"delay_ms": -115},
+        "bad|delay|type": {"delay_ms": "fast"},
+    }}), encoding="utf-8")
+
+    from resources.lib.aom.store.offset_store import read_profiles
+    lines = []
+    entries = read_profiles(str(path), log_debug=lines.append)
+
+    assert set(entries) == {KEY}
+    assert any("bad|delay|type" in line for line in lines)
 
 
 def test_clear_reports_persist_failure_as_zero(tmp_path, monkeypatch):
@@ -471,8 +517,9 @@ def test_read_profiles_never_quarantines_a_corrupt_file(tmp_path):
     path = tmp_path / "offsets.json"
     path.write_text("junk {{{", encoding="utf-8")
 
-    with pytest.raises(StoreUnreadable):
+    with pytest.raises(StoreUnreadable) as excinfo:
         _read_profiles(str(path))
+    assert excinfo.value.future is False              # corrupt, not newer
     assert path.exists()                              # untouched
     assert not (tmp_path / "offsets.json.bad").exists()
 
@@ -483,8 +530,11 @@ def test_read_profiles_refuses_future_schema_untouched(tmp_path):
     blob = json.dumps({"version": 2, "profiles": {KEY: {"delay_ms": 5}}})
     path.write_text(blob, encoding="utf-8")
 
-    with pytest.raises(StoreUnreadable):
+    with pytest.raises(StoreUnreadable) as excinfo:
         _read_profiles(str(path))
+    # future=True: the view words this as "preserved, not shown" — NEVER
+    # as the corrupt case's quarantine-and-reset promise (E4 review).
+    assert excinfo.value.future is True
     assert path.read_text(encoding="utf-8") == blob   # byte-identical
 
 

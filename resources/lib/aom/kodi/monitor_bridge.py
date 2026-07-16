@@ -3,21 +3,20 @@
 Also serves as the service's abort monitor (the runtime blocks on
 ``waitForAbort()`` of this instance). Near-zero logic, like the player
 bridge: ``onNotification`` only FILTERS (own addon id, mutation message)
-and decodes the JSON payload — the fields travel verbatim on the typed
-event and the StoreMutationHandler owns all validation, so a malformed
-payload is rejected loudly there instead of vanishing here.
+and decodes the JSON payload via the shared transport helpers — the fields
+travel verbatim on the typed event and the StoreMutationHandler owns all
+validation, so a malformed payload is rejected loudly there instead of
+vanishing here.
 """
-
-import json
 
 import xbmc
 
 from resources.lib.aom.app import events
 from resources.lib.aom.app.store_mutations import MUTATION_MESSAGE
+from resources.lib.aom.kodi.announce import decode_payload, other_method
 from resources.lib.aom.kodi.settings import ADDON_ID
 
-# Kodi surfaces custom NotifyAll messages to monitors as 'Other.<message>'.
-_MUTATION_METHOD = 'Other.' + MUTATION_MESSAGE
+_MUTATION_METHOD = other_method(MUTATION_MESSAGE)
 
 
 class MonitorBridge(xbmc.Monitor):
@@ -34,11 +33,8 @@ class MonitorBridge(xbmc.Monitor):
         # name) is not ours to handle.
         if sender != ADDON_ID or method != _MUTATION_METHOD:
             return
-        try:
-            payload = json.loads(data) if data else {}
-        except ValueError:
-            payload = None
-        if not isinstance(payload, dict):
+        payload = decode_payload(data)
+        if payload is None:
             # Undecodable request: post it anyway (op=None) so the handler
             # rejects it LOUDLY instead of the channel silently eating it.
             self._dispatcher.post(events.StoreMutationRequested(op=None))

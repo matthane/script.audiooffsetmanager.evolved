@@ -40,8 +40,29 @@ _MSG_CONFIRM_DELETE = 32123
 _MSG_CONFIRM_CLEAR = 32124
 _MSG_NO_SERVICE = 32125    # ack timeout: service not running
 _LABEL_CLEAR_ALL = 32126
-_MSG_UNREADABLE = 32127    # StoreUnreadable
+_MSG_UNREADABLE = 32127    # StoreUnreadable (corrupt: will be quarantined)
 _MSG_MUTATION_FAILED = 32128
+_MSG_FUTURE = 32131        # StoreUnreadable(future=True): preserved, not shown
+
+# English fallbacks for the dialogs whose ENTIRE content is one localized
+# string: localized() degrades to '' on a transient failure, and a blank
+# information dialog teaches nothing (same doctrine as the corruption and
+# coexistence notices — E4 review). Confirmations keep the raw localized
+# text: they carry the entry description alongside it.
+_FALLBACKS = {
+    _MSG_EMPTY: ("Evolved learns as you adjust — nothing stored yet. Fix "
+                 "lipsync once with Kodi's audio offset slider during "
+                 "playback and it will be remembered."),
+    _MSG_NO_SERVICE: ("The Audio Offset Manager service is not running — "
+                      "the change could not be made."),
+    _MSG_UNREADABLE: ("The stored offsets file is unreadable. The service "
+                      "will quarantine and reset it the next time it "
+                      "starts."),
+    _MSG_MUTATION_FAILED: "Could not update the stored offsets",
+    _MSG_FUTURE: ("The stored offsets were saved by a newer version of "
+                  "this addon. They are preserved untouched, but this "
+                  "version cannot show or change them."),
+}
 
 # One presentable entry: the select label, the describe_key text (reused in
 # the delete confirmation and as the deterministic sort key), and the literal
@@ -72,12 +93,17 @@ class ManageView:
                 entries = self._read_entries()
             except StoreUnreadable as error:
                 self._log("AOM_ManageView: store unreadable ({0})".format(error))
-                self._gui.ok(heading, self._gui.localized(_MSG_UNREADABLE))
+                # A newer-schema file is PRESERVED by the service (read-
+                # only), never quarantined — its wording must not promise
+                # the reset the corrupt case gets (E4 review).
+                message = _MSG_FUTURE if getattr(error, 'future', False) \
+                    else _MSG_UNREADABLE
+                self._gui.ok(heading, self._text(message))
                 return
 
             if not entries:
                 self._log("AOM_ManageView: store empty; nothing to manage")
-                self._gui.ok(heading, self._gui.localized(_MSG_EMPTY))
+                self._gui.ok(heading, self._text(_MSG_EMPTY))
                 return
 
             rows = self._build_rows(entries)
@@ -99,6 +125,13 @@ class ManageView:
             if ack is _DECLINED:
                 continue
             self._report_ack(heading, ack)
+            if ack is not None and ack.get("ok") and ack.get("op") == "clear":
+                # A deliberate clear: exit quietly. Looping would land on
+                # the first-run education empty state, which reads as
+                # "nothing was ever stored" right after the user emptied
+                # the store on purpose (E4 review).
+                self._log("AOM_ManageView: store cleared; closing view")
+                return
 
     # -- rendering ------------------------------------------------------------
 
@@ -170,17 +203,28 @@ class ManageView:
         """Surface a failed/absent ack; a success just falls through to re-read."""
         if ack is None:
             self._log("AOM_ManageView: no ack (service not running)")
-            self._gui.ok(heading, self._gui.localized(_MSG_NO_SERVICE))
+            self._gui.ok(heading, self._text(_MSG_NO_SERVICE))
             return
         if not ack.get("ok"):
             detail = ack.get("detail")
+            if detail == "missing":
+                # The entry was already gone (raced away by playback
+                # learning or another session): the user's intent is
+                # satisfied — the refreshed list is the feedback, not an
+                # error dialog for a no-op (E4 review).
+                self._log("AOM_ManageView: delete target already gone")
+                return
             self._log("AOM_ManageView: mutation refused ({0})".format(detail))
             self._gui.ok(
                 heading,
-                self._gui.localized(_MSG_MUTATION_FAILED)
+                self._text(_MSG_MUTATION_FAILED)
                 + " (" + str(detail) + ")")
             return
         self._log("AOM_ManageView: mutation ok ({0})".format(ack.get("detail")))
+
+    def _text(self, string_id):
+        """localized() with the English fallback for full-content dialogs."""
+        return self._gui.localized(string_id) or _FALLBACKS[string_id]
 
 
 # Sentinel distinguishing "user declined the confirmation" (loop, send

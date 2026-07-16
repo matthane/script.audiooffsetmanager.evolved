@@ -157,7 +157,20 @@ class ServiceRuntime:
             "AOM Evolved and the classic Audio Offset Manager are both "
             "enabled. Running both can apply audio offsets twice — "
             "consider disabling the classic addon.")
-        self.gui.ok(heading, body)
+        if not self.gui.ok(heading, body):
+            # The dialog never rendered: leave the flag unset so the
+            # warning retries on a future start (E4 review — the flag
+            # means "the user has SEEN this", not "we tried").
+            return
+        if self.gateway.settings_dialog_open():
+            # Doctrine: never write a setting while the settings dialog is
+            # open (its save-on-close clobbers the write). A service
+            # restart CAN land under an open dialog — addon update/re-
+            # enable — so skip the write; the warning re-fires and writes
+            # on a later start (E4 review).
+            self.logger.debug("AOM_Runtime: deferring coexistence flag "
+                              "(settings dialog open)")
+            return
         self.settings.store_boolean_if_changed('coexistence_warned', True)
         self.logger.debug("AOM_Runtime: coexistence warning shown")
 

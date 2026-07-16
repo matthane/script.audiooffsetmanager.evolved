@@ -78,12 +78,20 @@ class Gui:
             return False
 
     def ok(self, heading, message):
-        """Show a modal OK dialog (informational; return value unused)."""
+        """Show a modal OK dialog; True when it actually rendered.
+
+        The bool matters to callers that gate a side effect on the user
+        having SEEN the dialog (the coexistence once-flag, E4 review): a
+        swallowed GUI failure returns False so the caller can retry later
+        instead of marking an unshown warning as shown.
+        """
         try:
             xbmcgui.Dialog().ok(heading, message)
+            return True
         except Exception as e:
             self._log(f"AOM_Gui: Error showing ok dialog: {str(e)}",
                       xbmc.LOGERROR)
+            return False
 
     def notification(self, message, duration_ms, title=None, icon=None):
         """Raise one Kodi toast for ``message`` lasting ``duration_ms``.

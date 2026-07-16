@@ -114,7 +114,8 @@ def test_settings_changed_refreshes_cached_debug_flags(runtime, monkeypatch):
 
 class TestCoexistenceWarning:
 
-    def _rig(self, runtime, monkeypatch, *, warned, classic_enabled):
+    def _rig(self, runtime, monkeypatch, *, warned, classic_enabled,
+             ok_shown=True, dialog_open=False):
         probes = []
         oks = []
         writes = []
@@ -123,9 +124,12 @@ class TestCoexistenceWarning:
         monkeypatch.setattr(
             runtime.gateway, 'addon_enabled',
             lambda addon_id: probes.append(addon_id) or classic_enabled)
+        monkeypatch.setattr(runtime.gateway, 'settings_dialog_open',
+                            lambda: dialog_open)
         monkeypatch.setattr(
             runtime.gui, 'ok',
-            lambda heading, message: oks.append((heading, message)))
+            lambda heading, message: (oks.append((heading, message))
+                                      or ok_shown))
         monkeypatch.setattr(
             runtime.settings, 'store_boolean_if_changed',
             lambda setting_id, value: writes.append((setting_id, value))
@@ -169,4 +173,31 @@ class TestCoexistenceWarning:
 
         assert probes == ['script.audiooffsetmanager']
         assert oks == []
+        assert writes == []
+
+    def test_unrendered_dialog_leaves_flag_unset(self, runtime, monkeypatch):
+        # E4 review: gui.ok answers False when the modal never rendered —
+        # the flag means "the user has SEEN this", so it must not be set.
+        probes, oks, writes = self._rig(runtime, monkeypatch,
+                                        warned=False, classic_enabled=True,
+                                        ok_shown=False)
+
+        runtime._maybe_warn_coexistence()
+
+        assert len(oks) == 1                       # the attempt happened
+        assert writes == []                        # but nothing persisted
+
+    def test_open_settings_dialog_defers_the_flag_write(self, runtime,
+                                                        monkeypatch):
+        # E4 review (doctrine): a service restart can land under an open
+        # settings dialog (addon update/re-enable); writing then would be
+        # clobbered by the dialog's save-on-close. Skip — the warning
+        # re-fires and writes on a later start.
+        probes, oks, writes = self._rig(runtime, monkeypatch,
+                                        warned=False, classic_enabled=True,
+                                        dialog_open=True)
+
+        runtime._maybe_warn_coexistence()
+
+        assert len(oks) == 1
         assert writes == []

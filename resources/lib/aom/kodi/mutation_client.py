@@ -1,34 +1,34 @@
 """Script-process client for the store mutation channel (D5).
 
 The management view's ONLY write path: one ``JSONRPC.NotifyAll`` request to
-the service, then a bounded poll for the matching ack. The service's
-dispatcher executes the mutation (single-writer doctrine — see
-``aom.app.store_mutations``) and acks back over NotifyAll; ``send`` returns
-that ack dict, or ``None`` when no ack arrives inside the timeout — the
-view's "service not running" signal. There is deliberately NO fallback
-write path here (D5: report-only).
+the service (broadcast through the injected gateway's ``notify_all`` — the
+one home of the RPC envelope, E4 review), then a bounded poll for the
+matching ack. The service's dispatcher executes the mutation
+(single-writer doctrine — see ``aom.app.store_mutations``) and acks back
+over NotifyAll; ``send`` returns that ack dict, or ``None`` when no ack
+arrives inside the timeout — the view's "service not running" signal.
+There is deliberately NO fallback write path here (D5: report-only).
 
 Request/ack matching uses a per-request ``request_id`` echoed by the
-service, so a stale ack from an earlier attempt can never satisfy a newer
-request. ``onNotification`` runs on Kodi's announce thread while ``send``
-polls; the single-reference handoff (assign whole dict, read whole dict)
-is safe under the GIL.
+service; acks are ignored outright while no request is in flight, so a
+stale or id-less broadcast can never pre-seed a reply. ``onNotification``
+runs on Kodi's announce thread while ``send`` polls; the single-reference
+handoff (assign whole dict, read whole dict) is safe under the GIL.
 
 This is an ``aom.kodi`` adapter: the only aom layer permitted to import
 ``xbmc``.
 """
 
-import json
 import uuid
 
 import xbmc
 
 from resources.lib.aom.app.store_mutations import (ACK_MESSAGE,
                                                    MUTATION_MESSAGE)
+from resources.lib.aom.kodi.announce import decode_payload, other_method
 from resources.lib.aom.kodi.settings import ADDON_ID
 
-# Kodi surfaces custom NotifyAll messages to monitors as 'Other.<message>'.
-_ACK_METHOD = 'Other.' + ACK_MESSAGE
+_ACK_METHOD = other_method(ACK_MESSAGE)
 
 
 class MutationClient(xbmc.Monitor):
@@ -37,9 +37,12 @@ class MutationClient(xbmc.Monitor):
     TIMEOUT_SECONDS = 3.0
     POLL_SECONDS = 0.1
 
-    def __init__(self, *, log):
-        """``log`` is a REQUIRED ``(message, level)`` sink (house convention)."""
+    def __init__(self, gateway, *, log):
+        """``gateway`` is the process's ``KodiGateway`` (its ``notify_all``
+        is the broadcast leg); ``log`` is a REQUIRED ``(message, level)``
+        sink (house convention)."""
         super().__init__()
+        self._gateway = gateway
         self._log = log
         self._pending_id = None
         self._reply = None
@@ -49,11 +52,12 @@ class MutationClient(xbmc.Monitor):
     def onNotification(self, sender, method, data):
         if sender != ADDON_ID or method != _ACK_METHOD:
             return
-        try:
-            payload = json.loads(data) if data else {}
-        except ValueError:
+        if self._pending_id is None:
+            # No request in flight: nothing on the bus is ours (guards the
+            # idle state against an id-less ack matching None — E4 review).
             return
-        if not isinstance(payload, dict):
+        payload = decode_payload(data)
+        if payload is None:
             return
         if payload.get('request_id') != self._pending_id:
             return
@@ -77,33 +81,21 @@ class MutationClient(xbmc.Monitor):
         if key is not None:
             payload['key'] = key
 
-        try:
-            response = json.loads(xbmc.executeJSONRPC(json.dumps({
-                'jsonrpc': '2.0',
-                'method': 'JSONRPC.NotifyAll',
-                'params': {
-                    'sender': ADDON_ID,
-                    'message': MUTATION_MESSAGE,
-                    'data': payload,
-                },
-                'id': 1,
-            })))
-        except Exception as e:
-            self._log(f"AOM_MutationClient: Error broadcasting {op}: "
-                      f"{str(e)}", xbmc.LOGERROR)
-            return None
-        if 'error' in response:
-            self._log(f"AOM_MutationClient: Failed to broadcast {op}: "
-                      f"{response['error']}", xbmc.LOGWARNING)
+        if not self._gateway.notify_all(ADDON_ID, MUTATION_MESSAGE, payload):
+            # The gateway already logged the RPC failure.
+            self._pending_id = None
             return None
 
         waited = 0.0
-        while waited < self.TIMEOUT_SECONDS:
-            if self._reply is not None:
-                return self._reply
-            if self.waitForAbort(self.POLL_SECONDS):
-                return None
-            waited += self.POLL_SECONDS
+        try:
+            while waited < self.TIMEOUT_SECONDS:
+                if self._reply is not None:
+                    return self._reply
+                if self.waitForAbort(self.POLL_SECONDS):
+                    return None
+                waited += self.POLL_SECONDS
+        finally:
+            self._pending_id = None
         self._log(f"AOM_MutationClient: No ack for {op} within "
                   f"{self.TIMEOUT_SECONDS}s (service not running?)",
                   xbmc.LOGDEBUG)

@@ -88,16 +88,26 @@ class StoreUnreadable(Exception):
     script process must never quarantine or mutate the file, so instead of
     load()'s .bad rename it reports WHY the view cannot render — corrupt
     JSON, wrong shape, an unreadable file, or a newer schema version.
+
+    ``future`` is True for the newer-schema case, which the view must word
+    DIFFERENTLY from corruption: the service preserves such a file
+    untouched (read-only, "the future is sacred"), it never quarantines it
+    (E4 review — the corruption wording falsely promised a reset).
     """
 
+    def __init__(self, message, *, future=False):
+        super().__init__(message)
+        self.future = future
 
-def read_profiles(path):
+
+def read_profiles(path, log_debug=None):
     """Read-only entry snapshot for ANOTHER process (the management view).
 
     Deliberately NOT OffsetStore.load(): the single-writer doctrine means
     only the service's dispatcher thread may touch the file, so this
     function has no quarantine, no corruption flag, and no instance state —
-    it opens, parses, filters (same shape rules as load()), and returns.
+    it opens, parses, filters (same shape rules as load(), dropped entries
+    named through ``log_debug`` just like load() does), and returns.
     A missing file is an empty store ({}); anything unpresentable raises
     :class:`StoreUnreadable`.
     """
@@ -118,8 +128,8 @@ def read_profiles(path):
         raise StoreUnreadable("unexpected shape")
     if data["version"] > _SCHEMA_VERSION:
         raise StoreUnreadable(
-            "newer schema version {0}".format(data["version"]))
-    return _load_entries(data["profiles"], _noop)
+            "newer schema version {0}".format(data["version"]), future=True)
+    return _load_entries(data["profiles"], log_debug or _noop)
 
 
 class OffsetStore:
@@ -335,8 +345,25 @@ class OffsetStore:
                 handle.write(blob)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp, self._path)
+            self._replace_with_retry(tmp)
         except OSError as error:
             self._log_warning("{0} persist failed ({1})".format(_PREFIX, error))
             return False
         return True
+
+    def _replace_with_retry(self, tmp):
+        """``os.replace`` with two short retries for Windows share violations.
+
+        On Windows a concurrent reader holding the target open (the script
+        process's ``read_profiles`` while the management view renders)
+        makes ``os.replace`` fail with a sharing violation. That read
+        window is sub-millisecond, so a brief retry closes the race (E4
+        review); a persistent failure re-raises into _persist's handler.
+        """
+        for _attempt in range(2):
+            try:
+                os.replace(tmp, self._path)
+                return
+            except OSError:
+                time.sleep(0.05)
+        os.replace(tmp, self._path)

@@ -220,3 +220,7 @@ msgstr ""
 msgctxt "#32130"
 msgid "AOM Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice — consider disabling the classic addon."
 msgstr ""
+
+msgctxt "#32131"
+msgid "The stored offsets were saved by a newer version of this addon. They are preserved untouched, but this version cannot show or change them."
+msgstr ""
