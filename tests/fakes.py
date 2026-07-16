@@ -235,11 +235,24 @@ class FakeOffsetTable:
 
 
 class FakeGui:
-    """Records toasts; localized() returns a deterministic marker."""
+    """Records toasts/dialogs; localized() returns a deterministic marker.
+
+    The dialog surfaces mirror the real ``Gui`` (D6 plain dialogs) and are
+    scripted by queueing answers: ``select_answers`` (int per call; -1 =
+    cancel, and an exhausted queue answers -1 so a view loop always
+    terminates) and ``yesno_answers`` (bool per call; exhausted -> False,
+    matching the real fake-consent-never rule). Every shown dialog is
+    recorded for assertions.
+    """
 
     def __init__(self):
         self.notifications = []          # (message, duration_ms)
         self.localized_strings = {}      # optional overrides: id -> str
+        self.select_answers = []         # scripted select() replies (FIFO)
+        self.yesno_answers = []          # scripted yesno() replies (FIFO)
+        self.selects = []                # (heading, options) per select()
+        self.yesnos = []                 # (heading, message) per yesno()
+        self.oks = []                    # (heading, message) per ok()
 
     def localized(self, string_id):
         return self.localized_strings.get(string_id, f"#{string_id}")
@@ -248,3 +261,18 @@ class FakeGui:
         # title/icon mirror the real Gui's optional params; recorded toasts
         # keep the 2-tuple shape the suites assert on.
         self.notifications.append((message, duration_ms))
+
+    def select(self, heading, options):
+        self.selects.append((heading, list(options)))
+        if self.select_answers:
+            return self.select_answers.pop(0)
+        return -1
+
+    def yesno(self, heading, message):
+        self.yesnos.append((heading, message))
+        if self.yesno_answers:
+            return self.yesno_answers.pop(0)
+        return False
+
+    def ok(self, heading, message):
+        self.oks.append((heading, message))

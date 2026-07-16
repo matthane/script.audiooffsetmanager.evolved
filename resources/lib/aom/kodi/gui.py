@@ -50,6 +50,41 @@ class Gui:
                       f"{str(e)}", xbmc.LOGERROR)
             return ''
 
+    def select(self, heading, options):
+        """Show a selection list; return the chosen index, -1 on cancel/error.
+
+        The management view's list surface (D6: plain dialogs). -1 (Kodi's
+        cancel value) doubles as the error fallback so a transient GUI
+        failure reads as "user backed out" rather than unwinding the view.
+        """
+        try:
+            return xbmcgui.Dialog().select(heading, options)
+        except Exception as e:
+            self._log(f"AOM_Gui: Error showing select dialog: {str(e)}",
+                      xbmc.LOGERROR)
+            return -1
+
+    def yesno(self, heading, message):
+        """Show a yes/no confirmation; return True only on an explicit yes.
+
+        The error fallback is False — a transient GUI failure must never
+        read as consent (the view uses this to confirm delete/clear).
+        """
+        try:
+            return bool(xbmcgui.Dialog().yesno(heading, message))
+        except Exception as e:
+            self._log(f"AOM_Gui: Error showing yesno dialog: {str(e)}",
+                      xbmc.LOGERROR)
+            return False
+
+    def ok(self, heading, message):
+        """Show a modal OK dialog (informational; return value unused)."""
+        try:
+            xbmcgui.Dialog().ok(heading, message)
+        except Exception as e:
+            self._log(f"AOM_Gui: Error showing ok dialog: {str(e)}",
+                      xbmc.LOGERROR)
+
     def notification(self, message, duration_ms, title=None, icon=None):
         """Raise one Kodi toast for ``message`` lasting ``duration_ms``.
 

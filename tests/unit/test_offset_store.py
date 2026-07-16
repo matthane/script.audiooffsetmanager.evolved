@@ -441,3 +441,61 @@ def test_parent_dir_created(tmp_path):
     assert store.set(KEY, 175) is True
     assert nested.exists()
     assert warning == []
+
+
+# --- read_profiles: the other-process (management view) reader ----------------
+
+def _read_profiles(path):
+    from resources.lib.aom.store.offset_store import read_profiles
+    return read_profiles(path)
+
+
+def test_read_profiles_missing_file_is_empty(tmp_path):
+    assert _read_profiles(str(tmp_path / "offsets.json")) == {}
+
+
+def test_read_profiles_roundtrips_written_entries(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    store.set(KEY, -115, video_fps=23.976)
+
+    entries = _read_profiles(path)
+    assert entries[KEY]["delay_ms"] == -115
+    assert entries[KEY]["video_fps"] == 23.976
+
+
+def test_read_profiles_never_quarantines_a_corrupt_file(tmp_path):
+    # The script process must not mutate the file (single-writer doctrine):
+    # unlike load(), a corrupt file raises instead of renaming to .bad.
+    from resources.lib.aom.store.offset_store import StoreUnreadable
+    path = tmp_path / "offsets.json"
+    path.write_text("junk {{{", encoding="utf-8")
+
+    with pytest.raises(StoreUnreadable):
+        _read_profiles(str(path))
+    assert path.exists()                              # untouched
+    assert not (tmp_path / "offsets.json.bad").exists()
+
+
+def test_read_profiles_refuses_future_schema_untouched(tmp_path):
+    from resources.lib.aom.store.offset_store import StoreUnreadable
+    path = tmp_path / "offsets.json"
+    blob = json.dumps({"version": 2, "profiles": {KEY: {"delay_ms": 5}}})
+    path.write_text(blob, encoding="utf-8")
+
+    with pytest.raises(StoreUnreadable):
+        _read_profiles(str(path))
+    assert path.read_text(encoding="utf-8") == blob   # byte-identical
+
+
+def test_read_profiles_filters_malformed_entries_like_load(tmp_path):
+    path = tmp_path / "offsets.json"
+    path.write_text(json.dumps({"version": 1, "profiles": {
+        KEY: {"delay_ms": -115},
+        "bad|entry|shape": "not a dict",
+        "bad|delay|type": {"delay_ms": "fast"},
+        "bool|delay|guard": {"delay_ms": True},
+    }}), encoding="utf-8")
+
+    entries = _read_profiles(str(path))
+    assert set(entries) == {KEY}

@@ -50,6 +50,78 @@ def _is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _shape_ok(data):
+    """The schema gate shared by load() and the read-only reader."""
+    if not isinstance(data, dict):
+        return False
+    # The schema started at 1: a version of 0 or below never existed and
+    # marks a foreign/scribbled file, which must quarantine rather than
+    # load-and-resave as if it were current data.
+    if not _is_int(data.get("version")) or data.get("version") < 1:
+        return False
+    if not isinstance(data.get("profiles"), dict):
+        return False
+    return True
+
+
+def _load_entries(profiles, log_debug):
+    """Filter entries by the doctrine rules; shared with the reader."""
+    loaded = {}
+    for key, entry in profiles.items():
+        if not isinstance(entry, dict):
+            log_debug("{0} dropping non-dict entry for {1!r}"
+                      .format(_PREFIX, key))
+            continue
+        delay = entry.get("delay_ms")
+        if not _is_int(delay):
+            log_debug("{0} dropping entry {1!r} with non-int delay_ms"
+                      .format(_PREFIX, key))
+            continue
+        loaded[key] = dict(entry)
+    return loaded
+
+
+class StoreUnreadable(Exception):
+    """The offsets file exists but cannot be presented.
+
+    Raised ONLY by :func:`read_profiles` (the other-process reader): the
+    script process must never quarantine or mutate the file, so instead of
+    load()'s .bad rename it reports WHY the view cannot render — corrupt
+    JSON, wrong shape, an unreadable file, or a newer schema version.
+    """
+
+
+def read_profiles(path):
+    """Read-only entry snapshot for ANOTHER process (the management view).
+
+    Deliberately NOT OffsetStore.load(): the single-writer doctrine means
+    only the service's dispatcher thread may touch the file, so this
+    function has no quarantine, no corruption flag, and no instance state —
+    it opens, parses, filters (same shape rules as load()), and returns.
+    A missing file is an empty store ({}); anything unpresentable raises
+    :class:`StoreUnreadable`.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = handle.read()
+    except FileNotFoundError:
+        return {}
+    except OSError as error:
+        raise StoreUnreadable("unreadable ({0})".format(error))
+
+    try:
+        data = json.loads(raw)
+    except ValueError as error:
+        raise StoreUnreadable("invalid JSON ({0})".format(error))
+
+    if not _shape_ok(data):
+        raise StoreUnreadable("unexpected shape")
+    if data["version"] > _SCHEMA_VERSION:
+        raise StoreUnreadable(
+            "newer schema version {0}".format(data["version"]))
+    return _load_entries(data["profiles"], _noop)
+
+
 class OffsetStore:
     """Sparse per-profile offset database backed by a single JSON file."""
 
@@ -111,31 +183,10 @@ class OffsetStore:
         self._profiles = self._load_entries(data["profiles"])
 
     def _shape_ok(self, data):
-        if not isinstance(data, dict):
-            return False
-        # The schema started at 1: a version of 0 or below never existed and
-        # marks a foreign/scribbled file, which must quarantine rather than
-        # load-and-resave as if it were current data.
-        if not _is_int(data.get("version")) or data.get("version") < 1:
-            return False
-        if not isinstance(data.get("profiles"), dict):
-            return False
-        return True
+        return _shape_ok(data)
 
     def _load_entries(self, profiles):
-        loaded = {}
-        for key, entry in profiles.items():
-            if not isinstance(entry, dict):
-                self._log_debug("{0} dropping non-dict entry for {1!r}"
-                                .format(_PREFIX, key))
-                continue
-            delay = entry.get("delay_ms")
-            if not _is_int(delay):
-                self._log_debug("{0} dropping entry {1!r} with non-int delay_ms"
-                                .format(_PREFIX, key))
-                continue
-            loaded[key] = dict(entry)
-        return loaded
+        return _load_entries(profiles, self._log_debug)
 
     def _quarantine(self):
         """Move a corrupt file aside and start empty but writable."""
