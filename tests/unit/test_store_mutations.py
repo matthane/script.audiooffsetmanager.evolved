@@ -51,6 +51,10 @@ class Rig:
         self.handler = StoreMutationHandler(
             self.dispatcher, self.tracker, self.store, self.acks.append,
             log_debug=self.debug.append, log_warning=self.warnings.append)
+        # The immediate-reconcile signal (E7): posted only by ops that
+        # actually changed the store.
+        self.mutated = []
+        self.dispatcher.subscribe(events.StoreMutated, self.mutated.append)
 
     def post(self, event):
         self.dispatcher.post(event)
@@ -213,6 +217,32 @@ def test_mutation_without_a_session_does_not_crash(rig):
     assert rig.tracker.current is None
     rig.request('delete', key=KEY_A)
     assert rig.acks[0]['ok'] is True
+
+
+# --- StoreMutated (the immediate-reconcile signal, E7) --------------------------
+
+def test_store_changing_ops_post_store_mutated(rig):
+    # A delete that removed an entry and a clear with entries both changed
+    # the store: the applier's re-resolve trigger must fire (with op/key
+    # riding along for the debug trail).
+    rig.request('delete', key=KEY_A)
+    assert [(e.op, e.key) for e in rig.mutated] == [('delete', KEY_A)]
+
+    rig.request('clear')                        # KEY_B remains: count 1
+    assert [(e.op, e.key) for e in rig.mutated] == [
+        ('delete', KEY_A), ('clear', None)]
+
+
+def test_ops_that_change_nothing_post_nothing(rig):
+    rig.request('delete', key='not|a|key')      # missing
+    rig.request('delete', key=None)             # bad key, rejected
+    rig.request('bogus_op', key=KEY_A)          # whitelist rejection
+    assert rig.mutated == []
+
+    rig.request('clear')                        # changes the store (2 entries)
+    rig.mutated.clear()
+    rig.request('clear')                        # empty clear: nothing changed
+    assert rig.mutated == []
 
 
 # --- MonitorBridge.onNotification ----------------------------------------------

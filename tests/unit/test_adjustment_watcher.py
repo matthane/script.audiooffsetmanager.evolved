@@ -344,6 +344,25 @@ class TestQuiescence:
 
         assert rig.session.watch_pending is not None  # untouched
 
+    def test_delay_reset_supersedes_the_observation_chain(self, rig):
+        # DelayReset is the silent twin of OffsetApplied: a marker-forced
+        # reset landing mid-dial (delete the playing profile in the manage
+        # view while adjusting) must drop the candidate — otherwise a
+        # lagging label could quiesce and re-store the value the user just
+        # deleted.
+        profile = make_profile()
+        rig.begin(profile, baseline_delay='-0.125 s')
+        rig.observe_foreign('-0.050 s')
+        assert rig.session.watch_pending is not None
+
+        rig.post(events.DelayReset(session_id=rig.session.session_id))
+
+        assert rig.session.watch_pending is None
+        assert rig.session.watch_baseline_ms is None
+        rig.hold_to_quiescence()
+        assert rig.offset_table.stored == []          # nothing re-stored
+        assert rig.saved == []
+
     def test_observed_equals_already_stored_value_stores_nothing(self, rig):
         # The user dials to a value that is ALREADY stored at the write key:
         # no store call, no event — baseline simply adopts it.

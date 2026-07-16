@@ -1,7 +1,7 @@
 """Offset application: gate via policy, resolve via the store, apply, announce.
 
 The apply half of the legacy OffsetManager (its notification half became the
-Notifier). One decision path, three triggers:
+Notifier). One decision path, four triggers:
 
 - ``ProfileChanged`` — the detector adopted a (new) complete profile: the
   apply trigger. NOT ``PlaybackStarted``: the profile is always None at AV
@@ -19,12 +19,30 @@ Notifier). One decision path, three triggers:
   save does NOT change the profile, so a foreign delay (the user's hand)
   still targets the stream in force — the miss path's baseline reset is
   therefore withheld when the delay diverged from our last apply
-  (``from_settings``), where a stream change would reset it and toast.
-  Only our own orphaned residue (a toggle flip stranding the value WE
-  applied) is reset by a save. Corollary: an offset the user re-dialed
-  while the addon was paused survives un-pausing the same way — the
-  dedupe sees the stored value as already applied and leaves the user's
-  hand alone until the next stream event. No live session, no work.
+  (``profile_unchanged``), where a stream change would reset it and
+  toast. Only our own orphaned residue (a toggle flip stranding the
+  value WE applied) is reset by a save. Corollary: an offset the user
+  re-dialed while the addon was paused survives un-pausing the same way
+  — the dedupe sees the stored value as already applied and leaves the
+  user's hand alone until the next stream event. No live session, no
+  work.
+- ``StoreMutated`` — the management-view edge (E7, user call
+  2026-07-16): a delete/clear that actually changed the store is a
+  resolve moment too, so deleting the PLAYING profile's offset takes
+  effect immediately — the marked miss forces its promised 0 at the
+  deletion itself, not at the next playback ("next playback" was only
+  ever the fallback for mutations made while nothing plays, where no
+  live delay exists to touch). Same shape as SettingsChanged in every
+  other respect: profile unchanged, foreign delays preserved, standing
+  gates hold, dedupe no-ops mutations that don't touch the live
+  resolution.
+
+Both silent reset paths post a session-stamped ``DelayReset`` on a
+successful reset RPC: a reset is an automatic delay change exactly like
+an apply, so the watcher drops any in-flight observation on it (the
+supersede corollary — without this, a candidate dialed just before a
+marker-forced reset could quiesce against a lagging infolabel and
+re-store the value the user had just deleted).
 
 Contracts (both reviewed and pinned by tests):
 
@@ -97,6 +115,7 @@ class OffsetApplier:
         dispatcher.subscribe(events.ProfileChanged, self._on_profile_changed)
         dispatcher.subscribe(events.StreamStabilized, self._on_stream_stabilized)
         dispatcher.subscribe(events.SettingsChanged, self._on_settings_changed)
+        dispatcher.subscribe(events.StoreMutated, self._on_store_mutated)
 
     # -- triggers (dispatcher thread) --------------------------------------------
 
@@ -114,14 +133,23 @@ class OffsetApplier:
         The event carries no session stamp (it is not session work), so the
         live session is fetched here; none live means nothing to reconcile.
         """
+        self._reconcile_live_session()
+
+    def _on_store_mutated(self, _event):
+        """Management-view edge: a store-changing delete/clear re-runs the
+        decision, so deleting the playing profile's offset acts NOW (the
+        marked miss forces its 0 at the deletion itself)."""
+        self._reconcile_live_session()
+
+    def _reconcile_live_session(self):
         session = self._sessions.current
         if session is None:
             return
-        self._apply(session.session_id, from_settings=True)
+        self._apply(session.session_id, profile_unchanged=True)
 
     # -- the apply -----------------------------------------------------------------
 
-    def _apply(self, session_id, *, from_settings=False):
+    def _apply(self, session_id, *, profile_unchanged=False):
         if not self._sessions.is_alive(session_id):
             return  # superseded session: the event is inert
         session = self._sessions.current
@@ -155,7 +183,7 @@ class OffsetApplier:
                 self._reset_deleted(session, profile, resolution.reset_keys)
             else:
                 self._reset_if_owned(session, profile,
-                                     from_settings=from_settings)
+                                     profile_unchanged=profile_unchanged)
             return
 
         key = resolution.key
@@ -223,12 +251,14 @@ class OffsetApplier:
                   f"{profile.describe()} (was "
                   f"{'unreadable' if current_ms is None else current_ms}ms; "
                   f"markers {', '.join(reset_keys)})")
+        self._dispatcher.post(events.DelayReset(
+            session_id=session.session_id))
 
     def _consume_markers(self, reset_keys):
         for key in reset_keys:
             self._offsets.consume_reset(key)
 
-    def _reset_if_owned(self, session, profile, *, from_settings=False):
+    def _reset_if_owned(self, session, profile, *, profile_unchanged=False):
         """The miss policy's second half (D3 amendment, E7 field call).
 
         ``session.applied is None`` means the addon has not touched this
@@ -240,15 +270,17 @@ class OffsetApplier:
         idempotent: a delay already reading 0 is left alone, which also
         makes the retry pass on re-stabilization a no-op.
 
-        ``from_settings`` withholds the reset when the delay DIVERGED from
-        our last apply: a settings save changes no profile, so a foreign
-        value (the user's in-flight dial, or a deliberate session-local
-        value with remember off) still targets the stream in force —
-        wiping it because an unrelated knob was saved would clobber the
-        user's hand (P1's spirit). Only our own residue, orphaned by the
-        save itself (a per-fps flip stranding the value WE applied), is
-        reset. An unreadable delay is also left alone on this path —
-        never act on a hiccup when nothing changed underneath.
+        ``profile_unchanged`` (the settings-save and store-mutation
+        triggers) withholds the reset when the delay DIVERGED from our
+        last apply: those triggers change no profile, so a foreign value
+        (the user's in-flight dial, or a deliberate session-local value
+        with remember off) still targets the stream in force — wiping it
+        because an unrelated knob was saved or an unrelated entry deleted
+        would clobber the user's hand (P1's spirit). Only our own
+        residue, orphaned by the trigger itself (a per-fps flip stranding
+        the value WE applied), is reset. An unreadable delay is also left
+        alone on this path — never act on a hiccup when nothing changed
+        underneath.
         """
         if session.applied is None:
             return
@@ -266,12 +298,12 @@ class OffsetApplier:
         if current_ms is not None and current_ms != session.applied[1]:
             discarded = current_ms
 
-        if from_settings and (current_ms is None or discarded is not None):
+        if profile_unchanged and (current_ms is None or discarded is not None):
             shown = 'unreadable' if current_ms is None else f"{current_ms}ms"
-            self._log(f"AOMe_OffsetApplier: settings save leaves foreign "
-                      f"delay ({shown}) in place for unlearned "
-                      f"{profile.describe()} (profile unchanged; not ours "
-                      f"to reset)")
+            self._log(f"AOMe_OffsetApplier: leaving foreign delay ({shown}) "
+                      f"in place for unlearned {profile.describe()} "
+                      f"(profile unchanged by this trigger; not ours to "
+                      f"reset)")
             return
 
         previous_applied = session.applied
@@ -285,6 +317,8 @@ class OffsetApplier:
         self._log(f"AOMe_OffsetApplier: reset delay to 0ms for unlearned "
                   f"{profile.describe()} (was "
                   f"{'unreadable' if current_ms is None else current_ms}ms)")
+        self._dispatcher.post(events.DelayReset(
+            session_id=session.session_id))
         if discarded is not None:
             self._dispatcher.post(events.UnsavedOffsetDiscarded(
                 session_id=session.session_id, profile=profile,

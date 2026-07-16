@@ -89,10 +89,17 @@ def test_runtime_subscription_order_is_pinned(runtime):
     assert settings_changed.index(runtime.offset_applier) < \
         settings_changed.index(runtime.adjustment_watcher)
 
-    # OffsetApplied: the watcher's structural supersede subscribes — any
-    # apply, from any trigger, drops an in-flight observation chain.
-    applied_handlers = subs[events.OffsetApplied]
-    assert runtime.adjustment_watcher._on_offset_applied in applied_handlers
+    # OffsetApplied AND DelayReset: the watcher's structural supersede
+    # subscribes to both — every delay the applier sets (apply or silent
+    # reset), from any trigger, drops an in-flight observation chain.
+    supersede = runtime.adjustment_watcher._on_automatic_delay_set
+    assert supersede in subs[events.OffsetApplied]
+    assert supersede in subs[events.DelayReset]
+
+    # StoreMutated: the applier reconciles the live session when the
+    # management view actually changed the store (immediate deletes).
+    assert runtime.offset_applier._on_store_mutated in \
+        subs[events.StoreMutated]
 
     # StreamStabilized: applier (retry pass) -> notifier (pending release)
     # -> seek scheduler (adjust request): offset work strictly precedes

@@ -18,12 +18,15 @@ echoing ``request_id`` so the script process can match the reply; no ack
 within the script's timeout is its "service not running" signal (D5:
 report-only — there is no direct-write fallback).
 
-After a successful mutation the current session's ``miss_announced``
-dedupe is cleared (same doctrine as the watcher's store path, E2 review):
-the store just changed, so a delete-during-playback must re-log its miss on
-the next apply decision instead of being swallowed by session-lifetime
-dedupe. Deletion takes effect from that next apply decision — nothing here
-touches Kodi's live delay.
+After a STORE-CHANGING mutation (a delete that removed an entry, a clear
+with entries to clear — not a missing-key delete, an empty clear, or a
+refused/failed op) the handler clears the current session's
+``miss_announced`` dedupe (same doctrine as the watcher's store path, E2
+review) and posts a typed ``StoreMutated``, which the applier consumes as
+a resolve moment for the live session (E7, user call 2026-07-16): deleting
+the PLAYING profile's offset takes effect immediately — the marked miss
+forces its promised 0 at the deletion itself. Nothing HERE touches Kodi's
+live delay; the applier owns that reaction, behind its standing gates.
 
 Protocol constants live here (pure Python) so the monitor bridge and the
 script-process client share one definition.
@@ -54,6 +57,7 @@ class StoreMutationHandler:
         ``OffsetTable`` resolve/write-key algebra — they target literal
         keys the view listed). ``ack`` is a REQUIRED callable taking the
         reply payload dict."""
+        self._dispatcher = dispatcher
         self._sessions = session_tracker
         self._store = store
         self._ack = ack
@@ -102,7 +106,7 @@ class StoreMutationHandler:
             # claim durability the store does not have.
             return {'ok': False, 'detail': 'persist_failed'}
         self._log(f"AOMe_StoreMutations: deleted stored offset {key}")
-        self._clear_miss_dedupe()
+        self._store_changed(op='delete', key=key)
         return {'ok': True, 'detail': 'deleted'}
 
     def _clear(self):
@@ -117,19 +121,25 @@ class StoreMutationHandler:
             # that means the file still holds them (see OffsetStore.clear).
             return {'ok': False, 'detail': 'persist_failed', 'count': count}
         self._log(f"AOMe_StoreMutations: cleared {count} stored offset(s)")
-        self._clear_miss_dedupe()
+        if count:
+            # An empty clear changed nothing: no dedupe reset, no event.
+            self._store_changed(op='clear')
         return {'ok': True, 'detail': 'cleared', 'count': count}
 
     # -- internals ---------------------------------------------------------------
 
-    def _clear_miss_dedupe(self):
-        """The store changed under the session: stale miss-chains must re-log.
+    def _store_changed(self, op, key=None):
+        """The store changed under the session: reconcile and re-log.
 
-        Same rule as the watcher's store path (E2 review finding, ledgered
-        for these ops): ``miss_announced`` dedupes the applier's
-        "no stored offset" line per consulted chain, and a mutation makes
-        any remembered chain stale.
+        ``miss_announced`` is cleared (same rule as the watcher's store
+        path — E2 review finding, ledgered for these ops: it dedupes the
+        applier's "no stored offset" line per consulted chain, and a
+        mutation makes any remembered chain stale) and a typed
+        ``StoreMutated`` is posted so the applier re-runs its decision for
+        the live session — the deletion acts NOW when its profile is
+        playing (E7, user call).
         """
         session = self._sessions.current
         if session is not None:
             session.miss_announced = None
+        self._dispatcher.post(events.StoreMutated(op=op, key=key))

@@ -342,6 +342,37 @@ def test_delete_mid_session_resets_to_baseline(build, tmp_path):
     assert replay.applied == []
 
 
+def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
+    # E7 user call (2026-07-16): deleting the PLAYING profile's offset in
+    # the management view takes effect at the deletion itself. The REAL
+    # channel end to end — StoreMutationRequested -> handler executes the
+    # delete (leaving its reset marker) -> StoreMutated -> applier forces
+    # the promised 0 — with NO stream event in between, and the watcher's
+    # observation state dropped via DelayReset (nothing re-stored).
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    rig = build()
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.115 s'
+    _play(rig)
+    _settle(rig)
+    assert rig.applied == [(1, -115)]
+    session = rig.runtime.session_tracker.current
+
+    rig.runtime.dispatcher.post(events.StoreMutationRequested(
+        op='delete', key='dolbyvision|all|truehd', request_id='view-1'))
+    rig.runtime.dispatcher.run_pending()
+
+    assert rig.applied == [(1, -115), (1, 0)]     # immediate, silent
+    assert session.applied == (None, 0)
+    assert session.watch_pending is None          # supersede rode along
+    assert rig.saved == []                        # and nothing re-stored
+
+    # The label catches up to the reset; ticks re-adopt silently.
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '0.000 s'
+    rig.clock.advance(1.0)
+    rig.runtime.dispatcher.run_pending()
+    assert rig.saved == []
+
+
 # --- Scenario 6: corrupt store at startup ------------------------------------
 
 def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,

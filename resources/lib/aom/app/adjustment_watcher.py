@@ -118,7 +118,8 @@ class AdjustmentWatcher:
 
         dispatcher.subscribe(events.ProfileChanged, self._on_profile_changed)
         dispatcher.subscribe(events.SettingsChanged, self._on_settings_changed)
-        dispatcher.subscribe(events.OffsetApplied, self._on_offset_applied)
+        dispatcher.subscribe(events.OffsetApplied, self._on_automatic_delay_set)
+        dispatcher.subscribe(events.DelayReset, self._on_automatic_delay_set)
         dispatcher.subscribe(events.WatchTick, self._on_watch_tick)
         dispatcher.subscribe(events.PlaybackStopped, self._on_playback_ended)
         dispatcher.subscribe(events.PlaybackEnded, self._on_playback_ended)
@@ -165,17 +166,20 @@ class AdjustmentWatcher:
             return
         self._evaluate(session)
 
-    def _on_offset_applied(self, event):
+    def _on_automatic_delay_set(self, event):
         """The supersede corollary, enforced structurally (module docstring).
 
-        ANY automatic apply makes an in-flight observation ambiguous — the
-        pending candidate was dialed against the superseded resolution, and
-        the baseline belongs to it too. Relying on the next tick's echo
-        comparison instead would leave a hole: the infolabel can lag the
-        apply RPC by a beat, and a stale pre-apply reading crossing
-        quiescence at that tick would be stored, after which our own apply
-        reads as a fresh foreign change. Dropping the chain here makes the
-        first post-apply observation re-adopt (or echo-match) cleanly.
+        Handles BOTH ``OffsetApplied`` and ``DelayReset`` — every RPC of
+        ours that sets the delay. ANY automatic delay change makes an
+        in-flight observation ambiguous: the pending candidate was dialed
+        against the superseded resolution, and the baseline belongs to it
+        too. Relying on the next tick's echo comparison instead would
+        leave a hole — the infolabel can lag the RPC by a beat, and a
+        stale pre-change reading crossing quiescence at that tick would be
+        stored (for a reset, re-storing the very value the user just
+        deleted), after which our own value reads as a fresh foreign
+        change. Dropping the chain here makes the first post-change
+        observation re-adopt (or echo-match) cleanly.
         """
         if not self._sessions.is_alive(event.session_id):
             return

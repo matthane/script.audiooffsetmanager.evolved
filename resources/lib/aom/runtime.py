@@ -18,18 +18,20 @@ Subscription order is load-bearing (dispatch follows it, per event type):
 2. detector — owns ``session.profile`` and the stream-state machine (its
    ``StreamProbed`` platform facts are log-only now; the PlatformRecorder
    dissolved with the stored capability flags — P3);
-3. applier — on ProfileChanged/StreamStabilized/SettingsChanged the offset
-   is applied (and ``session.applied`` recorded) before anything downstream
-   reads it;
+3. applier — on ProfileChanged/StreamStabilized/SettingsChanged/
+   StoreMutated the offset is applied (and ``session.applied`` recorded)
+   before anything downstream reads it;
 4. notifier — its StreamStabilized release runs after the applier's retry
    pass for the same stabilization;
 5. seek scheduler — seeks for a stabilization are planned only after the
    offset work for it is done;
 6. adjustment watcher — its ProfileChanged AND SettingsChanged passes run
    after the applier's for the same event, so ``session.applied`` is
-   already current when eligibility is (re)evaluated — and any apply also
-   posts ``OffsetApplied``, whose watcher pass drops an in-flight
-   observation (the supersede corollary, enforced structurally).
+   already current when eligibility is (re)evaluated — and every delay
+   the applier sets announces itself (``OffsetApplied`` for applies,
+   ``DelayReset`` for silent resets), whose watcher pass drops an
+   in-flight observation (the supersede corollary, enforced
+   structurally).
 
 One exception precedes the numbered order: the runtime's own
 ``SettingsChanged`` debug-flag refresh subscribes before everything, so

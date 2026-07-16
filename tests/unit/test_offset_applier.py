@@ -386,6 +386,31 @@ class TestZeroReset:
         assert session.applied == (ALL_KEY, -125)
         assert any('reset RPC failed' in line for line in rig.warnings)
 
+    def test_successful_reset_posts_delay_reset(self, rig):
+        # Every delay the applier sets announces itself: the silent reset
+        # posts DelayReset (the watcher's structural supersede) — but only
+        # when an RPC actually landed; the already-0 branch posts nothing.
+        resets = []
+        rig.dispatcher.subscribe(events.DelayReset, resets.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=-125)
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
+
+        self._switch_to_unlearned(rig, session)
+
+        assert [e.session_id for e in resets] == [session.session_id]
+
+    def test_no_delay_reset_event_without_an_rpc(self, rig):
+        resets = []
+        rig.dispatcher.subscribe(events.DelayReset, resets.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=0)     # stored 0 applies
+        rig.gateway.infolabels[DELAY_LABEL] = '0.000 s'
+
+        self._switch_to_unlearned(rig, session)       # already at baseline
+
+        assert resets == []
+
     def test_paused_addon_never_resets(self, rig):
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
@@ -587,6 +612,85 @@ class TestSettingsChangedReapply:
         assert rig.logged('reset delay to 0ms for deleted')
 
 
+class TestStoreMutatedReapply:
+    """Management-view edge (E7 user call, 2026-07-16): a store-changing
+    mutation is a resolve moment — deleting the PLAYING profile's offset
+    acts immediately. Same profile_unchanged semantics as a settings save
+    (the mutation changes no profile either)."""
+
+    def store_mutated(self, rig, op='delete', key=None):
+        rig.post(events.StoreMutated(op=op, key=key))
+
+    def test_deleting_the_live_profiles_entry_resets_immediately(self, rig):
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
+
+        del rig.offsets.offsets[ALL_KEY]        # the view's delete...
+        rig.offsets.resets = {ALL_KEY}          # ...leaves its marker
+        self.store_mutated(rig, key=ALL_KEY)
+
+        assert rig.gateway.applied == [(1, -0.125), (1, 0.0)]
+        assert session.applied == (None, 0)
+        assert rig.offsets.consumed == [ALL_KEY]
+        assert rig.logged('reset delay to 0ms for deleted')
+
+    def test_unrelated_mutation_dedupes_to_a_no_op(self, rig):
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+
+        self.store_mutated(rig, key='hdr10|all|eac3')
+
+        assert rig.gateway.applied == [(1, -0.125)]
+        assert session.applied == (ALL_KEY, -125)
+
+    def test_no_session_is_a_no_op(self, rig):
+        self.store_mutated(rig)
+
+        assert rig.gateway.applied == []
+        assert rig.errors == []
+
+    def test_paused_addon_holds_the_marker(self, rig):
+        # The standing gates hold on this trigger too: a paused addon does
+        # nothing, and the marker stays pending for a later unpaused
+        # resolve instead of being consumed blind.
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        rig.settings.paused = True
+        del rig.offsets.offsets[ALL_KEY]
+        rig.offsets.resets = {ALL_KEY}
+
+        self.store_mutated(rig, key=ALL_KEY)
+
+        assert rig.gateway.applied == [(1, -0.125)]      # untouched
+        assert rig.offsets.consumed == []
+        assert rig.offsets.resets == {ALL_KEY}           # marker survives
+        assert session.applied == (ALL_KEY, -125)
+
+    def test_mutation_preserves_foreign_delay_on_unmarked_miss(self, rig):
+        # Deleting an UNRELATED entry while the live profile is an
+        # unlearned (unmarked) miss with the user's dial in force: the
+        # profile_unchanged rule holds here too — someone else's delete
+        # never wipes the dial.
+        discarded = []
+        rig.dispatcher.subscribe(events.UnsavedOffsetDiscarded,
+                                 discarded.append)
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()                            # applies -125
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
+        session.profile = make_profile(audio_format='ac3')  # unlearned stream
+        session.miss_announced = None
+        rig.profile_changed()                            # stream reset to 0
+        assert session.applied == (None, 0)
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.050 s'  # user dials on it
+
+        self.store_mutated(rig, key='hdr10|all|eac3')    # unrelated delete
+
+        assert rig.gateway.applied == [(1, -0.125), (1, 0.0)]  # no 3rd RPC
+        assert discarded == []
+        assert rig.logged('not ours to reset')
+
+
 class TestDeletedReset:
     """D3 second amendment (E7): a marked miss forces the promised 0.
 
@@ -647,6 +751,21 @@ class TestDeletedReset:
         assert session.applied is None                   # restored
         assert any('deleted-profile reset RPC failed' in line
                    for line in rig.warnings)
+
+    def test_forced_reset_posts_delay_reset(self, rig):
+        # The marker-forced 0 is an automatic delay change like any other:
+        # DelayReset fires so the watcher drops an in-flight observation
+        # (otherwise a lagging label could re-store the deleted value).
+        resets = []
+        rig.dispatcher.subscribe(events.DelayReset, resets.append)
+        profile = make_profile()
+        session = rig.start(profile, offset_ms=None)
+        rig.offsets.resets = {ALL_KEY}
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.100 s'
+
+        rig.profile_changed()
+
+        assert [e.session_id for e in resets] == [session.session_id]
 
     def test_hit_consumes_a_stale_marker_silently(self, rig):
         # Deleted exact entry over a KEPT 'all' fallback: the fallback wins

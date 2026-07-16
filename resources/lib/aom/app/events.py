@@ -143,6 +143,23 @@ class OffsetApplied:
 
 
 @dataclass(frozen=True)
+class DelayReset:
+    """A zero-reset RPC landed (baseline or deleted-profile, both silent).
+
+    Posted by the applier's reset paths on a SUCCESSFUL reset only — the
+    already-0 and preserve branches move nothing and post nothing. The
+    watcher consumes it to drop any in-flight observation: a reset is an
+    automatic delay change exactly like an apply, so the supersede
+    corollary applies (without it, a pending candidate dialed before a
+    marker-forced reset could quiesce against a lagging infolabel and
+    re-store the value the user just deleted). No OffsetApplied fires for
+    resets — that event drives the notifier, and resets are silent by
+    design (D3 second amendment).
+    """
+    session_id: int
+
+
+@dataclass(frozen=True)
 class UnsavedOffsetDiscarded:
     """The zero-reset discarded a manual adjustment that was never stored.
 
@@ -232,3 +249,20 @@ class StoreMutationRequested:
     op: object
     key: object = None
     request_id: object = None
+
+
+@dataclass(frozen=True)
+class StoreMutated:
+    """A whitelisted mutation actually changed the store (delete/clear).
+
+    Posted by the StoreMutationHandler AFTER a store-changing execution
+    only — a missing-key delete, an empty clear, or a refused/failed op
+    changed nothing and posts nothing. The applier consumes it exactly
+    like ``SettingsChanged``: a mutation is a resolve moment for the live
+    session (E7, user call 2026-07-16 — deleting the playing profile's
+    offset takes effect immediately, not at the next playback), and it
+    changes no profile, so the same foreign-delay preservation applies.
+    ``op``/``key`` ride along for the debug trail only.
+    """
+    op: str
+    key: object = None
