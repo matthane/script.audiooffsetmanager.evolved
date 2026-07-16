@@ -184,6 +184,22 @@ def test_delete_flow_sends_exact_key_and_re_reads():
     assert not any(opt.startswith("Dolby Vision") for opt in gui.selects[1][1])
 
 
+def test_delete_confirmation_shows_the_stored_value():
+    # Field feedback (beta4): the confirmation must show WHAT is being
+    # deleted — the full row label with the value, not just the profile.
+    entries = {DV: _entry(-115)}
+    gui = FakeGui()
+    gui.select_answers = [0]
+    gui.yesno_answers = [False]      # just inspect the confirmation
+    view, gui, service = _build(entries, gui=gui)
+    view.run()
+
+    heading, message = gui.yesnos[0]
+    assert heading == "#32115"
+    assert "-115 ms" in message
+    assert "Dolby Vision | All rates | TrueHD" in message
+
+
 def test_deleting_last_entry_lands_on_empty_state():
     entries = {DV: _entry(-115)}
     gui = FakeGui()

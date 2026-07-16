@@ -65,9 +65,9 @@ _FALLBACKS = {
                   "version cannot show or change them."),
 }
 
-# One presentable entry: the select label, the describe_key text (reused in
-# the delete confirmation and as the deterministic sort key), and the literal
-# store key the delete mutation targets.
+# One presentable entry: the select label (also shown in the delete
+# confirmation — it carries the value), the describe_key text (the
+# deterministic sort key), and the literal store key the delete targets.
 _Row = namedtuple("_Row", "label describe key")
 
 
@@ -194,7 +194,9 @@ class ManageView:
     # -- actions --------------------------------------------------------------
 
     def _confirm_delete(self, heading, row):
-        message = self._gui.localized(_MSG_CONFIRM_DELETE) + "\n" + row.describe
+        # The full row label, not just the profile: the confirmation must
+        # show WHAT value is being deleted (field feedback on beta4).
+        message = self._gui.localized(_MSG_CONFIRM_DELETE) + "\n" + row.label
         if not self._gui.yesno(heading, message):
             return _DECLINED
         self._log("AOMe_ManageView: requesting delete of {0}".format(row.key))
