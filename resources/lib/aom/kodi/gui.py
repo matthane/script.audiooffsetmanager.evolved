@@ -53,10 +53,10 @@ class Gui:
     def notification(self, message, duration_ms, title=None, icon=None):
         """Raise one Kodi toast for ``message`` lasting ``duration_ms``.
 
-        ``title`` and ``icon`` default to the addon's name and icon; the
-        onboarding flow overrides them for its error toasts
-        (``xbmcgui.NOTIFICATION_ERROR``). Exception guard: a GUI-layer
-        failure logs LOGERROR through the sink and never unwinds the caller.
+        ``title`` and ``icon`` default to the addon's name and icon; callers
+        may override them (e.g. ``xbmcgui.NOTIFICATION_ERROR`` toasts).
+        Exception guard: a GUI-layer failure logs LOGERROR through the sink
+        and never unwinds the caller.
         """
         try:
             xbmcgui.Dialog().notification(
