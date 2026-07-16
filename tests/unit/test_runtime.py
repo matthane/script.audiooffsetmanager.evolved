@@ -24,17 +24,18 @@ def test_service_runtime_graph_wiring(runtime):
     assert runtime.offset_applier._gateway is runtime.gateway
     assert runtime.seek_coordinator._gateway is runtime.gateway
     assert runtime.adjustment_watcher._gateway is runtime.gateway
-    assert runtime.platform_recorder._gateway is runtime.gateway
 
     assert runtime.detector._settings is runtime.settings
-    assert runtime.platform_recorder._settings is runtime.settings
     assert runtime.offset_applier._settings is runtime.settings
     assert runtime.notifier._settings is runtime.settings
     assert runtime.seek_scheduler._settings is runtime.settings
     assert runtime.adjustment_watcher._settings is runtime.settings
 
+    # The sparse store rides behind the OffsetTable seam: one store, loaded
+    # at construction, adapter keyed off the live settings toggle.
     assert runtime.offset_applier._offsets is runtime.offsets
     assert runtime.adjustment_watcher._offsets is runtime.offsets
+    assert runtime.offsets._store is runtime.store
     assert runtime.offsets._settings is runtime.settings
     assert runtime.notifier._gui is runtime.gui
 

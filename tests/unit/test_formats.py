@@ -62,18 +62,17 @@ def test_all_setting_keys_unique_and_ordered_by_hdr():
     assert keys[-1] == 'sdr_60_pcm'
 
 
-def test_stream_detector_consumes_this_vocabulary():
-    # The runtime consumer is the detector's pure derivation: every vocabulary
-    # member must round-trip through it unchanged (a detector that stopped
-    # consulting formats would fail here, not silently misfile offsets).
+def test_stream_detector_no_longer_consults_the_whitelists():
+    # E2 severed the detector<->vocabulary coupling (verbatim acceptance):
+    # the classic vocabulary still round-trips, and so does a codec/HDR
+    # string these tables never heard of — the tables are display/generator
+    # data now, not gatekeepers (formats.py dies with the matrix in E3).
     from resources.lib.aom.app.stream_detector import derive_stream_facts
-    for audio in formats.AUDIO_FORMATS:
-        for hdr in formats.HDR_TYPES:
-            for fps in formats.FPS_BUCKETS:
-                facts = derive_stream_facts(
-                    player_id=1, raw_codec=audio, raw_channels=6,
-                    raw_fps=str(fps), raw_hdr=hdr, raw_hdr_fallback='',
-                    raw_gamut='', fps_override_enabled=lambda h: True)
-                assert facts.profile.audio_format == audio
-                assert facts.profile.hdr_type == hdr
-                assert facts.profile.fps_type == fps
+    for audio in formats.AUDIO_FORMATS + ('x-future-codec', 'aac'):
+        facts = derive_stream_facts(
+            player_id=1, raw_codec=audio, raw_channels=6,
+            raw_fps='23.976', raw_hdr='hdr10', raw_hdr_fallback='',
+            raw_gamut='')
+        assert facts.profile.audio_format == audio
+        assert facts.profile.hdr_type == 'hdr10'
+        assert facts.profile.video_fps == 23.976

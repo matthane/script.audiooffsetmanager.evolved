@@ -69,18 +69,25 @@ def rig(monkeypatch):
 
     # --- settings seams (the single Settings adapter, shared by all) ----------
     settings = runtime.settings
-    monkeypatch.setattr(settings, 'is_new_install', lambda: False)
-    monkeypatch.setattr(settings, 'is_hdr_enabled', lambda hdr: True)
-    monkeypatch.setattr(settings, 'fps_override_enabled', lambda hdr: False)
-    monkeypatch.setattr(runtime.offsets, 'get', lambda profile: -125)
-    # Hermeticity: the platform recorder's writes must not reach the stubs'
-    # shared settings state; seek-backs and the watcher are off unless a test
-    # enables them, so flow tests only see the events they drive.
-    monkeypatch.setattr(settings, 'store_boolean_if_changed',
-                        lambda setting_id, value: True)
+    monkeypatch.setattr(settings, 'pause_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'per_fps_offsets_enabled', lambda: False)
+    # Every profile resolves to a stored -125 at its all-level key, so the
+    # apply path always has an entry (the learn/miss flows have their own
+    # integration suite).
+    from resources.lib.aom.store import resolve as store_resolve
+
+    def fake_resolve(profile):
+        key = f"{profile.hdr_type}|all|{profile.audio_format}"
+        return store_resolve.Resolution(
+            {'delay_ms': -125}, store_resolve.EXACT, key, (key,))
+
+    monkeypatch.setattr(runtime.offsets, 'resolve', fake_resolve)
+    # Hermeticity: seek-backs and the watcher are off unless a test enables
+    # them, so flow tests only see the events they drive.
     monkeypatch.setattr(settings, 'seek_back_config',
                         lambda reason: (False, 0))
-    monkeypatch.setattr(settings, 'active_monitoring_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'remember_adjustments_enabled',
+                        lambda: False)
 
     # Toasts captured at the notifier's assembly boundary: pending/dedupe
     # logic still runs, only the gui/settings reads are skipped.
@@ -88,7 +95,7 @@ def rig(monkeypatch):
     monkeypatch.setattr(
         runtime.notifier, '_toast',
         lambda string_id, ms, profile: notified.append(
-            (string_id, ms, profile.setting_id())))
+            (string_id, ms, profile.describe())))
 
     # The dispatcher stays un-started and is pumped manually; every component
     # subscribed at construction, exactly as run() relies on.
@@ -116,15 +123,15 @@ def test_startup_apply_is_provisional_then_released_on_stable(rig):
     assert applied == [(1, -125)]                      # offset applied at once
     assert notified == []                              # ...but held (provisional)
     assert session.stream_state is StreamState.STABILIZING
-    assert session.applied == ('dolbyvision_all_truehd', -125)
-    assert session.pending_notification == ('dolbyvision_all_truehd', -125)
-    assert session.profile.setting_id() == 'dolbyvision_all_truehd'
+    assert session.applied == ('dolbyvision|all|truehd', -125)
+    assert session.pending_notification == (('dolbyvision', 23, 'truehd'), -125)
+    assert session.profile.describe() == 'dolbyvision|23|truehd'
 
     _settle(runtime, clock)
 
     assert session.stream_state is StreamState.STABLE
     assert applied == [(1, -125)]                      # dedupe: no re-apply
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision_all_truehd')]
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
     assert session.pending_notification is None
 
 
@@ -149,7 +156,7 @@ def test_late_codec_is_chased_by_the_probe_chain(rig):
     gateway.codec = 'truehd'                           # negotiation finished
     _settle(runtime, clock, 0.6)                       # probe 3 completes
 
-    assert session.profile.setting_id() == 'dolbyvision_all_truehd'
+    assert session.profile.describe() == 'dolbyvision|23|truehd'
     assert applied == [(1, -125)]
     assert session.stream_state is StreamState.STABILIZING
 
@@ -184,7 +191,7 @@ def test_in_place_reopen_supersedes_and_drops_pending(rig):
     # The live session still settles normally.
     _settle(runtime, clock)
     assert second.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision_all_truehd')]
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
 
 
 def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
@@ -205,14 +212,14 @@ def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
     runtime.dispatcher.run_pending()
 
     assert applied == [(1, -125), (1, -125)]           # applied at once
-    assert session.applied == ('dolbyvision_all_eac3', -125)
+    assert session.applied == ('dolbyvision|all|eac3', -125)
     assert session.stream_state is StreamState.STABILIZING
     assert len(notified) == 1                          # held until re-stable
-    assert session.pending_notification == ('dolbyvision_all_eac3', -125)
+    assert session.pending_notification == (('dolbyvision', 23, 'eac3'), -125)
 
     _settle(runtime, clock)
     assert session.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision_all_eac3')
+    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3')
     assert session.pending_notification is None
 
 
@@ -298,8 +305,8 @@ def test_failed_apply_rpc_is_retried_on_next_stabilization(rig):
 
     _settle(runtime, clock)                  # StreamStabilized retries
     assert applied == [(1, -125)]
-    assert session.applied == ('dolbyvision_all_truehd', -125)
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision_all_truehd')]
+    assert session.applied == ('dolbyvision|all|truehd', -125)
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
 
 
 def test_av_change_storm_collapses_to_one_apply(rig):
@@ -321,7 +328,7 @@ def test_av_change_storm_collapses_to_one_apply(rig):
     _settle(runtime, clock)
     session = runtime.session_tracker.current
     assert session.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision_all_eac3')
+    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3')
 
 
 def test_unchanged_av_change_is_ignored(rig):
@@ -362,7 +369,7 @@ def test_applied_is_recorded_before_the_rpc_executes(rig):
     runtime.dispatcher.post(events.PlaybackStarted())
     runtime.dispatcher.run_pending()
 
-    assert seen_at_rpc == [(('dolbyvision_all_truehd', -125), -125)]
+    assert seen_at_rpc == [(('dolbyvision|all|truehd', -125), -125)]
 
 
 def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
@@ -372,19 +379,19 @@ def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
     # the user and fire a 'change' seek for our own write).
     runtime, clock, gateway, _applied, _notified = rig
 
-    monkeypatch.setattr(runtime.settings, 'active_monitoring_enabled',
+    monkeypatch.setattr(runtime.settings, 'remember_adjustments_enabled',
                         lambda: True)
     stored = []
     monkeypatch.setattr(runtime.offsets, 'store',
                         lambda profile, ms: stored.append(
-                            (profile.setting_id(), ms)) or True)
+                            (profile.describe(), ms)) or profile.describe())
     saved = []
     runtime.dispatcher.subscribe(events.UserOffsetSaved, saved.append)
 
     runtime.dispatcher.post(events.PlaybackStarted())
     runtime.dispatcher.run_pending()
     session = runtime.session_tracker.current
-    assert session.applied == ('dolbyvision_all_truehd', -125)
+    assert session.applied == ('dolbyvision|all|truehd', -125)
 
     # Kodi's Player.AudioDelay now echoes the applied value.
     gateway.infolabels['Player.AudioDelay'] = '-0.125 s'
@@ -415,7 +422,7 @@ def test_user_offset_saved_notifies_live_session_only(rig):
     runtime.dispatcher.run_pending()
     manual = [(ms, key) for kind, ms, key in notified
               if kind == STRING_OFFSET_SAVED]
-    assert manual == [(-75, 'dolbyvision_all_truehd')]
+    assert manual == [(-75, 'dolbyvision|23|truehd')]
 
     # In-place reopen already queued ahead of the stale-stamped event: by the
     # time the event dispatches, its session is superseded -> no toast.
@@ -425,7 +432,7 @@ def test_user_offset_saved_notifies_live_session_only(rig):
     runtime.dispatcher.run_pending()
     manual = [(ms, key) for kind, ms, key in notified
               if kind == STRING_OFFSET_SAVED]
-    assert manual == [(-75, 'dolbyvision_all_truehd')]
+    assert manual == [(-75, 'dolbyvision|23|truehd')]
 
 
 def test_av_event_after_stop_is_ignored(rig):

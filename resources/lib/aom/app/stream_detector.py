@@ -26,14 +26,23 @@ scheduled events — never as sleeps:
 Every gather posts ``StreamProbed`` platform facts for the PlatformRecorder
 (legacy parity: StreamInfo stored capabilities on every gather).
 
-"Same stream" is judged on the OFFSET-RELEVANT identity — the setting_id()
-axes (hdr/fps-bucket/audio) — not raw dataclass equality: incidental fields
-(player_id, audio_channels, video_fps) can wiggle between gathers
-(channel-count flicker during passthrough sync, VFR fps re-reads) without
-the stream changing for offset purposes. An identity-equal gather silently
-refreshes ``session.profile`` (so downstream readers see fresh incidental
-fields) with no events and no state change; comparing raw equality instead
-would strand verification in a perpetual re-adopt loop.
+"Same stream" is judged on the OFFSET-RELEVANT identity
+(``policies.stream_identity``, consulted at compare instant with the live
+``per_fps_offsets`` toggle) — not raw dataclass equality: incidental fields
+(player_id, audio_channels, and — when the toggle is off — the fps rate)
+can wiggle between gathers (channel-count flicker during passthrough sync,
+VFR fps re-reads) without the stream changing for offset purposes. An
+identity-equal gather silently refreshes ``session.profile`` (so downstream
+readers see fresh incidental fields) with no events and no state change;
+comparing raw equality instead would strand verification in a perpetual
+re-adopt loop.
+
+Verbatim acceptance (EVOLVED §3.2/§3.5): the audio and HDR axes carry what
+Kodi reported, normalized by ``aom.store.keys`` (case-fold/trim; absence to
+'unknown'; the sole hlghdr alias). No whitelist, no fps buckets, no per-HDR
+override collapse — the per-fps granularity question moved to the store's
+lookup/write instant. The HDR chain-of-evidence (primary -> fallback ->
+sdr default -> HLG-gamut sniff) is unchanged.
 
 Intentional divergences from legacy (reviewed):
 - Offsets now re-apply ~1s EARLIER on mid-play changes: adoption posts
@@ -58,6 +67,7 @@ from dataclasses import dataclass
 from resources.lib.aom.app import events
 from resources.lib.aom.domain import formats, policies
 from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aom.store import keys
 
 
 INFOLABEL_FPS = 'Player.Process(videofps)'
@@ -88,72 +98,41 @@ def _is_valid_infolabel(label, value):
     return bool(value and value.strip() and value.lower() != label.lower())
 
 
-def _same_stream(profile, adopted):
-    """Offset-relevant identity: True when both map to the same setting key.
-
-    See the module docstring — raw dataclass equality would also compare
-    player_id/audio_channels/video_fps, which may wiggle between gathers.
-    """
-    return adopted is not None and profile.setting_id() == adopted.setting_id()
-
-
-def _derive_audio_format(raw_codec):
-    """Map a reported codec string onto the settings vocabulary.
-
-    Verbatim combination of legacy StreamInfo.get_audio_info (ordered
-    substring match — eac3 before ac3 is load-bearing — with PCM fallback)
-    and gather_stream_info's final unknown-normalization.
-    """
-    reported = raw_codec.lower()
-    for valid_format in formats.AUDIO_FORMATS:
-        if valid_format in reported:
-            return valid_format
-    if raw_codec in ('unknown', 'none'):
-        return formats.UNKNOWN
-    return 'pcm'
-
-
 def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
-                        raw_hdr_fallback, raw_gamut, fps_override_enabled):
+                        raw_hdr_fallback, raw_gamut):
     """Pure derivation of a StreamProfile from raw single-shot readings.
 
-    The HDR chain-of-evidence, echo guards, HLG-via-gamut sniff, FPS
-    bucketing and override collapse are ported verbatim from legacy
-    StreamInfo.gather_stream_info — including its asymmetry that the
-    post-normalization echo check compares against the PRIMARY label even
-    for the fallback value (the fallback returns '' rather than an echo
-    when unresolved, so only the primary echo shape occurs in practice).
-
-    Args are raw strings as read from the gateway; ``fps_override_enabled``
-    is a callable ``hdr_type -> bool`` (settings read resolved by the
-    caller's facade so this function stays pure).
+    The HDR chain-of-evidence, echo guards, and HLG-via-gamut sniff are
+    ported from legacy StreamInfo.gather_stream_info — including its
+    asymmetry that the post-normalization echo check compares against the
+    PRIMARY label even for the fallback value (the fallback returns ''
+    rather than an echo when unresolved, so only the primary echo shape
+    occurs in practice). The whitelists are gone (verbatim acceptance):
+    audio keys as reported; an HDR string outside the classic five keys as
+    reported too; fps is the exact parsed rate with no bucket check and no
+    override collapse.
     """
-    audio_format = _derive_audio_format(raw_codec)
+    audio_format = keys.audio_segment(raw_codec)
 
     try:
-        fps_value = int(float(raw_fps))
-        fps_type = fps_value if fps_value in formats.FPS_BUCKETS else formats.UNKNOWN
+        fps_value = float(raw_fps)
     except (ValueError, TypeError):
         fps_value = None
-        fps_type = formats.UNKNOWN
 
     if _is_valid_infolabel(INFOLABEL_HDR, raw_hdr):
         platform_hdr_full = True
-        hdr_type = raw_hdr
+        hdr_raw = raw_hdr
         hdr_source = 'primary'
     else:
         platform_hdr_full = False
-        hdr_type = raw_hdr_fallback
+        hdr_raw = raw_hdr_fallback
         hdr_source = 'fallback'
 
-    hdr_type = hdr_type.replace('+', 'plus').replace(' ', '').lower()
-    if not hdr_type or hdr_type == INFOLABEL_HDR.lower():
+    hdr_type = keys.hdr_segment(hdr_raw)
+    if hdr_type == formats.UNKNOWN or hdr_type == INFOLABEL_HDR.lower():
+        # Absent (or echoed) HDR reading: the chain-of-evidence default.
         hdr_type = 'sdr'
         hdr_source = 'default-sdr'
-    elif hdr_type == 'hlghdr':
-        hdr_type = 'hlg'
-    if hdr_type not in formats.HDR_TYPES:
-        hdr_type = formats.UNKNOWN
 
     gamut_valid = _is_valid_infolabel(INFOLABEL_GAMUT, raw_gamut)
     gamut_info = raw_gamut if gamut_valid else 'not available'
@@ -161,12 +140,8 @@ def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
         hdr_type = 'hlg'
         hdr_source = 'gamut-hlg'
 
-    if hdr_type != formats.UNKNOWN and not fps_override_enabled(hdr_type):
-        fps_type = formats.FPS_ALL
-
     profile = StreamProfile(
         hdr_type=hdr_type,
-        fps_type=fps_type,
         audio_format=audio_format,
         video_fps=fps_value,
         player_id=player_id,
@@ -273,7 +248,7 @@ class StreamDetector:
                       "probes will observe it")
             return
         facts = self._gather(session.session_id)
-        if _same_stream(facts.profile, session.profile):
+        if self._same_stream(facts.profile, session.profile):
             # Same offset-relevant stream: refresh incidental fields
             # (player_id/channels/raw fps) silently — no events, no state.
             session.profile = facts.profile
@@ -314,7 +289,7 @@ class StreamDetector:
             return
         session = self._sessions.current
         facts = self._gather(event.session_id)
-        if _same_stream(facts.profile, session.profile):
+        if self._same_stream(facts.profile, session.profile):
             session.profile = facts.profile   # silent incidental-field refresh
             session.mark_stable()
             announce = session.profile_changed_since_stabilized
@@ -339,6 +314,20 @@ class StreamDetector:
             self._schedule_verify(event.session_id)
 
     # -- internals ----------------------------------------------------------------
+
+    def _same_stream(self, profile, adopted):
+        """Offset-relevant identity, at the granularity in force RIGHT NOW.
+
+        The per-fps toggle is read at compare instant (never captured):
+        with it off, an fps wiggle is an incidental-field refresh; with it
+        on, the truncated rate is part of the identity exactly like the
+        lookup key.
+        """
+        if adopted is None:
+            return False
+        per_fps = self._settings.per_fps_offsets_enabled()
+        return (policies.stream_identity(profile, per_fps)
+                == policies.stream_identity(adopted, per_fps))
 
     def _adopt(self, session, profile):
         """Write the session's profile and (re-)earn stability for it."""
@@ -376,7 +365,6 @@ class StreamDetector:
             raw_hdr=raw_hdr,
             raw_hdr_fallback=raw_hdr_fallback,
             raw_gamut=raw_gamut,
-            fps_override_enabled=self._settings.fps_override_enabled,
         )
         # The raw gateway strings are logged VERBATIM: under the open
         # vocabulary they are the store's key material, and field logs are

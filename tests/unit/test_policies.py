@@ -14,12 +14,11 @@ from resources.lib.aom.domain.profile import StreamProfile
 NNBSP = " "
 
 
-def make_profile(hdr_type="hdr10", fps_type=23, audio_format="truehd"):
+def make_profile(hdr_type="hdr10", audio_format="truehd", video_fps=23.976):
     return StreamProfile(
         hdr_type=hdr_type,
-        fps_type=fps_type,
         audio_format=audio_format,
-        video_fps=23,
+        video_fps=video_fps,
         player_id=1,
         audio_channels=6,
     )
@@ -70,42 +69,82 @@ def test_is_complete_none_profile():
 
 def test_is_complete_full_profile():
     assert policies.is_complete(make_profile()) is True
-    assert policies.is_complete(make_profile(fps_type="all")) is True
 
 
 @pytest.mark.parametrize("kwargs", [
     {"hdr_type": "unknown"},
-    {"fps_type": "unknown"},
     {"audio_format": "unknown"},
+    {"video_fps": None},
 ])
-def test_is_complete_any_unknown_axis(kwargs):
+def test_is_complete_missing_axis(kwargs):
     assert policies.is_complete(make_profile(**kwargs)) is False
+
+
+def test_is_complete_open_vocabulary_counts_as_detected():
+    # Verbatim acceptance: a format the code never heard of is a DETECTED
+    # format — completeness gates on absence, not on a whitelist.
+    assert policies.is_complete(
+        make_profile(hdr_type="hdr10+", audio_format="x-future-codec")) is True
+
+
+# --- stream_identity ---------------------------------------------------------
+
+def test_identity_ignores_fps_when_toggle_off():
+    # A VFR rate wiggle must not read as a stream change with per-fps off.
+    a = make_profile(video_fps=23.976)
+    b = make_profile(video_fps=24.0)
+    assert (policies.stream_identity(a, False)
+            == policies.stream_identity(b, False))
+
+
+def test_identity_includes_truncated_fps_when_toggle_on():
+    a = make_profile(video_fps=23.976)
+    b = make_profile(video_fps=24.0)
+    same_rate = make_profile(video_fps=23.5)  # truncates to 23 like 23.976
+    assert (policies.stream_identity(a, True)
+            != policies.stream_identity(b, True))
+    assert (policies.stream_identity(a, True)
+            == policies.stream_identity(same_rate, True))
+
+
+def test_identity_never_includes_incidental_fields():
+    a = StreamProfile(hdr_type="hdr10", audio_format="truehd",
+                      video_fps=23.976, player_id=1, audio_channels=6)
+    b = StreamProfile(hdr_type="hdr10", audio_format="truehd",
+                      video_fps=23.976, player_id=2, audio_channels=8)
+    for per_fps in (False, True):
+        assert (policies.stream_identity(a, per_fps)
+                == policies.stream_identity(b, per_fps))
 
 
 # --- should_apply ------------------------------------------------------------
 
 def test_should_apply_ok():
-    assert policies.should_apply(make_profile(), new_install=False,
-                                 hdr_enabled=True) == (True, None)
+    assert policies.should_apply(make_profile(), paused=False) == (True, None)
 
 
-def test_should_apply_new_install_blocks_first():
-    # new_install is checked before anything else (mirrors legacy order).
-    assert policies.should_apply(None, new_install=True,
-                                 hdr_enabled=False) == (False, "new_install")
+def test_should_apply_paused_blocks_first():
+    # The global pause is checked before anything else (D9): a paused addon
+    # skips regardless of profile state.
+    assert policies.should_apply(None, paused=True) == (False, "paused")
+    assert policies.should_apply(make_profile(),
+                                 paused=True) == (False, "paused")
 
 
 def test_should_apply_no_profile():
-    assert policies.should_apply(None, new_install=False,
-                                 hdr_enabled=False) == (False, "no_profile")
+    assert policies.should_apply(None, paused=False) == (False, "no_profile")
 
 
 def test_should_apply_unknown_format():
     profile = make_profile(audio_format="unknown")
-    assert policies.should_apply(profile, new_install=False,
-                                 hdr_enabled=True) == (False, "unknown_format")
+    assert policies.should_apply(profile,
+                                 paused=False) == (False, "unknown_format")
 
 
-def test_should_apply_hdr_disabled():
-    assert policies.should_apply(make_profile(), new_install=False,
-                                 hdr_enabled=False) == (False, "hdr_disabled")
+def test_should_apply_has_no_new_install_gate():
+    # P1: the onboarding gate is deleted, not ported — an empty store
+    # already yields a lookup miss, so a fresh install needs no policy gate.
+    import inspect
+    signature = inspect.signature(policies.should_apply)
+    assert 'new_install' not in signature.parameters
+    assert 'hdr_enabled' not in signature.parameters

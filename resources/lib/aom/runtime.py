@@ -15,26 +15,27 @@ Subscription order is load-bearing (dispatch follows it, per event type):
 
 1. tracker — the session exists (or is torn down) before any other handler
    of the same lifecycle event runs;
-2. detector — owns ``session.profile`` and the stream-state machine;
-3. recorder — sole StreamProbed consumer (data flow, not an ordering
-   constraint; listed for the construction narrative);
-4. applier — on ProfileChanged/StreamStabilized the offset is applied (and
+2. detector — owns ``session.profile`` and the stream-state machine (its
+   ``StreamProbed`` platform facts are log-only now; the PlatformRecorder
+   dissolved with the stored capability flags — P3);
+3. applier — on ProfileChanged/StreamStabilized the offset is applied (and
    ``session.applied`` recorded) before anything downstream reads it;
-5. notifier — its StreamStabilized release runs after the applier's retry
+4. notifier — its StreamStabilized release runs after the applier's retry
    pass for the same stabilization;
-6. seek scheduler — seeks for a stabilization are planned only after the
+5. seek scheduler — seeks for a stabilization are planned only after the
    offset work for it is done;
-7. adjustment watcher — its ProfileChanged eligibility pass runs last, so
+6. adjustment watcher — its ProfileChanged eligibility pass runs last, so
    ``session.applied`` is already current when the first watch tick of a
    profile episode is scheduled.
 """
+
+import xbmcvfs
 
 from resources.lib.aom.app import events
 from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
 from resources.lib.aom.app.dispatcher import Dispatcher
 from resources.lib.aom.app.notifier import Notifier
 from resources.lib.aom.app.offset_applier import OffsetApplier
-from resources.lib.aom.app.platform_recorder import PlatformRecorder
 from resources.lib.aom.app.seek_scheduler import (ExternalSeekCoordinator,
                                                   SeekScheduler)
 from resources.lib.aom.app.session import SessionTracker
@@ -44,7 +45,10 @@ from resources.lib.aom.kodi.gui import Gui
 from resources.lib.aom.kodi.log import KodiLogger
 from resources.lib.aom.kodi.monitor_bridge import MonitorBridge
 from resources.lib.aom.kodi.player_bridge import PlayerBridge
-from resources.lib.aom.kodi.settings import OffsetTable, Settings
+from resources.lib.aom.kodi.settings import ADDON_ID, OffsetTable, Settings
+from resources.lib.aom.store.offset_store import OffsetStore
+
+STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
 
 
 class ServiceRuntime:
@@ -53,9 +57,22 @@ class ServiceRuntime:
         self.logger = KodiLogger()
         self.settings = Settings(log=self.logger)
         self.logger.debug_escalation = self.settings.debug_logging_enabled()
-        self.offsets = OffsetTable(self.settings)
         self.gateway = KodiGateway(log=self.logger)
         self.gui = Gui(log=self.logger)
+
+        # The sparse offset store: loaded ONCE at service start, owned by
+        # the dispatcher thread thereafter (single-writer doctrine). A
+        # corrupt file was quarantined to .bad inside load() — surface that
+        # once, then run normally (empty store = learn from scratch).
+        self.store = OffsetStore(
+            xbmcvfs.translatePath(STORE_PATH),
+            log_debug=self.logger.debug, log_warning=self.logger.warning)
+        self.store.load()
+        if self.store.pop_corruption():
+            self.gui.notification(
+                "Stored offsets were unreadable and were reset "
+                "(backup kept as offsets.json.bad)", 7000)
+        self.offsets = OffsetTable(self.store, self.settings)
 
         self.dispatcher = Dispatcher(
             log_debug=self.logger.debug,
@@ -69,9 +86,6 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, log_debug=self.logger.debug,
             log_warning=self.logger.warning)
-        self.platform_recorder = PlatformRecorder(
-            self.dispatcher, self.gateway, self.settings,
-            log_debug=self.logger.debug)
         self.offset_applier = OffsetApplier(
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, self.offsets, log_debug=self.logger.debug,

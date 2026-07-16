@@ -1,56 +1,53 @@
-"""Immutable stream profile — the settings-lookup key and display helpers.
+"""Immutable stream profile — verbatim detection facts.
 
-Pure Python: no Kodi imports. Display names and the setting-key format come
-from aom.domain.formats (the vocabulary single source of truth).
+Pure data under the open vocabulary (EVOLVED design §3.2): the axes carry
+what Kodi REPORTED, normalized only by case-fold/trim (plus the detector's
+sdr default for an absent HDR axis). No whitelist shapes these fields, and
+no settings key is derived here — the store key is composed at lookup/write
+instant by ``aom.store`` (per_fps toggle consulted there, never captured).
+
+Display formatting deliberately does NOT live here: the toast/view layers
+format via ``aom.store.keys`` display helpers, keeping this module free of
+vocabulary tables (domain purity: this file imports nothing).
 """
 
 from dataclasses import dataclass
 
-from resources.lib.aom.domain import formats
-
 
 @dataclass(frozen=True)
 class StreamProfile:
-    """Immutable stream characteristics used for settings lookups and display."""
+    """Immutable stream characteristics, exactly as detected."""
 
-    hdr_type: str
-    fps_type: object  # int (specific bucket), 'all', or 'unknown'
-    audio_format: str
-    video_fps: object
+    hdr_type: str        # verbatim segment; 'sdr' default applied by detector
+    audio_format: str    # verbatim segment, or 'unknown' when unreported
+    video_fps: object    # float | None — the exact reported rate
     player_id: int
     audio_channels: object
 
-    def setting_id(self):
-        """Settings id for this profile: `<hdr>_<fps>_<audio>`. FROZEN format.
+    def fps_int(self):
+        """The fps key axis: integer truncation of the reported rate.
 
-        (DESIGN.md sketched this as ``setting_key()``, but every call site —
-        and the frozen-vocabulary language in CLAUDE.md — standardized on the
-        legacy ``setting_id()`` name during construction, so the planned
-        rename was dropped rather than churning the whole codebase; the
-        Phase 9 DESIGN.md reconciliation records the decision.)
+        Truncation — not rounding — is what keeps the NTSC fractional rates
+        on their own keys (23.976 -> 23 vs 24.0 -> 24; design guarantee).
+        None when the rate was not detected.
         """
-        return formats.setting_key(self.hdr_type, self._fps_key(),
-                                   self.audio_format)
+        if self.video_fps is None:
+            return None
+        return int(self.video_fps)
 
-    def display_hdr(self):
-        return formats.HDR_DISPLAY_NAMES.get(self.hdr_type, self.hdr_type)
+    def identity(self):
+        """Offset-relevant identity: the tuple two gathers must share to be
+        "the same stream" at full granularity.
 
-    def display_audio(self):
-        return formats.AUDIO_DISPLAY_NAMES.get(self.audio_format, self.audio_format)
+        Incidental fields (player_id, audio_channels) are excluded on
+        purpose — they can wiggle between gathers without the stream
+        changing for offset purposes. Callers that should ignore the fps
+        axis (per_fps toggle OFF) use ``policies.stream_identity`` instead.
+        """
+        return (self.hdr_type, self.fps_int(), self.audio_format)
 
-    def display_fps(self):
-        fps_key = self._fps_key()
-        return formats.FPS_DISPLAY_NAMES.get(fps_key, str(fps_key))
-
-    def summary(self, include_fps=True):
-        fps_key = self._fps_key()
-        hdr_label = self.display_hdr()
-        audio_label = self.display_audio()
-
-        if include_fps and str(fps_key).lower() != formats.FPS_ALL:
-            fps_label = self.display_fps()
-            return f"{hdr_label} | {fps_label} FPS | {audio_label}"
-        return f"{hdr_label} | {audio_label}"
-
-    def _fps_key(self):
-        return str(self.fps_type)
+    def describe(self):
+        """Compact greppable form for field logs: ``hdr|fps|audio``."""
+        fps = self.fps_int()
+        return "{0}|{1}|{2}".format(
+            self.hdr_type, '?' if fps is None else fps, self.audio_format)

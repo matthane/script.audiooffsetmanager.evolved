@@ -56,32 +56,33 @@ for the stream that just changed, so its target profile is ambiguous and
 dropping beats storing it under the wrong key (the legacy monitor did the
 latter — the adopt-vs-store interleaving this design closes).
 
-Stores also defer while the addon settings dialog (window 10140) is open:
-the dialog saves its working copy of our settings on close, which would
-clobber any write made underneath it (settings-state doctrine). The quiesced
-candidate is simply held on the active cadence until the dialog closes.
+The classic settings-dialog store deferral is DELETED, not ported: offsets
+live in the sparse store file now, not in settings.xml, so the dialog's
+save-on-close cannot clobber a store write — that hazard class is gone with
+the medium (P4).
 
 Store-time profile derivation on the dispatcher thread closes the legacy
 adjust-vs-adopt interleaving: the old monitor thread stored under the live
 profile while the detector could re-adopt a different one concurrently. Now
 adoption (StreamDetector) and store (here) are serialized on ONE thread and
-the setting key is derived from ``session.profile`` at the store instant, so
-a value always lands under the profile in force when quiescence completed.
+the write key is derived from ``session.profile`` + the live ``per_fps``
+toggle at the store instant (D4: one rule, never conditional on lookup
+history — the OffsetTable routes through ``resolve.write_key``).
 
 On a successful store the watcher posts a session-stamped
-``UserOffsetSaved`` (profile + ms captured at store time), the typed
-replacement for the legacy unstamped ``USER_ADJUSTMENT`` bus signal.
+``UserOffsetSaved`` (profile + ms + resolved key captured at store time),
+the typed replacement for the legacy unstamped ``USER_ADJUSTMENT`` signal.
 
 Pure app layer: Kodi I/O via the injected gateway, eligibility reads via the
 injected settings adapter, offset reads/writes via the injected OffsetTable
-(get/store by profile — the key is the table's concern), log sinks injected;
+(the store adapter — key derivation is its concern), log sinks injected;
 no Kodi imports.
 """
 
 import time
 
 from resources.lib.aom.app import events
-from resources.lib.aom.domain import formats, policies
+from resources.lib.aom.domain import policies
 
 
 class AdjustmentWatcher:
@@ -118,18 +119,18 @@ class AdjustmentWatcher:
     # -- eligibility ------------------------------------------------------------
 
     def _eligible(self, profile):
-        """Legacy OffsetManager._should_start_active_monitor parity.
+        """Watch when a profile exists, learning is on, and not paused.
 
-        Deliberately a PARTIAL unknown-check: HDR and FPS must be known, but
-        NOT audio — an audio-unknown stream is still watched. The store path
-        (_store) re-validates the whole profile before writing, so nothing
-        incomplete is ever persisted.
+        The classic per-HDR enable and hdr/fps unknown-checks are gone with
+        their features: the HDR axis always resolves under the open
+        vocabulary (sdr default), and completeness is the STORE path's
+        concern (_store re-validates the whole profile before writing, so
+        an incomplete stream is watched but never persisted — classic
+        parity for the audio-unknown case, now uniform).
         """
         return (profile is not None
-                and self._settings.active_monitoring_enabled()
-                and profile.hdr_type != formats.UNKNOWN
-                and profile.fps_type != formats.UNKNOWN
-                and self._settings.is_hdr_enabled(profile.hdr_type))
+                and self._settings.remember_adjustments_enabled()
+                and not self._settings.pause_enabled())
 
     # -- eligibility triggers (dispatcher thread) -------------------------------
 
@@ -238,15 +239,6 @@ class AdjustmentWatcher:
             self._log("AOM_AdjustmentWatcher: no active player at store "
                       "time; discarding pending adjustment")
             return self.IDLE_TICK_SECONDS
-        if self._gateway.settings_dialog_open():
-            # Settings-state doctrine: never write a setting while the addon
-            # settings dialog is open — its save-on-close would clobber the
-            # store. Hold the quiesced candidate and retry until it closes.
-            # (Legacy was structurally immune: its only change source, the
-            # OSD slider, cannot be open at the same time as this dialog.)
-            self._log("AOM_AdjustmentWatcher: settings dialog open; "
-                      "deferring store")
-            return self.ACTIVE_TICK_SECONDS
         self._store(session, observed)
         return self.IDLE_TICK_SECONDS
 
@@ -255,41 +247,53 @@ class AdjustmentWatcher:
     def _store(self, session, observed_ms):
         session.watch_pending = None
         # Read the profile FRESH at store time, on the dispatcher thread — the
-        # setting key is derived from whatever profile is in force NOW (see the
-        # module docstring's store-time-derivation note).
+        # write key is derived from whatever profile (and toggle value) is in
+        # force NOW (see the module docstring's store-time-derivation note).
         profile = session.profile
         if not policies.is_complete(profile):
-            # Eligible (hdr+fps known) but audio unknown: account for the
-            # value so we don't chase it, but don't persist an incomplete key.
+            # Watched but not persistable: account for the value so we don't
+            # chase it, but never write an incomplete key.
             self._log(f"AOM_AdjustmentWatcher: profile incomplete "
                       f"({profile}); not storing {observed_ms}ms")
             session.watch_baseline_ms = observed_ms
             return
 
-        setting_id = profile.setting_id()
-        if observed_ms == self._offsets.get(profile):
+        write_key = self._offsets.write_key(profile)
+        if write_key is None:
+            # Cannot compose a key (unparseable fps under per-fps): account,
+            # never persist. is_complete makes this unreachable in practice;
+            # the guard keeps the invariant local.
+            self._log(f"AOM_AdjustmentWatcher: no write key for {profile}; "
+                      f"not storing {observed_ms}ms")
+            session.watch_baseline_ms = observed_ms
+            return
+
+        existing = self._offsets.get_at(write_key)
+        if existing is not None and existing['delay_ms'] == observed_ms:
             # Already the stored value (e.g. re-dialed to the configured
             # offset): account for it, emit nothing.
             session.watch_baseline_ms = observed_ms
             self._log(f"AOM_AdjustmentWatcher: {observed_ms}ms already stored "
-                      f"for {setting_id}; nothing to do")
+                      f"for {write_key}; nothing to do")
             return
 
-        if not self._offsets.store(profile, observed_ms):
+        stored_key = self._offsets.store(profile, observed_ms)
+        if stored_key is None:
             # The value is still foreign; leave the baseline untouched so the
             # next quiescence cycle retries the store.
             self._warn(f"AOM_AdjustmentWatcher: failed to store "
-                       f"{observed_ms}ms for setting {setting_id}")
+                       f"{observed_ms}ms for {write_key}")
             return
 
         session.watch_baseline_ms = observed_ms
         # The user's value is now the applied value too, so the applier's
         # dedupe guard stays honest.
-        session.applied = (setting_id, observed_ms)
+        session.applied = (stored_key, observed_ms)
         self._log(f"AOM_AdjustmentWatcher: Stored audio offset "
-                  f"{observed_ms}ms for setting {setting_id}")
+                  f"{observed_ms}ms for {stored_key}")
         self._dispatcher.post(events.UserOffsetSaved(
-            session_id=session.session_id, profile=profile, ms=observed_ms))
+            session_id=session.session_id, profile=profile, ms=observed_ms,
+            key=stored_key))
 
     # -- internals --------------------------------------------------------------
 

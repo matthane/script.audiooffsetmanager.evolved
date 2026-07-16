@@ -121,54 +121,82 @@ class FakeGateway:
 class FakeFacade:
     """Scriptable settings double covering the app components' read surface.
 
-    ``fps_override`` drives the detector's fps-bucket collapse; ``seek_configs``
-    maps a seek reason to its (enabled, seconds) pair, defaulting every reason
-    to (True, 4); ``active_monitoring`` / ``hdr_enabled`` gate the adjustment
-    watcher's eligibility. Offset reads/writes live on ``FakeOffsetTable``
+    ``per_fps`` drives the detector's identity granularity and the offset
+    table's key composition; ``seek_configs`` maps a seek reason to its
+    (enabled, seconds) pair, defaulting every reason to (True, 4);
+    ``remember_adjustments`` / ``paused`` gate the adjustment watcher and
+    (paused) the applier. Offset reads/writes live on ``FakeOffsetTable``
     (matching the real split: ``aom.kodi.settings.Settings`` + ``OffsetTable``).
     """
 
-    def __init__(self, fps_override=False):
-        self.fps_override = fps_override
+    def __init__(self, per_fps=False):
+        self.per_fps = per_fps
         self.seek_configs = {}
-        self.active_monitoring = True
-        self.hdr_enabled = True
+        self.remember_adjustments = True
+        self.paused = False
 
-    def fps_override_enabled(self, hdr_type):
-        return self.fps_override
+    def per_fps_offsets_enabled(self):
+        return self.per_fps
+
+    def pause_enabled(self):
+        return self.paused
+
+    def remember_adjustments_enabled(self):
+        return self.remember_adjustments
 
     def seek_back_config(self, reason):
         return self.seek_configs.get(reason, (True, 4))
 
-    def active_monitoring_enabled(self):
-        return self.active_monitoring
-
-    def is_hdr_enabled(self, hdr_type):
-        return self.hdr_enabled
-
 
 class FakeOffsetTable:
-    """Scriptable stand-in for ``aom.kodi.settings.OffsetTable``.
+    """Scriptable stand-in for the store-backed ``OffsetTable`` adapter.
 
-    ``offsets`` (setting_id -> ms) backs ``get`` (0 default — the real table
-    always answers an int); ``store`` appends to ``stored`` and writes
-    ``offsets`` unless ``store_ok`` is False, when it reports failure.
+    Backed by a plain dict (key -> ms) and a ``per_fps`` flag mirroring the
+    facade's toggle (tests set both through ``FakeFacade`` when they share
+    one; standalone uses set ``per_fps`` directly). ``resolve``/``write_key``
+    reuse the REAL pure functions from ``aom.store.resolve`` so the fake
+    cannot drift from the decision table; only persistence is faked.
     """
 
-    def __init__(self):
-        self.offsets = {}            # setting_id -> ms
-        self.stored = []             # (setting_id, ms), in store order
+    def __init__(self, per_fps=False):
+        self.offsets = {}            # key -> ms
+        self.stored = []             # (key, ms), in store order
         self.store_ok = True
+        self.per_fps = per_fps
 
-    def get(self, profile):
-        return self.offsets.get(profile.setting_id(), 0)
+    # dict-shaped store protocol for resolve.resolve
+    def get(self, key):
+        if key in self.offsets:
+            return {'delay_ms': self.offsets[key]}
+        return None
+
+    def resolve(self, profile):
+        from resources.lib.aom.store import resolve as store_resolve
+        return store_resolve.resolve(
+            self, profile.hdr_type, profile.video_fps, profile.audio_format,
+            per_fps=self.per_fps)
+
+    def write_key(self, profile):
+        from resources.lib.aom.store import resolve as store_resolve
+        try:
+            return store_resolve.write_key(
+                profile.hdr_type, profile.video_fps, profile.audio_format,
+                per_fps=self.per_fps)
+        except ValueError:
+            return None
+
+    def get_at(self, key):
+        return self.get(key)
 
     def store(self, profile, ms):
         if not self.store_ok:
-            return False
-        self.stored.append((profile.setting_id(), ms))
-        self.offsets[profile.setting_id()] = ms
-        return True
+            return None
+        key = self.write_key(profile)
+        if key is None:
+            return None
+        self.stored.append((key, ms))
+        self.offsets[key] = ms
+        return key
 
 
 class FakeGui:

@@ -1,4 +1,4 @@
-"""Offset application: gate via policy, apply via gateway, announce typed.
+"""Offset application: gate via policy, resolve via the store, apply, announce.
 
 The apply half of the legacy OffsetManager (its notification half became the
 Notifier). One decision path, two triggers:
@@ -19,16 +19,19 @@ Contracts (both reviewed and pinned by tests):
   adjustment. Two flow tests pin this at the RPC boundary; do not reorder.
 - **Freshness**: the profile is read from ``session.profile`` at the moment
   of use (the detector, on this same dispatcher thread, is its sole writer)
-  — never captured across events (settings doctrine).
+  — never captured across events; the ``per_fps`` toggle is consulted
+  inside the OffsetTable at resolve instant for the same reason.
 
 The apply is *eager*: it runs on adoption, before stability, because A/V
 sync matters immediately. It is marked ``provisional`` unless the session is
 already STABLE, and the posted ``OffsetApplied(provisional=...)`` lets the
 Notifier hold the toast until stabilization. This component never toasts.
 
-Offsets come from the injected ``OffsetTable`` (get by profile; the settings
-generator guarantees every setting id exists, so "missing offset" is not a
-state — the legacy ``delay_ms is None`` branch is gone).
+Offsets come from the injected ``OffsetTable`` (the sparse-store adapter):
+``resolve(profile)`` returns a ``Resolution`` whose ``hit_kind`` is
+exact/fallback/miss. **A miss is a no-op** (D3): no RPC, Kodi's delay stays
+untouched, and one debug line per distinct consulted chain — never a spam
+stream (``session.miss_announced`` dedupes repeats within an episode).
 
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
@@ -40,7 +43,7 @@ from resources.lib.aom.domain.stream_state import StreamState
 
 
 class OffsetApplier:
-    """Applies the configured offset for the session's current profile."""
+    """Applies the stored offset for the session's current profile."""
 
     def __init__(self, dispatcher, session_tracker, gateway, settings,
                  offsets, *, log_debug, log_warning):
@@ -82,13 +85,24 @@ class OffsetApplier:
                       "audio delay")
             return
 
-        setting_id = profile.setting_id()
-        delay_ms = self._offsets.get(profile)
+        resolution = self._offsets.resolve(profile)
+        if resolution.entry is None:
+            # D3: a miss applies NOTHING — Kodi's delay stays untouched.
+            # One debug line per distinct consulted chain, not per event.
+            if session.miss_announced != resolution.tried:
+                session.miss_announced = resolution.tried
+                self._log(f"AOM_OffsetApplier: no stored offset for "
+                          f"{profile.describe()} (tried "
+                          f"{', '.join(resolution.tried)}); leaving Kodi's "
+                          f"delay untouched")
+            return
 
-        if session.applied == (setting_id, delay_ms):
+        key = resolution.key
+        delay_ms = resolution.entry['delay_ms']
+
+        if session.applied == (key, delay_ms):
             self._log(f"AOM_OffsetApplier: Offset already applied for "
-                      f"{setting_id} at {delay_ms}ms; skipping duplicate "
-                      f"apply")
+                      f"{key} at {delay_ms}ms; skipping duplicate apply")
             return
 
         provisional = session.stream_state is not StreamState.STABLE
@@ -97,49 +111,35 @@ class OffsetApplier:
         # module docstring). Restored on failure so the dedupe guard cannot
         # block the retry.
         previous_applied = session.applied
-        session.applied = (setting_id, delay_ms)
+        session.applied = (key, delay_ms)
         if not self._gateway.set_audio_delay(profile.player_id,
                                              delay_ms / 1000.0):
             session.applied = previous_applied
             self._warn(f"AOM_OffsetApplier: audio delay RPC failed for "
-                       f"{setting_id}; will retry on the next stabilization")
+                       f"{key}; will retry on the next stabilization")
             return
 
-        self._log(f"AOM_OffsetApplier: Applied {delay_ms}ms for {setting_id} "
-                  f"(provisional={provisional}); {session.describe()}")
+        self._log(f"AOM_OffsetApplier: Applied {delay_ms}ms for {key} "
+                  f"(hit={resolution.hit_kind}, provisional={provisional}); "
+                  f"{session.describe()}")
         self._dispatcher.post(events.OffsetApplied(
             session_id=session.session_id, profile=profile, ms=delay_ms,
             provisional=provisional))
 
     def _should_apply(self, profile):
         """Resolve the inputs and log the reason; the decision is the policy's."""
-        # Only read enable_<hdr> for a KNOWN hdr type: 'enable_unknown' is not
-        # a setting, and reading it would emit a spurious settings LOGWARNING
-        # on every apply attempt for an undetected stream (the policy skips
-        # incomplete profiles as 'unknown_format' before hdr_enabled matters,
-        # so False is never the deciding answer here).
-        hdr_enabled = (profile is not None and
-                       policies.is_complete(profile) and
-                       self._settings.is_hdr_enabled(profile.hdr_type))
         allowed, reason = policies.should_apply(
-            profile,
-            new_install=self._settings.is_new_install(),
-            hdr_enabled=hdr_enabled)
+            profile, paused=self._settings.pause_enabled())
         if allowed:
             return True
 
-        if reason == 'new_install':
-            self._log("AOM_OffsetApplier: New install detected. Skipping "
-                      "audio offset application.")
+        if reason == 'paused':
+            self._log("AOM_OffsetApplier: paused; skipping audio offset "
+                      "application")
         elif reason == 'no_profile':
             self._log("AOM_OffsetApplier: No stream profile available; "
                       "skipping offset")
         elif reason == 'unknown_format':
-            self._log(f"AOM_OffsetApplier: Skipping audio offset - Unknown "
-                      f"format detected (HDR: {profile.hdr_type}, "
-                      f"Audio: {profile.audio_format}, "
-                      f"FPS: {profile.fps_type})")
-        elif reason == 'hdr_disabled':
-            self._log(f"AOM_OffsetApplier: HDR type {profile.hdr_type} is "
-                      f"not enabled in settings")
+            self._log(f"AOM_OffsetApplier: Skipping audio offset - profile "
+                      f"incomplete ({profile.describe()})")
         return False

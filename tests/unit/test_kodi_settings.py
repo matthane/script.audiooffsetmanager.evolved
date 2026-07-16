@@ -22,12 +22,11 @@ def _make_settings():
     return settings, logs
 
 
-def _profile(hdr='dolbyvision', fps='all', audio='truehd'):
+def _profile(hdr='dolbyvision', audio='truehd', video_fps=23.976):
     return StreamProfile(
         hdr_type=hdr,
-        fps_type=fps,
         audio_format=audio,
-        video_fps=24,
+        video_fps=video_fps,
         player_id=1,
         audio_channels=8,
     )
@@ -121,7 +120,7 @@ class TestStoreBooleanIfChanged:
         settings._settings.getBool = _Spy(result=True)
         set_spy = _Spy()
         settings._settings.setBool = set_spy
-        assert settings.store_boolean_if_changed('new_install', True) is True
+        assert settings.store_boolean_if_changed('pause_offsets', True) is True
         assert set_spy.calls == []
         assert logs == []
 
@@ -130,22 +129,22 @@ class TestStoreBooleanIfChanged:
         settings._settings.getBool = _Spy(result=False)
         set_spy = _Spy()
         settings._settings.setBool = set_spy
-        assert settings.store_boolean_if_changed('new_install', True) is True
-        assert set_spy.calls == [('new_install', True)]
+        assert settings.store_boolean_if_changed('pause_offsets', True) is True
+        assert set_spy.calls == [('pause_offsets', True)]
         assert len(logs) == 1
         message, level = logs[0]
         assert level == xbmc.LOGDEBUG
-        assert "Storing boolean setting new_install: True" in message
+        assert "Storing boolean setting pause_offsets: True" in message
 
     def test_write_raises_returns_false_and_warns(self):
         settings, logs = _make_settings()
         settings._settings.getBool = _Spy(result=False)
         settings._settings.setBool = _Spy(raises=RuntimeError("no dice"))
-        assert settings.store_boolean_if_changed('new_install', True) is False
+        assert settings.store_boolean_if_changed('pause_offsets', True) is False
         # LOGDEBUG "Storing" then LOGWARNING "Error storing".
         levels = [level for _, level in logs]
         assert levels == [xbmc.LOGDEBUG, xbmc.LOGWARNING]
-        assert "Error storing boolean setting 'new_install'" in logs[-1][0]
+        assert "Error storing boolean setting 'pause_offsets'" in logs[-1][0]
 
     def test_pre_read_raising_falls_through_to_write(self):
         settings, logs = _make_settings()
@@ -154,8 +153,8 @@ class TestStoreBooleanIfChanged:
         settings._settings.getBool = _Spy(raises=RuntimeError("read down"))
         set_spy = _Spy()
         settings._settings.setBool = set_spy
-        assert settings.store_boolean_if_changed('new_install', True) is True
-        assert set_spy.calls == [('new_install', True)]
+        assert settings.store_boolean_if_changed('pause_offsets', True) is True
+        assert set_spy.calls == [('pause_offsets', True)]
 
 
 class TestStoreIntegerIfChanged:
@@ -164,7 +163,7 @@ class TestStoreIntegerIfChanged:
         settings._settings.getInt = _Spy(result=250)
         set_spy = _Spy()
         settings._settings.setInt = set_spy
-        assert settings.store_integer_if_changed('dolbyvision_all_truehd', 250) is True
+        assert settings.store_integer_if_changed('notification_seconds', 250) is True
         assert set_spy.calls == []
         assert logs == []
 
@@ -173,29 +172,29 @@ class TestStoreIntegerIfChanged:
         settings._settings.getInt = _Spy(result=100)
         set_spy = _Spy()
         settings._settings.setInt = set_spy
-        assert settings.store_integer_if_changed('dolbyvision_all_truehd', 250) is True
-        assert set_spy.calls == [('dolbyvision_all_truehd', 250)]
+        assert settings.store_integer_if_changed('notification_seconds', 250) is True
+        assert set_spy.calls == [('notification_seconds', 250)]
         assert len(logs) == 1
         message, level = logs[0]
         assert level == xbmc.LOGDEBUG
-        assert "Storing integer setting dolbyvision_all_truehd: 250" in message
+        assert "Storing integer setting notification_seconds: 250" in message
 
     def test_write_raises_returns_false_and_warns(self):
         settings, logs = _make_settings()
         settings._settings.getInt = _Spy(result=100)
         settings._settings.setInt = _Spy(raises=RuntimeError("no dice"))
-        assert settings.store_integer_if_changed('dolbyvision_all_truehd', 250) is False
+        assert settings.store_integer_if_changed('notification_seconds', 250) is False
         levels = [level for _, level in logs]
         assert levels == [xbmc.LOGDEBUG, xbmc.LOGWARNING]
-        assert "Error storing integer setting 'dolbyvision_all_truehd'" in logs[-1][0]
+        assert "Error storing integer setting 'notification_seconds'" in logs[-1][0]
 
     def test_pre_read_raising_falls_through_to_write(self):
         settings, logs = _make_settings()
         settings._settings.getInt = _Spy(raises=RuntimeError("read down"))
         set_spy = _Spy()
         settings._settings.setInt = set_spy
-        assert settings.store_integer_if_changed('dolbyvision_all_truehd', 250) is True
-        assert set_spy.calls == [('dolbyvision_all_truehd', 250)]
+        assert settings.store_integer_if_changed('notification_seconds', 250) is True
+        assert set_spy.calls == [('notification_seconds', 250)]
 
 
 # --- intent-level reads ------------------------------------------------------
@@ -211,23 +210,32 @@ class TestIntentReads:
         settings.get_int = spy
         return spy
 
-    def test_is_hdr_enabled(self):
+    def test_per_fps_offsets_enabled(self):
         settings, _ = _make_settings()
         spy = self._spy_bool(settings)
-        assert settings.is_hdr_enabled('dolbyvision') is True
-        assert spy.calls == [('enable_dolbyvision',)]
+        assert settings.per_fps_offsets_enabled() is True
+        assert spy.calls == [('per_fps_offsets',)]
 
-    def test_fps_override_enabled(self):
+    def test_pause_enabled(self):
         settings, _ = _make_settings()
         spy = self._spy_bool(settings)
-        assert settings.fps_override_enabled('hdr10') is True
-        assert spy.calls == [('enable_fps_hdr10',)]
+        assert settings.pause_enabled() is True
+        assert spy.calls == [('pause_offsets',)]
 
-    def test_active_monitoring_enabled(self):
+    def test_remember_adjustments_defaults_on(self):
         settings, _ = _make_settings()
-        spy = self._spy_bool(settings)
-        assert settings.active_monitoring_enabled() is True
-        assert spy.calls == [('enable_active_monitoring',)]
+        spy = _Spy(result=False)
+        settings.get_bool = spy
+        assert settings.remember_adjustments_enabled() is False
+        # Learning is the product: the read passes default=True so an
+        # unreadable setting NEVER silently disables the learn loop.
+        assert spy.calls == [('remember_adjustments', True)]
+
+    def test_classic_gate_reads_are_gone(self):
+        settings, _ = _make_settings()
+        for dead in ('is_hdr_enabled', 'fps_override_enabled',
+                     'active_monitoring_enabled', 'is_new_install'):
+            assert not hasattr(settings, dead)
 
     def test_notifications_enabled(self):
         settings, _ = _make_settings()
@@ -240,12 +248,6 @@ class TestIntentReads:
         spy = self._spy_bool(settings)
         assert settings.debug_logging_enabled() is True
         assert spy.calls == [('enable_debug_logging',)]
-
-    def test_is_new_install(self):
-        settings, _ = _make_settings()
-        spy = self._spy_bool(settings)
-        assert settings.is_new_install() is True
-        assert spy.calls == [('new_install',)]
 
     def test_seek_back_config_maps_ids(self):
         settings, _ = _make_settings()
@@ -272,25 +274,65 @@ class TestIntentReads:
         assert settings.get_int.calls == [('notification_seconds',)]
 
 
-# --- OffsetTable -------------------------------------------------------------
+# --- OffsetTable (the store adapter) ------------------------------------------
+
+class _ToggleSettings:
+    """Just the per_fps read the adapter consults — flipped between calls to
+    prove keys are composed at CALL TIME, never captured."""
+
+    def __init__(self, per_fps=False):
+        self.per_fps = per_fps
+
+    def per_fps_offsets_enabled(self):
+        return self.per_fps
+
+
+def _make_table(tmp_path, per_fps=False):
+    from resources.lib.aom.store.offset_store import OffsetStore
+    store = OffsetStore(str(tmp_path / "offsets.json"))
+    store.load()
+    return OffsetTable(store, _ToggleSettings(per_fps)), store
+
 
 class TestOffsetTable:
-    def test_get_derives_setting_id_at_call_time(self):
-        settings, _ = _make_settings()
-        get_int = _Spy(result=175)
-        settings.get_int = get_int
-        table = OffsetTable(settings)
-        profile = _profile(hdr='hdr10', fps='all', audio='eac3')
-        assert table.get(profile) == 175
-        assert get_int.calls == [(profile.setting_id(),)]
-        assert get_int.calls == [('hdr10_all_eac3',)]
+    def test_store_writes_the_d4_key_with_fps_metadata(self, tmp_path):
+        table, store = _make_table(tmp_path, per_fps=True)
+        profile = _profile(hdr='hdr10', audio='eac3', video_fps=23.976)
+        assert table.store(profile, -115) == 'hdr10|23|eac3'
+        entry = store.get('hdr10|23|eac3')
+        assert entry['delay_ms'] == -115           # verbatim
+        assert entry['video_fps'] == 23.976        # management-view metadata
 
-    def test_store_derives_setting_id_at_call_time(self):
-        settings, _ = _make_settings()
-        store = _Spy(result=True)
-        settings.store_integer_if_changed = store
-        table = OffsetTable(settings)
-        profile = _profile(hdr='sdr', fps='all', audio='ac3')
-        assert table.store(profile, 120) is True
-        assert store.calls == [(profile.setting_id(), 120)]
-        assert store.calls == [('sdr_all_ac3', 120)]
+    def test_resolve_walks_the_chain_and_reports_hit_kind(self, tmp_path):
+        table, store = _make_table(tmp_path, per_fps=True)
+        store.set('hdr10|all|eac3', 100)
+        got = table.resolve(_profile(hdr='hdr10', audio='eac3',
+                                     video_fps=60.0))
+        assert got.entry['delay_ms'] == 100
+        assert got.hit_kind == 'fallback'
+        assert got.tried == ('hdr10|60|eac3', 'hdr10|all|eac3')
+
+    def test_keys_are_composed_at_call_time_from_the_live_toggle(self, tmp_path):
+        # Freshness doctrine: the SAME profile writes different keys as the
+        # toggle changes between calls — nothing is captured.
+        table, store = _make_table(tmp_path, per_fps=False)
+        profile = _profile(hdr='sdr', audio='ac3', video_fps=50.0)
+        assert table.store(profile, 25) == 'sdr|all|ac3'
+        table._settings.per_fps = True
+        assert table.store(profile, 40) == 'sdr|50|ac3'
+        assert store.get('sdr|all|ac3')['delay_ms'] == 25   # untouched
+
+    def test_miss_resolution_is_a_no_entry_answer(self, tmp_path):
+        table, _store = _make_table(tmp_path)
+        got = table.resolve(_profile())
+        assert (got.entry, got.hit_kind, got.key) == (None, 'miss', None)
+
+    def test_write_key_is_none_when_uncomposable(self, tmp_path):
+        table, _store = _make_table(tmp_path, per_fps=True)
+        assert table.write_key(_profile(video_fps=None)) is None
+
+    def test_get_at_reads_exact_keys_only(self, tmp_path):
+        table, store = _make_table(tmp_path, per_fps=True)
+        store.set('hdr10|all|eac3', 100)
+        assert table.get_at('hdr10|all|eac3')['delay_ms'] == 100
+        assert table.get_at('hdr10|23|eac3') is None  # no fallback here

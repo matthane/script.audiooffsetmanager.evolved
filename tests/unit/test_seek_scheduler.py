@@ -57,9 +57,9 @@ def make_profile(player_id=1):
     # A complete DV/TrueHD profile — only player_id is load-bearing here (the
     # scheduler reads profile.player_id when executing), the rest is realistic
     # filler so the frozen dataclass is valid.
-    return StreamProfile(hdr_type='dolbyvision', fps_type='all',
-                         audio_format='truehd', video_fps=23,
-                         player_id=player_id, audio_channels=8)
+    return StreamProfile(hdr_type='dolbyvision', audio_format='truehd',
+                         video_fps=23.976, player_id=player_id,
+                         audio_channels=8)
 
 
 class Rig:

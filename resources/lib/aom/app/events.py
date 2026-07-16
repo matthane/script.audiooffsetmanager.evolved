@@ -149,10 +149,14 @@ class UserOffsetSaved:
     between post and dispatch makes the event inert instead of targeting
     the new session — the legacy USER_ADJUSTMENT bus wire carried no
     payload and no stamp, leaving both races open (P5 review finding).
+
+    ``key`` is the store key the value landed under, resolved by the D4
+    rule at store instant — consumers log/announce exactly what was stored.
     """
     session_id: int
     profile: object  # StreamProfile
     ms: int
+    key: str = None
 
 
 # --- Seek scheduling events --------------------------------------------------

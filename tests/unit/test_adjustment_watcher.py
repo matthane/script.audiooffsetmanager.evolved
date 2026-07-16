@@ -4,8 +4,14 @@ Driven exactly like test_seek_scheduler / test_stream_detector: a FakeClock
 plus manually pumped Dispatcher, a real SessionTracker (subscribed FIRST so
 the watcher always sees a live session), a scriptable FakeGateway (the audio
 delay is set via ``gateway.infolabels['Player.AudioDelay']``), the shared
-FakeFacade (eligibility reads) + FakeOffsetTable (offset get/store), and a
-real AdjustmentWatcher. UserOffsetSaved posts are collected off the bus.
+FakeFacade (eligibility reads) + FakeOffsetTable (the store adapter fake),
+and a real AdjustmentWatcher. UserOffsetSaved posts are collected off the bus.
+
+E2: stores land in the sparse store under the D4 write key (derived at store
+instant from the live profile + per_fps toggle); eligibility is
+remember-adjustments + not-paused (the classic per-HDR/unknown-axis gates
+died with their features); the settings-dialog store deferral is DELETED —
+offsets are not settings, so the dialog cannot clobber them.
 
 Timing facts the tests rely on (all derived from the class constants):
 
@@ -42,13 +48,17 @@ AUDIO_DELAY = AdjustmentWatcher.INFOLABEL_AUDIO_DELAY
 # the tick that crosses the quiescence threshold).
 QUIESCENCE_STEPS = int(round(QUIET / ACTIVE))
 
+# The D4 write keys for the default rig (per_fps False -> the all level).
+KEY_A = 'dolbyvision|all|truehd'
+KEY_B = 'hdr10|all|eac3'
 
-def make_profile(hdr_type='dolbyvision', fps_type='all', audio_format='truehd',
-                 player_id=1):
-    """A complete, eligible profile by default (keys dolbyvision_all_truehd)."""
-    return StreamProfile(hdr_type=hdr_type, fps_type=fps_type,
-                         audio_format=audio_format, video_fps=23,
-                         player_id=player_id, audio_channels=8)
+
+def make_profile(hdr_type='dolbyvision', audio_format='truehd',
+                 video_fps=23.976, player_id=1):
+    """A complete, eligible profile (writes dolbyvision|all|truehd)."""
+    return StreamProfile(hdr_type=hdr_type, audio_format=audio_format,
+                         video_fps=video_fps, player_id=player_id,
+                         audio_channels=8)
 
 
 class Rig:
@@ -147,7 +157,7 @@ class TestBaselineAdoption:
         # Our own applied value echoing back through the infolabel is never a
         # user adjustment: baseline tracks it, nothing is stored.
         profile = make_profile()
-        rig.start(profile, applied=(profile.setting_id(), -125))
+        rig.start(profile, applied=(KEY_A, -125))
         rig.set_delay('-0.125 s')
         rig.arm()
 
@@ -195,20 +205,21 @@ class TestQuiescence:
 
         rig.hold_to_quiescence()                       # holds >= QUIET
 
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
         saved = rig.saved[0]
         assert saved.session_id == rig.session.session_id
         assert saved.profile == profile
         assert saved.ms == -50
-        assert rig.session.applied == (profile.setting_id(), -50)
+        assert saved.key == KEY_A                      # the resolved D4 key
+        assert rig.session.applied == (KEY_A, -50)
         assert rig.session.watch_baseline_ms == -50
         assert rig.session.watch_pending is None
 
         # Further idle ticks (now a self-echo of the stored value) do nothing.
         rig.advance(IDLE)
         rig.advance(IDLE)
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
 
     def test_adjust_back_before_quiescence_stores_nothing(self, rig):
@@ -245,17 +256,16 @@ class TestQuiescence:
 
         rig.hold_to_quiescence()                       # -50 now holds >= QUIET
 
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_A, -50)]
         assert [s.ms for s in rig.saved] == [-50]
 
     def test_store_lands_under_the_current_profile(self, rig):
         # Pending opens under profile A; profile is replaced with B before
         # quiescence completes. The store and event carry B's key/profile —
-        # the setting id is derived FRESH at store time on the dispatcher
+        # the write key is derived FRESH at store time on the dispatcher
         # thread (closing the legacy adopt-vs-store interleaving).
         profile_a = make_profile(hdr_type='dolbyvision', audio_format='truehd')
         profile_b = make_profile(hdr_type='hdr10', audio_format='eac3')
-        assert profile_a.setting_id() != profile_b.setting_id()
 
         rig.begin(profile_a, baseline_delay='0.000 s')
         rig.observe_foreign('-0.050 s')                # pending under A
@@ -263,10 +273,25 @@ class TestQuiescence:
 
         rig.hold_to_quiescence()
 
-        assert rig.offset_table.stored == [(profile_b.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_B, -50)]
         assert len(rig.saved) == 1
         assert rig.saved[0].profile == profile_b
         assert rig.saved[0].ms == -50
+        assert rig.saved[0].key == KEY_B
+
+    def test_write_key_follows_the_live_per_fps_toggle(self, rig):
+        # D4: the key is derived at STORE INSTANT from profile + toggle. A
+        # toggle flipped mid-observation writes the specific key, not the
+        # all key that was in force when the pending opened.
+        profile = make_profile(video_fps=23.976)
+        rig.begin(profile, baseline_delay='0.000 s')
+
+        rig.observe_foreign('-0.050 s')                # pending under all-key world
+        rig.offset_table.per_fps = True                # toggle flips mid-wait
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == [('dolbyvision|23|truehd', -50)]
+        assert rig.saved[0].key == 'dolbyvision|23|truehd'
 
     def test_our_own_apply_during_pending_is_self_echo(self, rig):
         # A foreign value is pending; then session.applied catches up to that
@@ -277,7 +302,7 @@ class TestQuiescence:
         rig.observe_foreign('-0.050 s')
         assert rig.session.watch_pending is not None
 
-        rig.session.applied = (profile.setting_id(), -50)
+        rig.session.applied = (KEY_A, -50)
         rig.advance(ACTIVE)
 
         assert rig.offset_table.stored == []
@@ -286,10 +311,10 @@ class TestQuiescence:
         assert rig.session.watch_baseline_ms == -50
 
     def test_observed_equals_already_stored_value_stores_nothing(self, rig):
-        # The user dials to a value that is ALREADY the stored offset: no store
-        # call, no event — baseline simply adopts it (get_offset_ms short-cut).
+        # The user dials to a value that is ALREADY stored at the write key:
+        # no store call, no event — baseline simply adopts it.
         profile = make_profile()
-        rig.offset_table.offsets[profile.setting_id()] = -50
+        rig.offset_table.offsets[KEY_A] = -50
         rig.begin(profile, baseline_delay='0.000 s')
 
         rig.observe_foreign('-0.050 s')
@@ -299,20 +324,37 @@ class TestQuiescence:
         assert rig.saved == []
         assert rig.session.watch_baseline_ms == -50
 
+    def test_fallback_valued_nudge_writes_the_specific_key(self, rig):
+        # per_fps ON, only the all-level taught: the user dials to a NEW value
+        # while playing 60fps — the write lands on the SPECIFIC key (D4),
+        # leaving the all entry untouched (the §3.2 worked flow).
+        rig.offset_table.per_fps = True
+        rig.offset_table.offsets['dolbyvision|all|truehd'] = -125
+        profile = make_profile(video_fps=60.0)
+        rig.begin(profile, baseline_delay='-0.125 s',
+                  applied=('dolbyvision|all|truehd', -125))
+
+        rig.observe_foreign('-0.100 s')
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == [('dolbyvision|60|truehd', -100)]
+        assert rig.offset_table.offsets['dolbyvision|all|truehd'] == -125
+
 
 # ============================================================================
-# Store-path edge cases: incomplete profile, store failure
+# Store-path edge cases: incomplete profile, store failure, teardown phantom
 # ============================================================================
 
 class TestStorePathGuards:
 
     def test_incomplete_profile_at_store_time_stores_nothing(self, rig):
-        # hdr + fps known (so still eligible) but audio unknown: the store path
-        # re-validates the WHOLE profile, refuses to persist an incomplete key,
-        # and adopts the value into the baseline so it stops being chased.
+        # Watched (eligibility no longer axis-gates) but audio unknown: the
+        # store path re-validates the WHOLE profile, refuses to persist an
+        # incomplete key, and adopts the value into the baseline so it stops
+        # being chased.
         profile = make_profile(audio_format='unknown')
         rig.begin(profile, baseline_delay='0.000 s')
-        assert rig.watching                            # eligible on hdr+fps
+        assert rig.watching                            # watched regardless
 
         rig.observe_foreign('-0.050 s')
         rig.hold_to_quiescence()
@@ -321,26 +363,31 @@ class TestStorePathGuards:
         assert rig.saved == []
         assert rig.session.watch_baseline_ms == -50
 
-    def test_store_deferred_while_settings_dialog_open(self, rig):
-        # Settings-state doctrine: a write made while the addon settings
-        # dialog is open is clobbered by its save-on-close. The quiesced
-        # candidate is held (active cadence) until the dialog closes, then
-        # stored exactly once.
+    def test_missing_fps_at_store_time_stores_nothing(self, rig):
+        # Same guard for the fps axis (completeness requires a parsed rate).
+        profile = make_profile(video_fps=None)
+        rig.begin(profile, baseline_delay='0.000 s')
+
+        rig.observe_foreign('-0.050 s')
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == []
+        assert rig.saved == []
+        assert rig.session.watch_baseline_ms == -50
+
+    def test_store_proceeds_with_settings_dialog_open(self, rig):
+        # DELIBERATE behavior change from classic: offsets live in the store
+        # file, not settings.xml, so the settings dialog's save-on-close
+        # cannot clobber them — there is nothing to defer for (P4: the
+        # hazard class is deleted, not managed).
         profile = make_profile()
         rig.begin(profile, baseline_delay='0.000 s')
 
         rig.gateway.settings_dialog = True
         rig.observe_foreign('-0.050 s')
-        rig.hold_to_quiescence()                       # quiesced, but deferred
-        rig.advance(ACTIVE)                            # keeps deferring
-        assert rig.offset_table.stored == []
-        assert rig.saved == []
-        assert rig.watching                            # chain alive, retrying
-        assert rig.logged('settings dialog open')
+        rig.hold_to_quiescence()
 
-        rig.gateway.settings_dialog = False            # dialog closed
-        rig.advance(ACTIVE)                            # next attempt stores
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
 
     def test_player_gone_at_store_time_discards_the_observation(self, rig):
@@ -388,7 +435,7 @@ class TestStorePathGuards:
         rig.observe_foreign('-0.050 s')                # re-opens pending on -50
         rig.hold_to_quiescence()
 
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
+        assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
 
 
@@ -403,21 +450,39 @@ class TestEligibilityAndChain:
         rig.begin(profile, baseline_delay='0.000 s')
         assert rig.watching
 
-        # Disable monitoring + SettingsChanged -> the chain is cancelled.
-        rig.facade.active_monitoring = False
+        # Disable learning + SettingsChanged -> the chain is cancelled.
+        rig.facade.remember_adjustments = False
         rig.post(events.SettingsChanged())
         assert not rig.watching
 
         # Re-enable + SettingsChanged -> the chain resumes.
-        rig.facade.active_monitoring = True
+        rig.facade.remember_adjustments = True
         rig.post(events.SettingsChanged())
         assert rig.watching
 
-        # A due tick that finds monitoring disabled reschedules NOTHING.
-        rig.facade.active_monitoring = False
+        # A due tick that finds learning disabled reschedules NOTHING.
+        rig.facade.remember_adjustments = False
         rig.advance(IDLE)                              # the pending tick fires
         assert not rig.watching
         assert rig.logged('no longer eligible')
+
+    def test_paused_is_not_watched(self, rig):
+        # The global pause (D9) stops learning too: a paused addon must not
+        # write store entries behind the user's back.
+        profile = make_profile()
+        rig.facade.paused = True
+        rig.start(profile)
+        rig.set_delay('-0.050 s')
+        rig.arm()
+        assert not rig.watching
+
+    def test_incomplete_profile_is_still_watched(self, rig):
+        # Eligibility no longer axis-gates: an audio-unknown stream is
+        # watched (classic parity) — the STORE path refuses persistence.
+        rig.start(make_profile(audio_format='unknown'))
+        rig.set_delay('-0.050 s')
+        rig.arm()
+        assert rig.watching
 
     def test_profile_adoption_clears_the_observation(self, rig):
         # A (re)adoption makes any in-flight candidate ambiguous: the pending
@@ -446,19 +511,19 @@ class TestEligibilityAndChain:
 
     def test_baseline_cleared_when_watching_stops(self, rig):
         # Only a change observed WHILE watching is an adjustment: a delay
-        # changed during a monitoring-disabled gap must be re-adopted as the
+        # changed during a learning-disabled gap must be re-adopted as the
         # baseline on re-enable, never stored against the stale baseline
         # (fresh-state parity with a restarted legacy monitor).
         profile = make_profile()
         rig.begin(profile, baseline_delay='0.000 s')
         assert rig.session.watch_baseline_ms == 0
 
-        rig.facade.active_monitoring = False
+        rig.facade.remember_adjustments = False
         rig.post(events.SettingsChanged())             # chain stops
         assert rig.session.watch_baseline_ms is None   # observation state gone
 
         rig.set_delay('-0.080 s')                      # changed while not watching
-        rig.facade.active_monitoring = True
+        rig.facade.remember_adjustments = True
         rig.post(events.SettingsChanged())             # chain resumes
         rig.advance(IDLE)                              # first tick re-adopts
         assert rig.session.watch_baseline_ms == -80
@@ -468,27 +533,7 @@ class TestEligibilityAndChain:
         # A change observed while watching still stores normally.
         rig.observe_foreign('-0.050 s')
         rig.hold_to_quiescence()
-        assert rig.offset_table.stored == [(profile.setting_id(), -50)]
-
-    def test_hdr_disabled_profile_is_not_watched(self, rig):
-        profile = make_profile()
-        rig.facade.hdr_enabled = False
-        rig.start(profile)
-        rig.set_delay('-0.050 s')
-        rig.arm()                                      # ProfileChanged -> evaluate
-        assert not rig.watching
-
-    def test_unknown_hdr_or_fps_is_not_watched(self, rig):
-        # Partial-unknown eligibility: hdr/fps unknown block the watch (audio
-        # unknown does NOT — covered by the incomplete-profile store test).
-        rig.start(make_profile(hdr_type='unknown'))
-        rig.set_delay('-0.050 s')
-        rig.arm()
-        assert not rig.watching
-
-        rig.session.profile = make_profile(fps_type='unknown')
-        rig.post(events.SettingsChanged())
-        assert not rig.watching
+        assert rig.offset_table.stored == [(KEY_A, -50)]
 
     def test_unparseable_infolabel_is_tolerated(self, rig):
         # An empty/garbled audio-delay reading keeps the chain alive (retry on

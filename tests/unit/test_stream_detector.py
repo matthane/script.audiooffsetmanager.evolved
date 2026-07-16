@@ -47,17 +47,12 @@ COMPLETE_INFOLABELS = {
 
 def derive(raw_codec='truehd', raw_channels=8, raw_fps='23.976',
            raw_hdr='dolbyvision', raw_hdr_fallback='', raw_gamut='',
-           fps_override=lambda hdr: False, player_id=1):
-    """Call derive_stream_facts with readable defaults (a complete DV stream).
-
-    ``fps_override`` is the ``hdr_type -> bool`` callable the real facade
-    supplies; the default returns False, which collapses the fps bucket to
-    'all' exactly as the production settings default does.
-    """
+           player_id=1):
+    """Call derive_stream_facts with readable defaults (a complete DV stream)."""
     return derive_stream_facts(
         player_id=player_id, raw_codec=raw_codec, raw_channels=raw_channels,
         raw_fps=raw_fps, raw_hdr=raw_hdr, raw_hdr_fallback=raw_hdr_fallback,
-        raw_gamut=raw_gamut, fps_override_enabled=fps_override)
+        raw_gamut=raw_gamut)
 
 
 # --- orchestration rig -------------------------------------------------------
@@ -71,7 +66,7 @@ class Rig:
     irrelevant to it.
     """
 
-    def __init__(self, fps_override=False):
+    def __init__(self, per_fps=False):
         self.clock = FakeClock()
         self.errors = []
         self.warnings = []
@@ -82,7 +77,7 @@ class Rig:
         # session on PlaybackStarted (dispatch follows subscription order).
         self.tracker = SessionTracker(self.dispatcher)
         self.gateway = FakeGateway(infolabels=dict(COMPLETE_INFOLABELS))
-        self.facade = FakeFacade(fps_override=fps_override)
+        self.facade = FakeFacade(per_fps=per_fps)
         self.detector = StreamDetector(
             self.dispatcher, self.tracker, self.gateway, self.facade,
             log_debug=self.debug.append, log_warning=self.warnings.append,
@@ -156,13 +151,24 @@ class TestDeriveStreamFacts:
         assert facts.platform_hdr_full is False
 
     def test_hdr_string_normalization(self):
-        # Space strip + lower + the 'hlghdr' -> 'hlg' mapping.
-        assert derive(raw_hdr='HLG HDR').profile.hdr_type == 'hlg'
-        # '+' is rewritten to 'plus' before vocabulary lookup.
-        assert derive(raw_hdr='HDR10+').profile.hdr_type == 'hdr10plus'
+        # Case-fold + trim + the one proven 'hlghdr' -> 'hlg' alias.
+        assert derive(raw_hdr='HLGHDR').profile.hdr_type == 'hlg'
+        assert derive(raw_hdr='  HLG  ').profile.hdr_type == 'hlg'
+        # Verbatim acceptance: the '+' SURVIVES into the key segment (the
+        # 'plus' rewrite was settings-id scaffolding, deleted with it).
+        assert derive(raw_hdr='HDR10+').profile.hdr_type == 'hdr10+'
 
-    def test_unrecognized_hdr_is_unknown(self):
-        assert derive(raw_hdr='banana').profile.hdr_type == formats.UNKNOWN
+    def test_unrecognized_hdr_keys_verbatim(self):
+        # No whitelist: an HDR string the code never heard of is learnable.
+        assert derive(raw_hdr='banana').profile.hdr_type == 'banana'
+
+    def test_absent_hdr_variants_default_to_sdr(self):
+        # ''/'none'/'unknown' all mean "nothing reported" — one absence rule
+        # — and the chain-of-evidence default is sdr, never a phantom key.
+        for absent in ('', 'none', 'unknown', 'NONE'):
+            facts = derive(raw_hdr=absent, raw_hdr_fallback='')
+            assert facts.profile.hdr_type == 'sdr'
+            assert facts.hdr_source == 'default-sdr'
 
     def test_hlg_via_gamut(self):
         # HDR resolves SDR, but a valid gamut containing 'hlg' rewrites it to
@@ -179,48 +185,30 @@ class TestDeriveStreamFacts:
         assert b.advanced_hlg is False
         assert b.gamut_info == 'not available'
 
-    def test_fps_bucketing_and_video_fps(self):
-        keep = lambda hdr: True  # keep the detected bucket (no 'all' collapse)
-        assert derive(raw_fps='23.976', fps_override=keep).profile.fps_type == 23
-        assert derive(raw_fps='60', fps_override=keep).profile.fps_type == 60
+    def test_fps_is_the_exact_parsed_rate(self):
+        # No buckets, no collapse: the profile carries the exact reported
+        # rate (truncation to the key axis happens in fps_int()/the store).
+        assert derive(raw_fps='23.976').profile.video_fps == 23.976
+        assert derive(raw_fps='23.976').profile.fps_int() == 23
+        assert derive(raw_fps='60').profile.video_fps == 60.0
+        # Open-ended: 48 is a first-class rate, not an 'unknown' reject.
+        assert derive(raw_fps='48').profile.fps_int() == 48
 
-        # Unparseable -> 'unknown' bucket AND video_fps None.
+        # Unparseable -> None (blocks completeness downstream).
         for bad in ('', 'x'):
-            facts = derive(raw_fps=bad, fps_override=keep)
-            assert facts.profile.fps_type == formats.UNKNOWN
+            facts = derive(raw_fps=bad)
             assert facts.profile.video_fps is None
+            assert facts.profile.fps_int() is None
 
-        # Parseable but not a defined bucket -> 'unknown' bucket, but the raw
-        # integer is still carried on video_fps.
-        facts = derive(raw_fps='48', fps_override=keep)
-        assert facts.profile.fps_type == formats.UNKNOWN
-        assert facts.profile.video_fps == 48
-
-        # video_fps mirrors the parsed int even for a valid bucket.
-        assert derive(raw_fps='23.976', fps_override=keep).profile.video_fps == 23
-
-    def test_fps_override_collapse_and_unknown_hdr_skips_override(self):
-        # Override OFF -> the specific bucket collapses to 'all'; the raw
-        # video_fps is preserved regardless.
-        off = derive(raw_fps='23.976', fps_override=lambda hdr: False).profile
-        assert off.fps_type == formats.FPS_ALL
-        assert off.video_fps == 23
-        # Override ON -> the bucket is preserved.
-        on = derive(raw_fps='23.976', fps_override=lambda hdr: True).profile
-        assert on.fps_type == 23
-
-        # HDR unknown short-circuits the collapse condition, so the override
-        # callable is never consulted and the detected bucket is left as-is.
-        consulted = []
-
-        def spy(hdr):
-            consulted.append(hdr)
-            return False
-
-        facts = derive(raw_hdr='banana', raw_fps='23.976', fps_override=spy)
-        assert facts.profile.hdr_type == formats.UNKNOWN
-        assert consulted == []               # not consulted for unknown HDR
-        assert facts.profile.fps_type == 23  # detected bucket kept (no collapse)
+    def test_open_audio_keys_verbatim(self):
+        # The whitelist and its substring matching are gone: what Kodi
+        # reports is the segment, absence collapses to 'unknown'.
+        assert derive(raw_codec='aac').profile.audio_format == 'aac'
+        assert derive(raw_codec='PCM_S24LE').profile.audio_format == 'pcm_s24le'
+        assert derive(raw_codec='eac3').profile.audio_format == 'eac3'
+        for absent in ('', 'none', 'unknown'):
+            assert derive(raw_codec=absent).profile.audio_format == \
+                formats.UNKNOWN
 
 
 # ============================================================================
@@ -234,7 +222,7 @@ class TestDiscovery:
         session = rig.session
         # Probe #1 completed at once: profile written, STARTING -> STABILIZING,
         # both ProfileChanged and StreamProbed posted.
-        assert session.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert session.profile.describe() == 'dolbyvision|23|truehd'
         assert session.stream_state is StreamState.STABILIZING
         assert len(rig.profiles) == 1
         assert rig.profiles[0].session_id == session.session_id
@@ -264,7 +252,7 @@ class TestDiscovery:
         rig.gateway.codec = 'truehd'         # negotiation finishes
         rig.advance(0.5)                     # probe #3: resolves -> adopt
         assert len(rig.profiles) == 1
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
         assert rig.session.stream_state is StreamState.STABILIZING
         assert rig.errors == []
 
@@ -298,7 +286,7 @@ class TestDiscovery:
         rig.gateway.codec = 'truehd'
         rig.advance(0.5)
         assert len(rig.profiles) == 1
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
         assert rig.session.stream_state is StreamState.STABILIZING
         assert rig.errors == []
 
@@ -329,7 +317,7 @@ class TestDiscovery:
         # The NEW session's own chain still proceeds to adoption.
         rig.advance(0.5)
         assert len(rig.profiles) == 1
-        assert second.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert second.profile.describe() == 'dolbyvision|23|truehd'
         assert rig.errors == []
 
     def test_playback_stopped_cancels_pending_probes(self, rig):
@@ -399,7 +387,7 @@ class TestChangeDetection:
         # 'adjust' seek-back must not be skipped for it.
         assert rig.stabilized[0].initial is True
         assert rig.stabilized[1].initial is False
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
         assert rig.errors == []
 
     def test_av_change_during_discovery_is_ignored(self, rig):
@@ -434,7 +422,7 @@ class TestVerificationRecovery:
         rig.start()
         rig.advance(1.0)
         assert rig.session.stream_state is StreamState.STABLE
-        original_setting = rig.session.profile.setting_id()
+        original_setting = rig.session.profile.describe()
 
         rig.gateway.codec = 'none'           # codec blip: profile goes incomplete
         rig.av_changed()
@@ -445,7 +433,7 @@ class TestVerificationRecovery:
         rig.gateway.codec = 'truehd'         # reverts before the window fires
         rig.advance(1.0)
         assert rig.session.stream_state is StreamState.STABLE
-        assert rig.session.profile.setting_id() == original_setting
+        assert rig.session.profile.describe() == original_setting
         assert len(rig.profiles) == 1        # never re-adopted -> no stranding
         assert len(rig.stabilized) == 2
         # The re-confirmation announces NO change (no adoption in between):
@@ -460,7 +448,7 @@ class TestVerificationRecovery:
         assert rig.errors == []
 
     def test_incidental_field_wiggle_still_stabilizes(self, rig):
-        # Stability is judged on the OFFSET-RELEVANT identity (setting_id
+        # Stability is judged on the OFFSET-RELEVANT identity (stream_identity
         # axes), not raw dataclass equality: a channel count that flickers
         # between gathers (passthrough sync) must not strand the session in
         # a perpetual re-adopt loop — it stabilizes, and the fresher
@@ -489,12 +477,12 @@ class TestVerificationRecovery:
         # fires -> verify re-adopts B (second ProfileChanged), STILL verifying;
         # the next verify settles B.
         rig.start()
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
         assert len(rig.profiles) == 1
 
         rig.gateway.codec = 'eac3'           # A -> B before the 1s verify
         rig.advance(1.0)
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
         assert len(rig.profiles) == 2        # re-adopted
         assert rig.session.stream_state is StreamState.STABILIZING  # still verifying
         assert rig.stabilized == []
@@ -522,19 +510,19 @@ class TestOrderingAndGuards:
         rig.advance(1.0)
         assert observed == [StreamState.STABLE]
 
-    def test_setting_id_tracks_current_gateway_after_each_adoption(self, rig):
-        # Sole-writer + freshness: every adoption derives setting_id() from the
+    def test_profile_tracks_current_gateway_after_each_adoption(self, rig):
+        # Sole-writer + freshness: every adoption derives the profile from the
         # gateway's CURRENT readings, never a carried-over profile.
         rig.start()
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
 
         rig.gateway.codec = 'eac3'
         rig.av_changed()
-        assert rig.session.profile.setting_id() == 'dolbyvision_all_eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
 
         rig.gateway.infolabels[INFOLABEL_HDR] = 'hdr10'
         rig.av_changed()
-        assert rig.session.profile.setting_id() == 'hdr10_all_eac3'
+        assert rig.session.profile.describe() == 'hdr10|23|eac3'
         assert rig.errors == []
 
     def test_stale_verify_for_dead_session_is_dropped(self, rig):

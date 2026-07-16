@@ -7,6 +7,11 @@ OffsetApplied posts are collected off the bus.
 
 The applied-before-RPC ordering contract also has cross-component pins in
 test_session_flow.py; here it is asserted directly at the gateway boundary.
+
+E2: the applier resolves through the sparse-store adapter — hit/fallback
+apply, MISS IS A NO-OP (D3: Kodi's delay untouched, one debug line per
+distinct consulted chain), and the classic new_install/per-HDR gates are
+replaced by the single global pause (D9).
 """
 
 import pytest
@@ -16,29 +21,26 @@ from resources.lib.aom.app.dispatcher import Dispatcher
 from resources.lib.aom.app.offset_applier import OffsetApplier
 from resources.lib.aom.app.session import SessionTracker
 from resources.lib.aom.domain.profile import StreamProfile
-from resources.lib.aom.domain.stream_state import StreamState
 from tests.fakes import FakeClock, FakeGateway, FakeOffsetTable
 
+ALL_KEY = 'dolbyvision|all|truehd'
 
-def make_profile(hdr_type='dolbyvision', fps_type='all', audio_format='truehd',
-                 player_id=1):
-    return StreamProfile(hdr_type=hdr_type, fps_type=fps_type,
-                         audio_format=audio_format, video_fps=23,
-                         player_id=player_id, audio_channels=8)
+
+def make_profile(hdr_type='dolbyvision', audio_format='truehd',
+                 video_fps=23.976, player_id=1):
+    return StreamProfile(hdr_type=hdr_type, audio_format=audio_format,
+                         video_fps=video_fps, player_id=player_id,
+                         audio_channels=8)
 
 
 class FakeSettings:
-    """The applier's settings read surface: gating inputs only."""
+    """The applier's settings read surface: the global pause only."""
 
     def __init__(self):
-        self.new_install = False
-        self.hdr_enabled = True
+        self.paused = False
 
-    def is_new_install(self):
-        return self.new_install
-
-    def is_hdr_enabled(self, hdr_type):
-        return self.hdr_enabled
+    def pause_enabled(self):
+        return self.paused
 
 
 class Rig:
@@ -70,13 +72,14 @@ class Rig:
     def session(self):
         return self.tracker.current
 
-    def start(self, profile, offset_ms=-125):
+    def start(self, profile, offset_ms=-125, key=ALL_KEY):
         """Session with a hand-set profile (the detector isn't in the rig)."""
         self.post(events.PlaybackStarted())
         session = self.session
         session.profile = profile
         session.mark_profile_built()        # STARTING -> STABILIZING
-        self.offsets.offsets[profile.setting_id()] = offset_ms
+        if offset_ms is not None:
+            self.offsets.offsets[key] = offset_ms
         return session
 
     def profile_changed(self):
@@ -100,7 +103,7 @@ class TestApplyPath:
         rig.profile_changed()
 
         assert rig.gateway.applied == [(1, -0.125)]
-        assert session.applied == ('dolbyvision_all_truehd', -125)
+        assert session.applied == (ALL_KEY, -125)
         assert len(rig.announced) == 1
         announced = rig.announced[0]
         assert announced.session_id == session.session_id
@@ -108,6 +111,7 @@ class TestApplyPath:
         assert announced.ms == -125
         assert announced.provisional is True       # not yet STABLE
         assert rig.logged('session#1')             # describe() snapshot line
+        assert rig.logged('hit=exact')             # hit_kind travels to logs
 
     def test_stable_session_announces_non_provisional(self, rig):
         profile = make_profile()
@@ -133,7 +137,7 @@ class TestApplyPath:
         rig.gateway.set_audio_delay = spying
         rig.profile_changed()
 
-        assert seen == [('dolbyvision_all_truehd', -75)]
+        assert seen == [(ALL_KEY, -75)]
 
     def test_dedupe_skips_second_apply_for_same_offset(self, rig):
         profile = make_profile()
@@ -150,11 +154,11 @@ class TestApplyPath:
         session = rig.start(profile, offset_ms=-125)
         rig.profile_changed()
 
-        rig.offsets.offsets[profile.setting_id()] = -150   # user re-configured
+        rig.offsets.offsets[ALL_KEY] = -150   # user re-taught the value
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
         assert rig.gateway.applied == [(1, -0.125), (1, -0.150)]
-        assert session.applied == ('dolbyvision_all_truehd', -150)
+        assert session.applied == (ALL_KEY, -150)
 
     def test_failed_rpc_restores_applied_and_retries_on_stabilization(self, rig):
         profile = make_profile()
@@ -177,42 +181,77 @@ class TestApplyPath:
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
         assert len(calls) == 2                      # the retry edge fired
-        assert session.applied == ('dolbyvision_all_truehd', -125)
+        assert session.applied == (ALL_KEY, -125)
         assert len(rig.announced) == 1
 
     def test_zero_offset_is_applied(self, rig):
-        # OffsetTable.get always answers an int; 0 means "reset the delay",
-        # not "missing" (the legacy None branch is gone).
+        # A stored 0 means "reset the delay" — a real entry, not a miss.
         profile = make_profile()
         session = rig.start(profile, offset_ms=0)
 
         rig.profile_changed()
 
         assert rig.gateway.applied == [(1, 0.0)]
-        assert session.applied == ('dolbyvision_all_truehd', 0)
+        assert session.applied == (ALL_KEY, 0)
+
+    def test_fallback_hit_applies_the_all_entry(self, rig):
+        # per_fps ON with only the all-level taught: the fallback level
+        # serves the apply, and hit_kind says so in the logs.
+        rig.offsets.per_fps = True
+        profile = make_profile(video_fps=60.0)
+        session = rig.start(profile, offset_ms=-125, key=ALL_KEY)
+
+        rig.profile_changed()
+
+        assert rig.gateway.applied == [(1, -0.125)]
+        assert session.applied == (ALL_KEY, -125)
+        assert rig.logged('hit=fallback')
+
+
+class TestMissIsNoOp:
+
+    def test_miss_applies_nothing_and_logs_once(self, rig):
+        # D3: empty store -> no RPC, Kodi's delay untouched, ONE debug line.
+        session = rig.start(make_profile(), offset_ms=None)
+
+        rig.profile_changed()
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert rig.gateway.applied == []
+        assert rig.announced == []
+        miss_lines = [m for m in rig.debug if 'no stored offset' in m]
+        assert len(miss_lines) == 1                 # once per distinct chain
+        assert ALL_KEY in miss_lines[0]             # the tried chain is shown
+
+    def test_learned_value_applies_after_a_miss(self, rig):
+        # The learn loop's second half: miss now, taught later, applied on
+        # the next apply trigger.
+        session = rig.start(make_profile(), offset_ms=None)
+        rig.profile_changed()
+        assert rig.gateway.applied == []
+
+        rig.offsets.offsets[ALL_KEY] = 175          # the user taught it
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert rig.gateway.applied == [(1, 0.175)]
+        assert session.applied == (ALL_KEY, 175)
 
 
 class TestGating:
 
-    def test_new_install_skips(self, rig):
-        rig.settings.new_install = True
+    def test_paused_skips(self, rig):
+        rig.settings.paused = True
         rig.start(make_profile())
         rig.profile_changed()
         assert rig.gateway.applied == []
-        assert rig.logged('New install detected')
-
-    def test_hdr_disabled_skips(self, rig):
-        rig.settings.hdr_enabled = False
-        rig.start(make_profile())
-        rig.profile_changed()
-        assert rig.gateway.applied == []
-        assert rig.logged('not enabled in settings')
+        assert rig.logged('paused')
 
     def test_incomplete_profile_skips(self, rig):
         rig.start(make_profile(audio_format='unknown'))
         rig.profile_changed()
         assert rig.gateway.applied == []
-        assert rig.logged('Unknown format detected')
+        assert rig.logged('profile incomplete')
 
     def test_no_profile_skips(self, rig):
         rig.post(events.PlaybackStarted())

@@ -34,6 +34,7 @@ import time
 
 from resources.lib.aom.app import events
 from resources.lib.aom.domain.stream_state import StreamState
+from resources.lib.aom.store import keys as store_keys
 
 STRING_OFFSET_APPLIED = 32092
 STRING_OFFSET_SAVED = 32093
@@ -51,7 +52,7 @@ class Notifier:
         self._gui = gui
         self._clock = clock
         self._log = log_debug
-        # Dedupe state: (string_id, setting_id, ms) and its monotonic stamp.
+        # Dedupe state: (string_id, profile identity, ms) + monotonic stamp.
         self._last_toast = None
         self._last_toast_at = None
 
@@ -66,9 +67,10 @@ class Notifier:
             return
         session = self._sessions.current
         if event.provisional:
-            # Held until the stream stabilizes; the release path re-derives the
-            # key from the live profile and drops the toast if it changed.
-            session.pending_notification = (event.profile.setting_id(), event.ms)
+            # Held until the stream stabilizes; the release path re-derives
+            # the identity from the live profile and drops the toast if it
+            # changed underneath.
+            session.pending_notification = (event.profile.identity(), event.ms)
             self._log("AOM_Notifier: holding provisional notification until "
                       "the stream stabilizes")
             return
@@ -85,11 +87,11 @@ class Notifier:
         # session is genuinely STABLE.
         if session.stream_state is not StreamState.STABLE:
             return
-        pending_setting_id, pending_ms = session.pending_notification
+        pending_identity, pending_ms = session.pending_notification
         # Read the profile FRESH: a profile that changed underneath must not
-        # release a toast against a stale key (settings-doctrine).
+        # release a toast against a stale identity (freshness doctrine).
         profile = session.profile
-        if profile is None or pending_setting_id != profile.setting_id():
+        if profile is None or pending_identity != profile.identity():
             session.pending_notification = None
             return
         session.pending_notification = None
@@ -117,7 +119,7 @@ class Notifier:
             return
 
         now = self._clock()
-        key = (string_id, profile.setting_id(), ms)
+        key = (string_id, profile.identity(), ms)
         # _last_toast and _last_toast_at are set in lockstep, and a real key
         # (a tuple) never equals the None sentinel, so the key comparison
         # alone guards the subtraction.
@@ -126,8 +128,10 @@ class Notifier:
             return
 
         sign = '+' if ms > 0 else ''
+        summary = store_keys.profile_summary(
+            profile.hdr_type, profile.audio_format, profile.video_fps)
         message = (f"{self._gui.localized(string_id)}: {sign}{ms} ms\n"
-                   f"{profile.summary(include_fps=True)}")
+                   f"{summary}")
 
         self._gui.notification(message, self._settings.notification_duration_ms())
         self._log(f"AOM_Notifier: {message}")

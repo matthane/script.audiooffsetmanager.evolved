@@ -47,14 +47,35 @@ def parse_delay_ms(delay_str):
 
 
 def is_complete(profile):
-    """True when every axis of the profile was detected (no 'unknown')."""
+    """True when the profile carries enough facts to key the store.
+
+    Under the open vocabulary the HDR axis always resolves (the detector
+    defaults an absent reading to 'sdr'), so completeness is: an audio
+    format was reported, and the fps rate parsed. Requiring fps keeps
+    discovery patient during startup renegotiation exactly as the classic
+    detector was (it kept probing until the fps axis settled), and
+    guarantees the per-fps write key is always composable for a complete
+    profile.
+    """
     if profile is None:
         return False
-    return formats.UNKNOWN not in (
-        profile.hdr_type,
-        str(profile.fps_type),
-        profile.audio_format,
-    )
+    return (profile.audio_format != formats.UNKNOWN
+            and profile.hdr_type != formats.UNKNOWN
+            and profile.video_fps is not None)
+
+
+def stream_identity(profile, per_fps):
+    """The "same stream" comparison key, at the granularity that matters.
+
+    With the per-fps toggle OFF the fps axis does not exist for offsets, so
+    it is excluded — a VFR rate wiggle between gathers must not read as a
+    stream change (the classic fps-collapse had the same effect). With the
+    toggle ON the truncated rate is part of the identity, exactly like the
+    lookup key.
+    """
+    if per_fps:
+        return (profile.hdr_type, profile.fps_int(), profile.audio_format)
+    return (profile.hdr_type, profile.audio_format)
 
 
 def seek_decision(now, requested_at, last_activity, last_own_seek,
@@ -95,25 +116,26 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     return 'seek'
 
 
-def should_apply(profile, new_install, hdr_enabled):
+def should_apply(profile, paused):
     """Decide whether an offset may be applied for this profile.
+
+    The classic gates are gone with their features: no ``new_install``
+    (an empty store already yields a lookup miss — P1), no per-HDR enables
+    (replaced by the ONE global pause, D9). What remains: the addon is not
+    paused, and the profile is complete enough to key the store.
 
     Args:
         profile: StreamProfile or None.
-        new_install: bool — onboarding not completed yet.
-        hdr_enabled: bool — the `enable_<hdr>` setting for profile.hdr_type
-            (caller resolves it; pass False when profile is None).
+        paused: bool — the global pause toggle (caller resolves it).
 
     Returns:
         (allowed, reason) — reason is None when allowed, else one of
-        'new_install', 'no_profile', 'unknown_format', 'hdr_disabled'.
+        'paused', 'no_profile', 'unknown_format'.
     """
-    if new_install:
-        return False, 'new_install'
+    if paused:
+        return False, 'paused'
     if profile is None:
         return False, 'no_profile'
     if not is_complete(profile):
         return False, 'unknown_format'
-    if not hdr_enabled:
-        return False, 'hdr_disabled'
     return True, None

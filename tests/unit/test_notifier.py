@@ -27,12 +27,12 @@ DEDUPE = Notifier.DEDUPE_SECONDS
 DURATION_MS = 3000
 
 
-def make_profile(hdr_type='dolbyvision', fps_type='all', audio_format='truehd',
-                 player_id=1):
-    """A complete profile; keys dolbyvision_all_truehd, summary 'DV | TrueHD'."""
-    return StreamProfile(hdr_type=hdr_type, fps_type=fps_type,
-                         audio_format=audio_format, video_fps=23,
-                         player_id=player_id, audio_channels=8)
+def make_profile(hdr_type='dolbyvision', audio_format='truehd',
+                 video_fps=23.976, player_id=1):
+    """A complete profile; summary 'Dolby Vision | 23.976 fps | TrueHD'."""
+    return StreamProfile(hdr_type=hdr_type, audio_format=audio_format,
+                         video_fps=video_fps, player_id=player_id,
+                         audio_channels=8)
 
 
 class FakeSettings:
@@ -126,11 +126,11 @@ def test_manual_save_supersedes_a_held_provisional_toast(rig):
     rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                     profile=profile, ms=50))
     assert session.pending_notification is None       # hold superseded
-    assert rig.toasts == [("#32093: +50 ms\nDV | TrueHD", DURATION_MS)]
+    assert rig.toasts == [("#32093: +50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
 
     rig.mark_stable(session)
     rig.post(events.StreamStabilized(session_id=session.session_id))
-    assert rig.toasts == [("#32093: +50 ms\nDV | TrueHD", DURATION_MS)]
+    assert rig.toasts == [("#32093: +50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
     # No stale "applied +30" ever surfaces.
 
 
@@ -148,19 +148,19 @@ class TestImmediateApply:
                                       profile=profile, ms=-125,
                                       provisional=False))
 
-        assert rig.toasts == [("#32092: -125 ms\nDV | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("#32092: -125 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
         assert session.pending_notification is None
 
     def test_non_provisional_clears_any_prior_pending(self, rig):
         profile = make_profile()
         session = rig.start(profile)
-        session.pending_notification = (profile.setting_id(), -999)
+        session.pending_notification = (profile.identity(), -999)
 
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-50,
                                       provisional=False))
         assert session.pending_notification is None
-        assert rig.toasts == [("#32092: -50 ms\nDV | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("#32092: -50 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
 
 
 # ============================================================================
@@ -176,21 +176,21 @@ class TestDeferral:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile.setting_id(), -75)
+        assert session.pending_notification == (profile.identity(), -75)
         assert rig.toasts == []
 
         # Detector marks STABLE, THEN posts StreamStabilized (queue order).
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("#32092: -75 ms\nDV | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("#32092: -75 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
         assert session.pending_notification is None
         assert rig.logged("Released pending offset notification")
 
     def test_pending_dropped_when_profile_changed_underneath(self, rig):
         profile_a = make_profile(hdr_type='dolbyvision', audio_format='truehd')
         profile_b = make_profile(hdr_type='hdr10', audio_format='eac3')
-        assert profile_a.setting_id() != profile_b.setting_id()
+        assert profile_a.identity() != profile_b.identity()
         session = rig.start(profile_a)
 
         rig.post(events.OffsetApplied(session_id=session.session_id,
@@ -226,7 +226,7 @@ class TestDeferral:
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
         assert rig.toasts == []
-        assert session.pending_notification == (profile.setting_id(), -75)
+        assert session.pending_notification == (profile.identity(), -75)
 
     def test_newest_pending_wins_across_provisional_applies(self, rig):
         # A provisional apply under A, then a profile change and a NEW
@@ -238,18 +238,18 @@ class TestDeferral:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile_a, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile_a.setting_id(), -75)
+        assert session.pending_notification == (profile_a.identity(), -75)
 
         session.profile = profile_b
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile_b, ms=-40,
                                       provisional=True))
-        assert session.pending_notification == (profile_b.setting_id(), -40)
+        assert session.pending_notification == (profile_b.identity(), -40)
 
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 
-        assert rig.toasts == [("#32092: -40 ms\nHDR10 | DD+", DURATION_MS)]
+        assert rig.toasts == [("#32092: -40 ms\nHDR10 | 23.976 fps | E-AC-3", DURATION_MS)]
         assert session.pending_notification is None
 
 
@@ -269,7 +269,7 @@ class TestUserOffsetSaved:
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=event_profile, ms=60))
 
-        assert rig.toasts == [("#32093: +60 ms\nDV | TrueHD", DURATION_MS)]
+        assert rig.toasts == [("#32093: +60 ms\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]
 
 
 # ============================================================================
@@ -304,7 +304,7 @@ class TestStaleSessions:
         profile = make_profile()
         session = rig.start(profile)
         dead_id = session.session_id
-        session.pending_notification = (profile.setting_id(), -50)
+        session.pending_notification = (profile.identity(), -50)
         rig.post(events.PlaybackStopped())
 
         rig.post(events.StreamStabilized(session_id=dead_id))
@@ -342,7 +342,7 @@ class TestDedupe:
         assert len(rig.toasts) == 2
 
     def test_applied_does_not_suppress_saved(self, rig):
-        # Same setting_id and ms but different string_id -> distinct dedupe key.
+        # Same profile identity and ms but different string_id -> distinct dedupe key.
         profile = make_profile()
         session = rig.start(profile)
 
@@ -369,7 +369,7 @@ class TestSettingsGate:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=-75,
                                       provisional=True))
-        assert session.pending_notification == (profile.setting_id(), -75)
+        assert session.pending_notification == (profile.identity(), -75)
         assert rig.toasts == []
 
         # Release still clears pending, still no toast.
@@ -393,4 +393,4 @@ class TestSignRendering:
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=profile, ms=ms, provisional=False))
 
-        assert rig.toasts == [(f"#32092: {rendered}\nDV | TrueHD", DURATION_MS)]
+        assert rig.toasts == [(f"#32092: {rendered}\nDolby Vision | 23.976 fps | TrueHD", DURATION_MS)]

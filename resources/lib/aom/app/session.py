@@ -61,7 +61,11 @@ class PlaybackSession:
     # same-profile AV event re-apply and re-notify). It is both the applier's
     # dedupe guard and the watcher's self-echo reference.
     applied: tuple = None
-    pending_notification: tuple = None      # (setting_key, delay_ms) awaiting STABLE
+    pending_notification: tuple = None      # (profile identity, delay_ms) awaiting STABLE
+    # The applier's miss-dedupe: the last consulted-key chain announced as a
+    # lookup miss, so a stable stream re-stabilizing does not re-log the
+    # same "no stored offset" line (one debug line per distinct chain).
+    miss_announced: tuple = None
     paused: bool = False
     # How many times this session has earned STABLE. Written only by
     # mark_stable() (the diagram's one edge into STABLE); the detector stamps
@@ -88,10 +92,10 @@ class PlaybackSession:
         Emitted by the applier after each apply decision so field logs keep a
         greppable state line at the moments that matter.
         """
-        setting_id = (self.profile.setting_id()
-                      if self.profile is not None else None)
+        described = (self.profile.describe()
+                     if self.profile is not None else None)
         return (f"session#{self.session_id} state={self.stream_state.value} "
-                f"profile={setting_id} applied={self.applied} "
+                f"profile={described} applied={self.applied} "
                 f"paused={self.paused}")
 
     # -- stream-state transitions (the only sanctioned writers) ---------------

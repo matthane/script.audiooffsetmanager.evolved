@@ -186,3 +186,18 @@ def describe_key(key):
     hdr_name = HDR_DISPLAY.get(hdr, hdr)
     audio_name = AUDIO_DISPLAY.get(audio, audio)
     return "{} | {} | {}".format(hdr_name, _display_fps(fps), audio_name)
+
+
+def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
+    """Toast/log summary straight from profile facts (no key needed).
+
+    E.g. 'Dolby Vision | 23.976 fps | TrueHD'; without a rate,
+    'Dolby Vision | TrueHD'. The exact reported rate is shown (it is the
+    management-view metadata too); unrecognised segments render verbatim —
+    verbatim acceptance extends to display.
+    """
+    parts = [HDR_DISPLAY.get(hdr_segment_value, hdr_segment_value)]
+    if video_fps is not None:
+        parts.append("{0:g} fps".format(video_fps))
+    parts.append(AUDIO_DISPLAY.get(audio_segment_value, audio_segment_value))
+    return " | ".join(parts)

@@ -57,23 +57,10 @@ def test_expected_matrix_is_315_unique_ids():
     assert len(set(EXPECTED_IDS)) == 315
 
 
-def test_vocabulary_matches_stream_detector_derivation():
-    # The runtime consumer (the detector's pure derivation, imported under
-    # Kodistubs) must produce setting ids drawn from exactly this oracle's
-    # vocabulary — and every one must exist in the shipped settings.xml.
-    from resources.lib.aom.app.stream_detector import derive_stream_facts
-    for hdr in HDR_TYPES:
-        for audio in AUDIO_FORMATS:
-            for override_on, fps_key in ((False, "all"), (True, "23")):
-                facts = derive_stream_facts(
-                    player_id=1, raw_codec=audio, raw_channels=6,
-                    raw_fps="23.976", raw_hdr=hdr, raw_hdr_fallback="",
-                    raw_gamut="",
-                    fps_override_enabled=lambda h, on=override_on: on)
-                setting_id = facts.profile.setting_id()
-                assert setting_id == "{0}_{1}_{2}".format(hdr, fps_key, audio)
-                assert setting_id in SETTINGS_BY_ID, (
-                    "derived id missing from settings.xml: " + setting_id)
+# (The detector-derivation coupling test died in E2: the runtime no longer
+# consumes the matrix vocabulary — offsets live in the sparse store. The
+# remaining oracle keeps settings.xml internally consistent until the matrix
+# itself dies in E3.)
 
 
 @pytest.mark.parametrize("setting_id", EXPECTED_IDS)
