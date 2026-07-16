@@ -111,9 +111,9 @@ def test_rows_render_verbatim_signed_milliseconds():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All rates | Dolby TrueHD", "-115 ms")
-    assert options[1] == ("HDR10 | All rates | Dolby Digital", "+9999 ms")
-    assert options[2] == ("HLG | All rates | Dolby Digital Plus", "-2500 ms")
+    assert options[0] == ("Dolby Vision | All FPS | Dolby TrueHD", "-115 ms")
+    assert options[1] == ("HDR10 | All FPS | Dolby Digital", "+9999 ms")
+    assert options[2] == ("HLG | All FPS | Dolby Digital Plus", "-2500 ms")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
     details = [detail for _profile, detail in options[:3]]
     assert any("+9999 ms" in detail for detail in details)
@@ -157,7 +157,7 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     # With per_fps off the lookup only reads 'all' keys: exact-rate entries
     # are stored-but-dormant. They TAG rather than hide (this view is the
     # store's only inspection surface; clear-all must not under-represent
-    # its scope), and the 'all' label stays literally true: 'All rates'.
+    # its scope), and the 'all' label stays literally true: 'All FPS'.
     entries = {
         "dolbyvision|all|eac3": _entry(-25),
         "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
@@ -166,7 +166,7 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All rates | Dolby Digital Plus",
+    assert options[0] == ("Dolby Vision | All FPS | Dolby Digital Plus",
                           "-25 ms")
     assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
                           "+125 ms — inactive")
@@ -175,8 +175,8 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
 
 def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
     # Under the toggle the 'all' entry is the fallback BELOW the exact
-    # entries (exact -> all -> miss), so 'All rates' would misread as an
-    # override: it renders 'Other rates'. Nothing is dormant when on.
+    # entries (exact -> all -> miss), so 'All FPS' would misread as an
+    # override: it renders 'Other FPS'. Nothing is dormant when on.
     entries = {
         "dolbyvision|all|eac3": _entry(-25),
         "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
@@ -185,7 +185,7 @@ def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | Other rates | Dolby Digital Plus",
+    assert options[0] == ("Dolby Vision | Other FPS | Dolby Digital Plus",
                           "-25 ms")
     assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
                           "+125 ms")
@@ -195,7 +195,7 @@ def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
 
 def test_rows_group_by_hdr_then_codec_then_numeric_rate():
     # The tuned display order: all of one HDR mode together, codecs
-    # alphabetical within it, and each codec's 'All rates' entry before its
+    # alphabetical within it, and each codec's 'All FPS' entry before its
     # per-fps entries in NUMERIC rate order (119 after 23, not before).
     entries = {
         "dolbyvision|119|eac3": dict(_entry(1), video_fps=119.88),
@@ -209,11 +209,11 @@ def test_rows_group_by_hdr_then_codec_then_numeric_rate():
 
     profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
     assert profiles == [
-        "Dolby Vision | All rates | Dolby Digital Plus",
+        "Dolby Vision | All FPS | Dolby Digital Plus",
         "Dolby Vision | 23.976 fps | Dolby Digital Plus",
         "Dolby Vision | 119.88 fps | Dolby Digital Plus",
         "Dolby Vision | 24 fps | Dolby TrueHD",
-        "HDR10 | All rates | Dolby Digital",
+        "HDR10 | All FPS | Dolby Digital",
     ]
 
 
@@ -224,7 +224,7 @@ def test_bare_entry_renders_without_meta_fields():
     entries = {DV: {"delay_ms": 42}}
     view, gui, _ = _build(entries)
     view.run()
-    assert gui.selects[0][1][0] == ("Dolby Vision | All rates | Dolby TrueHD",
+    assert gui.selects[0][1][0] == ("Dolby Vision | All FPS | Dolby TrueHD",
                                     "+42 ms")
 
 
@@ -271,7 +271,7 @@ def test_delete_confirmation_shows_the_stored_value():
     heading, message = gui.yesnos[0]
     assert heading == "#32115"
     assert "-115 ms" in message
-    assert "Dolby Vision | All rates | Dolby TrueHD" in message
+    assert "Dolby Vision | All FPS | Dolby TrueHD" in message
 
 
 def test_deleting_last_entry_lands_on_empty_state():

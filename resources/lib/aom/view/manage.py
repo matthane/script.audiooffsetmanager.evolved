@@ -30,7 +30,7 @@ are shown exactly, never rounded or step-snapped. The empty state is the
 first-run education: nothing is stored until the user fixes lipsync once.
 
 Display is toggle-aware but NEVER filtered: the injected ``per_fps`` flag
-renders the 'all' segment as 'Other rates' when the toggle is on (it is
+renders the 'all' segment as 'Other FPS' when the toggle is on (it is
 the fallback below the exact-rate entries, not an override) and tags
 dormant per-fps rows '— inactive' when it is off. Every stored entry
 always lists — this view is the store's only inspection surface, and
@@ -90,7 +90,7 @@ class ManageView:
                  log_debug=None):
         """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
         change while the view is open — the settings dialog is closed). It
-        drives DISPLAY only: 'Other rates' vs 'All rates' for the 'all'
+        drives DISPLAY only: 'Other FPS' vs 'All FPS' for the 'all'
         segment, and the '— inactive' tag on per-fps rows the lookup will
         not consult while the toggle is off. Never filtering: this view is
         the store's only inspection surface, so every entry always lists.

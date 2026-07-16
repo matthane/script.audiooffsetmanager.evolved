@@ -225,10 +225,11 @@ def _display_fps(segment, video_fps=None, per_fps=False):
     if segment == 'all':
         # Under the per-fps toggle the 'all' entry is the FALLBACK for
         # rates without their own entry (lookup: exact -> all -> miss), so
-        # 'All rates' would misread as overriding the exact entries —
-        # 'Other rates' states the true semantics. With the toggle off,
-        # 'all' is the only key consulted and 'All rates' is literally true.
-        return 'Other rates' if per_fps else 'All rates'
+        # 'All FPS' would misread as overriding the exact entries —
+        # 'Other FPS' states the true semantics. With the toggle off,
+        # 'all' is the only key consulted and 'All FPS' is literally true.
+        # 'FPS' (not 'rates') to match the '<n> fps' unit on sibling rows.
+        return 'Other FPS' if per_fps else 'All FPS'
     if isinstance(video_fps, (int, float)) and \
             not isinstance(video_fps, bool) and math.isfinite(video_fps):
         return "{0:g} fps".format(video_fps)
@@ -240,8 +241,8 @@ def describe_key(key, video_fps=None, per_fps=False):
 
     HDR and audio segments use the display tables, falling back to the raw
     segment verbatim when unrecognised. The 'all' fps segment renders as
-    'Other rates' when ``per_fps`` says the toggle is on (it is the
-    fallback below the exact-rate entries) and 'All rates' when off (it
+    'Other FPS' when ``per_fps`` says the toggle is on (it is the
+    fallback below the exact-rate entries) and 'All FPS' when off (it
     is the only key consulted). A numeric segment renders the EXACT
     reported rate from the entry's ``video_fps`` metadata when the caller
     supplies a finite number ('23' is a key identity, not a rate a user
@@ -260,7 +261,7 @@ def sort_key(key):
 
     Groups the management view's rows the way a user scans them — all of
     one HDR mode together, codecs alphabetical within it, and each codec's
-    'All rates' entry before its per-fps entries in NUMERIC rate order
+    'All FPS' entry before its per-fps entries in NUMERIC rate order
     (string-sorting '119' before '23' is exactly the bug this avoids).
     Display names (case-folded) drive the alpha ordering so the on-screen
     grouping matches the sort. Total over hand-edited files: an

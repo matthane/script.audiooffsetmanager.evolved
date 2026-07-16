@@ -206,7 +206,7 @@ def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
 
 def test_describe_key_known():
     assert keys.describe_key('dolbyvision|all|truehd') == \
-        'Dolby Vision | All rates | Dolby TrueHD'
+        'Dolby Vision | All FPS | Dolby TrueHD'
     assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
 
 
@@ -229,13 +229,13 @@ def test_describe_key_shows_exact_rate_from_video_fps_metadata():
 
 def test_describe_key_all_segment_is_toggle_aware():
     # per_fps ON: the 'all' entry is the fallback BELOW exact-rate entries
-    # (exact -> all -> miss), so 'All rates' would misread as an override —
-    # it renders 'Other rates'. OFF: 'all' is the only key consulted and
-    # 'All rates' is literally true (the default).
+    # (exact -> all -> miss), so 'All FPS' would misread as an override —
+    # it renders 'Other FPS'. OFF: 'all' is the only key consulted and
+    # 'All FPS' is literally true (the default).
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=True) == \
-        'Dolby Vision | Other rates | Dolby TrueHD'
+        'Dolby Vision | Other FPS | Dolby TrueHD'
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=False) == \
-        'Dolby Vision | All rates | Dolby TrueHD'
+        'Dolby Vision | All FPS | Dolby TrueHD'
     # A numeric segment is unaffected by the toggle.
     assert keys.describe_key('hdr10|23|ac3', video_fps=23.976,
                              per_fps=True) == 'HDR10 | 23.976 fps | Dolby Digital'
@@ -245,7 +245,7 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
     # 'all' is the identity: the entry's rate is just the last store
     # instant's, not what the key matches.
     assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976) == \
-        'Dolby Vision | All rates | Dolby TrueHD'
+        'Dolby Vision | All FPS | Dolby TrueHD'
 
 
 def test_describe_key_degrades_to_segment_without_usable_metadata():
