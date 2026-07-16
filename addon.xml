@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta2" name="AOM Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanagerevolved" version="1.0.0~beta3" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,7 +7,10 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v1.0.0~beta2 (2026-07-15)
+        <news>v1.0.0~beta3 (2026-07-15)
+- Log lines now use the AOMe_ prefix so Evolved is distinguishable from classic AOM in a shared kodi.log
+
+v1.0.0~beta2 (2026-07-15)
 - Fix toast rendering: the saved/applied line is now the notification title (no more scrolling/truncated single line)
 - Toasts omit the frame rate while per-refresh-rate offsets are disabled (the value is stored for all rates)
 - Display name for TrueHD Atmos
