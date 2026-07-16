@@ -364,20 +364,29 @@ class StreamDetector:
             raw_codec, raw_channels = formats.UNKNOWN, formats.UNKNOWN
         else:
             raw_codec, raw_channels = self._gateway.audio_info(player_id)
+        raw_fps = self._gateway.infolabel(INFOLABEL_FPS)
+        raw_hdr = self._gateway.infolabel(INFOLABEL_HDR)
+        raw_hdr_fallback = self._gateway.infolabel(INFOLABEL_HDR_FALLBACK)
+        raw_gamut = self._gateway.infolabel(INFOLABEL_GAMUT)
         facts = derive_stream_facts(
             player_id=player_id,
             raw_codec=raw_codec,
             raw_channels=raw_channels,
-            raw_fps=self._gateway.infolabel(INFOLABEL_FPS),
-            raw_hdr=self._gateway.infolabel(INFOLABEL_HDR),
-            raw_hdr_fallback=self._gateway.infolabel(INFOLABEL_HDR_FALLBACK),
-            raw_gamut=self._gateway.infolabel(INFOLABEL_GAMUT),
+            raw_fps=raw_fps,
+            raw_hdr=raw_hdr,
+            raw_hdr_fallback=raw_hdr_fallback,
+            raw_gamut=raw_gamut,
             fps_override_enabled=self._settings.fps_override_enabled,
         )
+        # The raw gateway strings are logged VERBATIM: under the open
+        # vocabulary they are the store's key material, and field logs are
+        # how key fragmentation would ever be observed and diagnosed.
         self._log(f"AOM_StreamDetector: probed {facts.profile} "
                   f"(hdr_source={facts.hdr_source}, "
                   f"platform_hdr_full={facts.platform_hdr_full}, "
-                  f"gamut={facts.gamut_info})")
+                  f"gamut={facts.gamut_info}, "
+                  f"raw codec={raw_codec!r} hdr={raw_hdr!r}"
+                  f"/{raw_hdr_fallback!r} fps={raw_fps!r})")
         self._dispatcher.post(events.StreamProbed(
             session_id=session_id,
             platform_hdr_full=facts.platform_hdr_full,

@@ -595,3 +595,15 @@ class TestPlatformFactsEmission:
         assert len(gathers) == 4
         assert len(rig.probes) == len(gathers)   # one StreamProbed per gather
         assert rig.errors == []
+
+    def test_probe_line_logs_raw_gateway_strings(self, rig):
+        # The raw codec/HDR/fps strings are the store's key material under
+        # the open vocabulary — the probe debug line must carry them
+        # VERBATIM so field logs can reveal key fragmentation.
+        rig.start()
+        probed = [line for line in rig.debug if 'probed' in line]
+        assert probed, "no probe log line captured"
+        line = probed[-1]
+        assert "raw codec='truehd'" in line
+        assert "hdr='dolbyvision'" in line
+        assert "fps='23.976'" in line
