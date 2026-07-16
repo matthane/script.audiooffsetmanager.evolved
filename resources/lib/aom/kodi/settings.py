@@ -135,11 +135,18 @@ class Settings:
         return (self.get_bool(f"enable_seek_back_{reason}"),
                 max(self.get_int(f"seek_back_{reason}_seconds"), 0))
 
-    def notifications_enabled(self):
-        return self.get_bool('enable_notifications')
+    def notify_apply_enabled(self):
+        """The 'offset applied' toast gate (D10: each toast kind has its own
+        toggle). Defaults ON — the toasts are the learn loop's teaching
+        surface, so an unreadable setting must never silently mute them."""
+        return self.get_bool('notify_apply', True)
+
+    def notify_learn_enabled(self):
+        """The 'offset saved' toast gate (D10; see notify_apply_enabled)."""
+        return self.get_bool('notify_learn', True)
 
     def notification_duration_ms(self):
-        return self.get_int('notification_seconds') * 1000
+        return self.get_int('notification_seconds', 5) * 1000
 
     def debug_logging_enabled(self):
         return self.get_bool('enable_debug_logging')

@@ -36,15 +36,19 @@ def make_profile(hdr_type='dolbyvision', audio_format='truehd',
 
 
 class FakeSettings:
-    """The notification read surface: an enabled flag and a duration value."""
+    """The notification read surface: per-kind toast gates and a duration."""
 
-    def __init__(self, enabled=True, duration_ms=DURATION_MS):
-        self.enabled = enabled
+    def __init__(self, duration_ms=DURATION_MS):
+        self.apply_enabled = True
+        self.learn_enabled = True
         self.duration = duration_ms
         self.per_fps = False
 
-    def notifications_enabled(self):
-        return self.enabled
+    def notify_apply_enabled(self):
+        return self.apply_enabled
+
+    def notify_learn_enabled(self):
+        return self.learn_enabled
 
     def notification_duration_ms(self):
         return self.duration
@@ -365,7 +369,7 @@ class TestDedupe:
 class TestSettingsGate:
 
     def test_disabled_suppresses_toast_but_pending_logic_still_runs(self, rig):
-        rig.settings.enabled = False
+        rig.settings.apply_enabled = False
         profile = make_profile()
         session = rig.start(profile)
 
@@ -380,6 +384,41 @@ class TestSettingsGate:
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
         assert session.pending_notification is None
+        assert rig.toasts == []
+
+    def test_apply_gate_off_still_toasts_learn(self, rig):
+        # D10: the gates are independent — muting the routine apply toasts
+        # must never silence the learn feedback (the teaching surface).
+        rig.settings.apply_enabled = False
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-115))
+
+        assert len(rig.toasts) == 1
+        assert rig.toasts[0][0].startswith(f"#{STRING_OFFSET_SAVED}")
+
+    def test_learn_gate_off_still_toasts_apply(self, rig):
+        rig.settings.learn_enabled = False
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=profile, ms=-75,
+                                      provisional=False))
+
+        assert len(rig.toasts) == 1
+        assert rig.toasts[0][0].startswith(f"#{STRING_OFFSET_APPLIED}")
+
+    def test_learn_gate_off_suppresses_saved_toast(self, rig):
+        rig.settings.learn_enabled = False
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-115))
+
         assert rig.toasts == []
 
 

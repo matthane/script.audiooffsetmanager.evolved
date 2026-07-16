@@ -31,9 +31,10 @@ from the legacy path. The dedupe clock is the injected ``time.monotonic`` — a
 deliberate upgrade from the legacy ``time.time``, which mis-measured the
 window across wall-clock adjustments.
 
-Settings (``notifications_enabled`` / ``notification_duration_ms``) are read
-through the injected facade; toasts go through the injected gui. Pure app
-layer: stdlib + ``resources.lib.aom`` only.
+Settings are read through the injected facade: the per-kind toast gates
+``notify_apply_enabled`` / ``notify_learn_enabled`` (D10: each toast kind has
+its own toggle, both default ON) plus ``notification_duration_ms``. Toasts go
+through the injected gui. Pure app layer: stdlib + ``resources.lib.aom`` only.
 """
 
 import time
@@ -130,7 +131,13 @@ class Notifier:
                 == policies.stream_identity(current, per_fps))
 
     def _toast(self, string_id, ms, profile):
-        if not self._settings.notifications_enabled():
+        # D10: each toast kind is gated by its own toggle, so muting the
+        # routine apply announcements never silences the learn feedback
+        # (or vice versa).
+        if string_id == STRING_OFFSET_SAVED:
+            if not self._settings.notify_learn_enabled():
+                return
+        elif not self._settings.notify_apply_enabled():
             return
 
         now = self._clock()

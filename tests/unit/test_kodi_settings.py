@@ -237,11 +237,26 @@ class TestIntentReads:
                      'active_monitoring_enabled', 'is_new_install'):
             assert not hasattr(settings, dead)
 
-    def test_notifications_enabled(self):
+    def test_notify_apply_defaults_on(self):
         settings, _ = _make_settings()
-        spy = self._spy_bool(settings)
-        assert settings.notifications_enabled() is True
-        assert spy.calls == [('enable_notifications',)]
+        spy = _Spy(result=False)
+        settings.get_bool = spy
+        assert settings.notify_apply_enabled() is False
+        # D10: the toasts are the teaching surface — the read passes
+        # default=True so an unreadable setting never silently mutes them.
+        assert spy.calls == [('notify_apply', True)]
+
+    def test_notify_learn_defaults_on(self):
+        settings, _ = _make_settings()
+        spy = _Spy(result=False)
+        settings.get_bool = spy
+        assert settings.notify_learn_enabled() is False
+        assert spy.calls == [('notify_learn', True)]
+
+    def test_single_notifications_gate_is_gone(self):
+        # D10 split the classic all-or-nothing gate into per-kind toggles.
+        settings, _ = _make_settings()
+        assert not hasattr(settings, 'notifications_enabled')
 
     def test_debug_logging_enabled(self):
         settings, _ = _make_settings()
@@ -271,4 +286,6 @@ class TestIntentReads:
         settings, _ = _make_settings()
         settings.get_int = _Spy(result=6)
         assert settings.notification_duration_ms() == 6000
-        assert settings.get_int.calls == [('notification_seconds',)]
+        # default=5 so an unreadable setting yields a visible 5 s toast,
+        # never a 0 ms blink.
+        assert settings.get_int.calls == [('notification_seconds', 5)]

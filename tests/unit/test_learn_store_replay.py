@@ -109,7 +109,8 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
                         lambda: per_fps_holder['on'])
     monkeypatch.setattr(settings, 'remember_adjustments_enabled', lambda: True)
     monkeypatch.setattr(settings, 'seek_back_config', lambda reason: (False, 0))
-    monkeypatch.setattr(settings, 'notifications_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'notify_apply_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'notify_learn_enabled', lambda: False)
 
     # Toasts captured at the notifier's assembly boundary (same seam as
     # test_session_flow): pending/dedupe logic still runs, only the gui read is
