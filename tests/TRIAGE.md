@@ -1,4 +1,4 @@
-# Test-suite triage ledger (Phase E0; reconciled through E2)
+# Test-suite triage ledger (Phase E0; reconciled through E3)
 
 Fate of every test file inherited from `redesign/2.0` (896 tests at branch
 cut), per the Evolved design (EVOLVED.md — local-only, git-excluded).
@@ -19,6 +19,20 @@ automatically. NEW since branch cut: `test_offset_store.py`,
 `test_store_keys.py`, `test_store_resolve.py` (E1 store layer) and
 `test_learn_store_replay.py` (E2, 7 end-to-end store scenarios).
 Remaining fates are all E3.
+
+**E3 reconciliation (2026-07-15): every remaining fate has happened —
+the ledger is CLOSED.** `test_settings_matrix.py` and
+`test_settings_generated.py` deleted with the generator tooling
+(`tools/generate_settings.py`, `tools/verify_settings_equivalence.py`);
+`test_strings.py` re-pointed automatically at the pruned strings.po (121
+entries → 43) and extended with the reverse no-orphan direction;
+`test_formats.py` shrank a second time when `formats.py` was reduced to
+the UNKNOWN sentinel (the E1-era display/vocabulary tables died with the
+matrix, as its row predicted). NEW: `tests/contract/test_settings_contract.py`
+— the two-way drift oracle between the Settings facade's reads and the
+hand-written settings.xml. Suite: 958 at the E2 gate → 590 (the 315-id
+matrix oracle, generator tests, and orphaned-string parametrizations
+account for the drop; no behavioral coverage was lost).
 
 Categories: **KEEP** (survives as-is) · **DIES(phase)** (deleted with its
 feature) · **REWRITE(phase)** (replaced in-phase per the key-schema
@@ -46,7 +60,7 @@ decision table).
 | test_stream_detector.py | REWRITE(E2, partial) | Probe/verify orchestration KEEPS; `fps_override_enabled(hdr_type)` per-HDR callable becomes the global `per_fps_offsets` read; fps bucket-whitelist assertions become integer-truncation assertions (open fps axis); platform-write consumers gone but `StreamProbed` posting stays |
 | test_stream_profile.py | REWRITE(E1/E2) | `setting_id()` (`hdr_fps_audio` settings-id format) becomes the store key codec (`hdr\|fps\|audio` via `aom/store/keys.py`); `summary()` display coverage KEEPS |
 | test_audio_format_matching.py | DIES(E1/E2) | `_derive_audio_format`'s ordered-substring whitelist is deleted outright (verbatim acceptance — nothing is matched against anything); replaced by verbatim-roundtrip pins in the new key tests |
-| test_formats.py | REWRITE(E1) | `formats.py` demoted to display names + normalization rules + picker vocabulary; whitelist-role assertions DIE |
+| test_formats.py | REWRITE(E1, then E3) | E1 demoted `formats.py` to display/vocabulary tables; E3 shrank it to the UNKNOWN sentinel (tables died with the matrix) — the test now pins the sentinel value, the demolition, and verbatim round-trip of the classic names |
 | test_platform_recorder.py | DIES(E2) | Component dissolves — platform capability writes are cut (P3) |
 
 ## tests/contract/
@@ -54,9 +68,9 @@ decision table).
 | File | Fate | Notes |
 |---|---|---|
 | test_architecture.py | KEEP | Purity contract enforces no-Kodi-imports on the new `aom/store/` too (extend, don't relax) |
-| test_settings_matrix.py | DIES(E3) | The 315-id oracle dies with the matrix |
-| test_settings_generated.py | DIES(E3) | Generator no-diff test dies with `tools/generate_settings.py` |
-| test_strings.py | REWRITE(E3) | Re-pointed at the pruned strings.po + new strings (management view, coexistence warning, learn toast); two-way settings-id contract test added |
+| test_settings_matrix.py | DIES(E3) — DONE | The 315-id oracle died with the matrix |
+| test_settings_generated.py | DIES(E3) — DONE | Generator no-diff test died with `tools/generate_settings.py` |
+| test_strings.py | REWRITE(E3) — DONE | Re-pointed automatically at the pruned strings.po; gained the reverse no-orphan direction. The two-way settings-id oracle landed as the NEW `test_settings_contract.py` |
 
 ## Notes carried into later phases
 
