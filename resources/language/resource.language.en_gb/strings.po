@@ -232,3 +232,15 @@ msgstr ""
 msgctxt "#32133"
 msgid "Reset to 0 ms — nothing stored for this stream"
 msgstr ""
+
+msgctxt "#32135"
+msgid "{0} entry"
+msgstr ""
+
+msgctxt "#32136"
+msgid "{0} entries"
+msgstr ""
+
+msgctxt "#32137"
+msgid "Other"
+msgstr ""

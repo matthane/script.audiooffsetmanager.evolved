@@ -29,6 +29,25 @@ VERBATIM: the odd signed millisecond integers the store keeps (-115, +9999)
 are shown exactly, never rounded or step-snapped. The empty state is the
 first-run education: nothing is stored until the user fixes lipsync once.
 
+Above ``FLAT_THRESHOLD`` entries the top level renders as an HDR-group
+index instead of one flat list (U0 drill-down): one single-line row per
+HDR type present — display name plus entry count — with unsplittable
+hand-edited keys bucketed under 'Other', sorted last (verbatim acceptance
+extends to grouping: a scribbled key still lists and still deletes).
+Selecting a group lists only its entries, headed by the group name, with
+the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
+23.976 fps'); Back from a group returns to the index, Back from the top
+level exits. Clear-all lives ONLY at the top level, where the whole store
+it deletes is represented. Counts include dormant rows — the index
+inherits never-under-represent: every stored entry is countable there and
+reachable from it. Every pass at either level re-reads the store. An open
+group survives the store shrinking below the threshold (deleting inside
+'Dolby Vision' must not teleport the user into a flat list), while the
+top level picks flat vs grouped fresh on every render; delete
+confirmations always show the FULL profile line, never the shortened
+in-group copy — a confirmation must not depend on which list the user
+came from.
+
 Display is toggle-aware but NEVER filtered: the injected ``per_fps`` flag
 renders the 'all' segment as 'Other FPS' when the toggle is on (it is
 the fallback below the exact-rate entries, not an override) and tags
@@ -39,7 +58,9 @@ clear-all's confirmation must never under-represent what it deletes.
 
 from collections import namedtuple
 
-from resources.lib.aom.store.keys import describe_key, sort_key, split_key
+from resources.lib.aom.store.keys import (HDR_DISPLAY, describe_key,
+                                          describe_key_in_group, sort_key,
+                                          split_key)
 from resources.lib.aom.store.offset_store import StoreUnreadable
 
 # Localized string ids owned by this view (defined in strings.po).
@@ -52,12 +73,24 @@ _LABEL_CLEAR_ALL = 32126
 _MSG_UNREADABLE = 32127    # StoreUnreadable (corrupt: will be quarantined)
 _MSG_MUTATION_FAILED = 32128
 _MSG_FUTURE = 32131        # StoreUnreadable(future=True): preserved, not shown
+_LABEL_GROUP_ENTRY = 32135    # "{0} entry" — group-index count, singular
+_LABEL_GROUP_ENTRIES = 32136  # "{0} entries" — group-index count, plural
+_LABEL_OTHER_GROUP = 32137    # "Other" — the unsplittable-key bucket
 
-# English fallbacks for the dialogs whose ENTIRE content is one localized
-# string: localized() degrades to '' on a transient failure, and a blank
+# The flat/grouped boundary (DU-1): at or below this many entries the view
+# renders the single flat list — grouping a handful of entries adds a
+# navigation level without shortening any scroll. Above it, the top level
+# is the HDR-group index.
+FLAT_THRESHOLD = 8
+
+# English fallbacks for the strings that must never render blank:
+# localized() degrades to '' on a transient failure, and a blank
 # information dialog teaches nothing (same doctrine as the corruption and
 # coexistence notices — E4 review). Confirmations keep the raw localized
-# text: they carry the entry description alongside it.
+# text: they carry the entry description alongside it. The group-index
+# strings are here too — 'Other' is a row's ENTIRE label (blank would
+# render a nameless group), and the count templates are the only content
+# beside the group name.
 _FALLBACKS = {
     _MSG_EMPTY: ("Evolved learns as you adjust — nothing stored yet. Fix "
                  "lipsync once with Kodi's audio offset slider during "
@@ -71,12 +104,16 @@ _FALLBACKS = {
     _MSG_FUTURE: ("The stored offsets were saved by a newer version of "
                   "this addon. They are preserved untouched, but this "
                   "version cannot show or change them."),
+    _LABEL_GROUP_ENTRY: "{0} entry",
+    _LABEL_GROUP_ENTRIES: "{0} entries",
+    _LABEL_OTHER_GROUP: "Other",
 }
 
-# One presentable entry: the profile line (row label AND first line of the
-# delete confirmation), the value/meta detail line (second line of both),
-# and the literal store key the delete mutation targets.
-_Row = namedtuple("_Row", "describe detail key")
+# One presentable entry: the full profile line (flat rows AND the first
+# line of the delete confirmation), the in-group line (drill-down rows —
+# the redundant HDR name dropped, codec leading), the value/meta detail
+# line, and the literal store key the delete mutation targets.
+_Row = namedtuple("_Row", "describe short detail key")
 
 
 def _noop(_message):
@@ -100,12 +137,17 @@ class ManageView:
         self._send_mutation = send_mutation
         self._per_fps = bool(per_fps)
         self._log = log_debug or _noop
+        # The open drill-down group (an hdr segment, or _OTHER_GROUP);
+        # None = top level. run() owns it; held on the instance so the
+        # per-pass methods share one navigation state.
+        self._group = None
 
     # -- entry point ----------------------------------------------------------
 
     def run(self):
         """Read, render, and act on one user choice per pass until they exit."""
         heading = self._gui.localized(_HEADING)
+        self._group = None
         while True:
             try:
                 entries = self._read_entries()
@@ -128,33 +170,101 @@ class ManageView:
             self._log("AOMe_ManageView: rendering {0} stored offset(s)"
                       .format(len(rows)))
 
-            # Entry rows are (profile, detail) tuples -> two-line detail
-            # rows; the clear-all action stays a plain string row.
-            options = [(row.describe, row.detail) for row in rows]
-            options.append(self._gui.localized(_LABEL_CLEAR_ALL))
-
-            # Cancel/Back is the exit; the router then reopens the settings
-            # dialog the manage button closed, so leaving always lands the
-            # user back in settings.
-            choice = self._gui.select(heading, options)
-            if choice < 0:
-                return
-
-            if choice == len(rows):
-                ack = self._confirm_clear(heading)
+            if self._group is not None:
+                outcome = self._group_pass(heading, rows)
+            elif len(rows) > FLAT_THRESHOLD:
+                outcome = self._index_pass(heading, rows)
             else:
-                ack = self._confirm_delete(heading, rows[choice])
-
-            if ack is _DECLINED:
-                continue
-            self._report_ack(heading, ack)
-            if ack is not None and ack.get("ok") and ack.get("op") == "clear":
-                # A deliberate clear: exit quietly. Looping would land on
-                # the first-run education empty state, which reads as
-                # "nothing was ever stored" right after the user emptied
-                # the store on purpose (E4 review).
-                self._log("AOMe_ManageView: store cleared; closing view")
+                outcome = self._flat_pass(heading, rows)
+            if outcome is _CLOSE:
                 return
+
+    # -- passes (one render + at most one user action each) -------------------
+
+    def _flat_pass(self, heading, rows):
+        """The single-list render: every entry as a two-line row + clear-all."""
+        options = [(row.describe, row.detail) for row in rows]
+        options.append(self._gui.localized(_LABEL_CLEAR_ALL))
+
+        # Cancel/Back is the exit; the router then reopens the settings
+        # dialog the manage button closed, so leaving always lands the
+        # user back in settings.
+        choice = self._gui.select(heading, options)
+        if choice < 0:
+            return _CLOSE
+        if choice == len(rows):
+            return self._settle(heading, self._confirm_clear(heading))
+        return self._settle(heading,
+                            self._confirm_delete(heading, rows[choice]))
+
+    def _index_pass(self, heading, rows):
+        """The group index: one single-line row per HDR type + clear-all.
+
+        Clear-all stays on this level (and only this level) when grouped:
+        its confirmation covers the whole store, so it belongs where the
+        whole store is represented.
+        """
+        groups = self._group_index(rows)
+        self._log("AOMe_ManageView: rendering group index ({0} group(s))"
+                  .format(len(groups)))
+        options = [self._group_row(segment, count)
+                   for segment, count in groups]
+        options.append(self._gui.localized(_LABEL_CLEAR_ALL))
+
+        choice = self._gui.select(heading, options)
+        if choice < 0:
+            return _CLOSE
+        if choice == len(groups):
+            return self._settle(heading, self._confirm_clear(heading))
+        self._group = groups[choice][0]
+        self._log("AOMe_ManageView: opened group {0}"
+                  .format(self._group_name(self._group)))
+        return None
+
+    def _group_pass(self, heading, rows):
+        """One open group's entries; Back returns to the top level.
+
+        The open group survives the store shrinking below the flat
+        threshold — deleting inside a group must not teleport the user
+        into a flat list mid-flow — but a group that emptied under us
+        (last delete, or another session) falls back to the top level,
+        which re-evaluates flat vs grouped fresh. The select is headed by
+        the group name so the user always knows which drill-down they are
+        in; confirmations keep the main heading and the FULL profile
+        line.
+        """
+        group_rows = [row for row in rows
+                      if self._group_of(row.key) == self._group]
+        if not group_rows:
+            self._log("AOMe_ManageView: open group emptied; "
+                      "returning to the top level")
+            self._group = None
+            return None
+
+        options = [(row.short, row.detail) for row in group_rows]
+        choice = self._gui.select(self._group_name(self._group), options)
+        if choice < 0:
+            self._group = None
+            return None
+        return self._settle(heading,
+                            self._confirm_delete(heading, group_rows[choice]))
+
+    def _settle(self, heading, ack):
+        """Post-confirmation tail shared by every pass.
+
+        A declined confirmation just loops; a real ack is reported, and a
+        deliberate clear closes the view — looping would land on the
+        first-run education empty state, which reads as "nothing was ever
+        stored" right after the user emptied the store on purpose (E4
+        review).
+        """
+        if ack is _DECLINED:
+            return None
+        self._report_ack(heading, ack)
+        if ack is not None and ack.get("ok") and ack.get("op") == "clear":
+            self._log("AOMe_ManageView: store cleared; closing view")
+            return _CLOSE
+        return None
 
     # -- rendering ------------------------------------------------------------
 
@@ -167,6 +277,7 @@ class ManageView:
         """
         rows = [
             _Row(self._describe(key, entry),
+                 self._describe_short(key, entry),
                  self._detail(entry, inactive=self._is_dormant(key)),
                  key)
             for key, entry in entries.items()
@@ -205,6 +316,21 @@ class ManageView:
         except ValueError:
             return key
 
+    def _describe_short(self, key, entry):
+        """The in-group row label; the raw key verbatim when unsplittable.
+
+        Inside one HDR group the group name is redundant, so the codec
+        leads and the rate follows (DU-2). Same fallback contract as
+        ``_describe`` — an unsplittable key shows as itself (it lives in
+        the 'Other' bucket, where there is no name to drop anyway).
+        """
+        try:
+            return describe_key_in_group(key,
+                                         video_fps=entry.get("video_fps"),
+                                         per_fps=self._per_fps)
+        except ValueError:
+            return key
+
     @staticmethod
     def _detail(entry, *, inactive):
         """The value line: '-115 ms', tagged '— inactive' when dormant.
@@ -220,11 +346,69 @@ class ManageView:
             detail += " — inactive"
         return detail
 
+    # -- grouping -------------------------------------------------------------
+
+    @staticmethod
+    def _group_of(key):
+        """The index bucket for a key: its hdr segment, or the Other bucket.
+
+        Verbatim acceptance extends to grouping — a key that does not
+        split still lists, still counts, and still deletes; it just
+        cannot claim an HDR group.
+        """
+        try:
+            return split_key(key)[0]
+        except ValueError:
+            return _OTHER_GROUP
+
+    def _group_index(self, rows):
+        """Ordered ``(segment, count)`` pairs for the group index.
+
+        Rows arrive display-sorted, so first appearance yields the same
+        HDR-display order the flat list scans in; the Other bucket is
+        forced last regardless of where its raw keys interleave. Counts
+        include dormant rows — never-under-represent: every stored entry
+        is countable from the index.
+        """
+        order = []
+        counts = {}
+        for row in rows:
+            segment = self._group_of(row.key)
+            if segment not in counts:
+                order.append(segment)
+                counts[segment] = 0
+            counts[segment] += 1
+        if _OTHER_GROUP in counts:
+            order.remove(_OTHER_GROUP)
+            order.append(_OTHER_GROUP)
+        return [(segment, counts[segment]) for segment in order]
+
+    def _group_name(self, segment):
+        """Display name for a group row/heading; verbatim for a stranger."""
+        if segment is _OTHER_GROUP:
+            return self._text(_LABEL_OTHER_GROUP)
+        return HDR_DISPLAY.get(segment, segment)
+
+    def _group_row(self, segment, count):
+        """One index row: 'Dolby Vision — 6 entries' (single-line)."""
+        singular = count == 1
+        template = self._text(_LABEL_GROUP_ENTRY if singular
+                              else _LABEL_GROUP_ENTRIES)
+        try:
+            counted = template.format(count)
+        except (IndexError, KeyError, ValueError):
+            # A malformed translation (stray braces) degrades to the
+            # English template rather than crashing the view.
+            counted = _FALLBACKS[_LABEL_GROUP_ENTRY if singular
+                                 else _LABEL_GROUP_ENTRIES].format(count)
+        return "{0} — {1}".format(self._group_name(segment), counted)
+
     # -- actions --------------------------------------------------------------
 
     def _confirm_delete(self, heading, row):
         # Both row lines, not just the profile: the confirmation must show
-        # WHAT value is being deleted (field feedback on beta4).
+        # WHAT value is being deleted (field feedback on beta4). Always the
+        # FULL describe line — never the shortened in-group copy.
         message = (self._gui.localized(_MSG_CONFIRM_DELETE)
                    + "\n" + row.describe + "\n" + row.detail)
         if not self._gui.yesno(heading, message):
@@ -262,11 +446,16 @@ class ManageView:
         self._log("AOMe_ManageView: mutation ok ({0})".format(ack.get("detail")))
 
     def _text(self, string_id):
-        """localized() with the English fallback for full-content dialogs."""
+        """localized() with the English fallback for must-never-blank strings."""
         return self._gui.localized(string_id) or _FALLBACKS[string_id]
 
 
-# Sentinel distinguishing "user declined the confirmation" (loop, send
-# nothing) from a real ack (which may itself be None on timeout). A private
-# unique object so it can never collide with a channel reply.
+# Sentinels, private unique objects so they can never collide with real
+# values: _DECLINED distinguishes "user declined the confirmation" (loop,
+# send nothing) from a real ack (which may itself be None on timeout);
+# _CLOSE is a pass telling run() the view is done (exit, or the deliberate
+# quiet exit after a clear); _OTHER_GROUP is the index bucket for keys
+# that do not split — an object, so no hdr segment string can shadow it.
 _DECLINED = object()
+_CLOSE = object()
+_OTHER_GROUP = object()

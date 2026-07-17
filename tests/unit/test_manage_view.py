@@ -17,7 +17,7 @@ import inspect
 import pytest
 
 from resources.lib.aom.store.offset_store import StoreUnreadable
-from resources.lib.aom.view.manage import ManageView
+from resources.lib.aom.view.manage import FLAT_THRESHOLD, ManageView
 from tests.fakes import FakeGui
 
 
@@ -432,3 +432,244 @@ def test_blank_localization_falls_back_to_english():
 
     heading, message = gui.oks[0]
     assert "Evolved learns as you adjust" in message
+
+
+# -- U0 grouped drill-down ----------------------------------------------------
+#
+# Above FLAT_THRESHOLD entries the top level is an HDR-group index; a group
+# opens into its entries with the redundant HDR name dropped from the row
+# copy (DU-2), Back returns to the index, and clear-all lives only at the
+# top level. These tests give the count templates and the 'Other' label real
+# translations so the labels read as they would on screen.
+
+_COUNT_OVERRIDES = {32135: "{0} entry", 32136: "{0} entries", 32137: "Other"}
+
+
+def _grouped_gui():
+    gui = FakeGui()
+    gui.localized_strings.update(_COUNT_OVERRIDES)
+    return gui
+
+
+def _grouped_entries():
+    # 10 entries -> above the threshold: four real HDR groups plus one
+    # hand-scribbled unsplittable key (the 'Other' bucket).
+    return {
+        "dolbyvision|all|truehd": _entry(1),
+        "dolbyvision|23|truehd": dict(_entry(2), video_fps=23.976),
+        "dolbyvision|all|eac3": _entry(3),
+        "hdr10|all|ac3": _entry(4),
+        "hdr10|59|ac3": dict(_entry(5), video_fps=59.94),
+        "hdr10|all|dtshd_ma": _entry(6),
+        "hlg|all|aac": _entry(7),
+        "hlg|all|opus": _entry(8),
+        "sdr|all|flac": _entry(9),
+        "scribbled-key": _entry(10),
+    }
+
+
+def test_above_threshold_renders_group_index_with_counts():
+    view, gui, service = _build(_grouped_entries(), gui=_grouped_gui())
+    view.run()
+
+    heading, options = gui.selects[0]
+    assert heading == "#32115"
+    # HDR-display order, 'Other' forced last (its raw key would otherwise
+    # interleave: 'scribbled-key' sorts before 'sdr'), clear-all closing.
+    assert options == [
+        "Dolby Vision — 3 entries",
+        "HDR10 — 3 entries",
+        "HLG — 2 entries",
+        "SDR — 1 entry",
+        "Other — 1 entry",
+        "#32126",
+    ]
+    # The index is single-line rows only — no detail tuples.
+    assert all(isinstance(option, str) for option in options)
+    assert service.calls == []
+
+
+def test_flat_threshold_boundary_picks_flat_vs_grouped():
+    at_limit = {"hdr10|{0}|ac3".format(i): _entry(i)
+                for i in range(1, FLAT_THRESHOLD + 1)}
+    view, gui, _ = _build(at_limit, per_fps=True)
+    view.run()
+    # At the threshold: today's flat list, every entry a two-line row.
+    assert len(gui.selects[0][1]) == FLAT_THRESHOLD + 1   # rows + clear-all
+    assert all(isinstance(option, tuple)
+               for option in gui.selects[0][1][:-1])
+
+    over_limit = dict(at_limit)
+    over_limit["hdr10|99|ac3"] = _entry(99)
+    view, gui, _ = _build(over_limit, gui=_grouped_gui(), per_fps=True)
+    view.run()
+    # One over: grouped, even when the store holds a single group.
+    assert gui.selects[0][1] == ["HDR10 — 9 entries", "#32126"]
+
+
+def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
+    gui = _grouped_gui()
+    gui.select_answers = [0, -1, -1]     # open DV, back to index, exit
+    view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
+    view.run()
+
+    assert len(gui.selects) == 3
+    # The drill-down is headed by the group name and lists ONLY its
+    # entries — HDR name dropped, codec leading (DU-2), no clear-all row.
+    heading, options = gui.selects[1]
+    assert heading == "Dolby Vision"
+    assert options == [
+        ("Dolby Digital Plus · Other FPS", "+3 ms"),
+        ("Dolby TrueHD · Other FPS", "+1 ms"),
+        ("Dolby TrueHD · 23.976 fps", "+2 ms"),
+    ]
+    assert "#32126" not in options
+    # Back from the group re-rendered the index; Back from the index
+    # exited without any channel traffic. Every pass re-read the store.
+    assert gui.selects[2][1] == gui.selects[0][1]
+    assert service.calls == []
+    assert service.reads == 3
+
+
+def test_other_bucket_lists_unsplittable_key_verbatim():
+    gui = _grouped_gui()
+    gui.select_answers = [4, -1, -1]     # open the Other bucket
+    view, gui, _ = _build(_grouped_entries(), gui=gui)
+    view.run()
+
+    heading, options = gui.selects[1]
+    assert heading == "Other"
+    # Verbatim acceptance: the scribbled key shows as itself (there is no
+    # HDR name to drop), value verbatim, never a crash.
+    assert options == [("scribbled-key", "+10 ms")]
+
+
+def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
+    gui = _grouped_gui()
+    gui.select_answers = [0, 0, -1, -1]  # open DV, delete a row, back, exit
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
+    view.run()
+
+    # The confirmation keeps the main heading and the FULL profile line —
+    # never the shortened in-group copy (what is deleted must not depend
+    # on which list the user came from).
+    heading, message = gui.yesnos[0]
+    assert heading == "#32115"
+    assert "Dolby Vision | Other FPS | Dolby Digital Plus" in message
+    assert "+3 ms" in message
+    assert service.calls == [("delete", "dolbyvision|all|eac3")]
+    # After the delete the (re-read) group re-rendered with 2 rows.
+    assert len(gui.selects) == 4
+    assert gui.selects[2][0] == "Dolby Vision"
+    assert len(gui.selects[2][1]) == 2
+
+
+def test_deleting_a_groups_last_entry_returns_to_index_without_it():
+    gui = _grouped_gui()
+    gui.select_answers = [3, 0, -1]      # open SDR, delete its only row, exit
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), gui=gui)
+    view.run()
+
+    assert service.calls == [("delete", "sdr|all|flac")]
+    # The emptied group falls back to the index (9 entries: still
+    # grouped), its row gone, everything else intact.
+    final_options = gui.selects[-1][1]
+    assert not any(isinstance(option, str) and option.startswith("SDR")
+                   for option in final_options)
+    assert "Other — 1 entry" in final_options
+
+
+def test_store_emptied_under_an_open_group_lands_on_empty_state():
+    service = FakeService(_grouped_entries())
+    gui = _grouped_gui()
+    gui.select_answers = [0]             # open DV...
+    original_select = gui.select
+
+    def select_then_wipe(heading, options):
+        choice = original_select(heading, options)
+        service.entries.clear()          # ...but another session clears
+        return choice
+
+    gui.select = select_then_wipe
+    view = ManageView(service.read, gui, service.send)
+    view.run()
+
+    # The next pass reads the empty store before rendering the group:
+    # education dialog, exit — never a stale group render.
+    assert gui.oks == [("#32115", "#32122")]
+    assert len(gui.selects) == 1
+
+
+def test_reread_per_pass_reflects_external_mutations():
+    service = FakeService(_grouped_entries())
+    gui = _grouped_gui()
+    gui.select_answers = [0, -1, -1]     # open DV, back, exit
+    original_select = gui.select
+    state = {"calls": 0}
+
+    def select_with_racing_delete(heading, options):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            # A DV entry raced away while the user was choosing a group.
+            service.entries.pop("dolbyvision|all|eac3")
+        return original_select(heading, options)
+
+    gui.select = select_with_racing_delete
+    view = ManageView(service.read, gui, service.send, per_fps=True)
+    view.run()
+
+    # The drill-down read fresh: the raced-away row is already gone.
+    assert len(gui.selects[1][1]) == 2
+    # And the re-rendered index shows the new count.
+    assert "Dolby Vision — 2 entries" in gui.selects[2][1]
+
+
+def test_dormant_rows_count_and_tag_at_both_levels():
+    gui = _grouped_gui()
+    gui.select_answers = [0, -1, -1]
+    view, gui, _ = _build(_grouped_entries(), gui=gui, per_fps=False)
+    view.run()
+
+    # The index counts the dormant 23-fps row (never-under-represent:
+    # every stored entry is countable from the index).
+    assert "Dolby Vision — 3 entries" in gui.selects[0][1]
+    # And the drill-down tags it exactly as the flat list would.
+    options = gui.selects[1][1]
+    assert ("Dolby TrueHD · 23.976 fps", "+2 ms — inactive") in options
+    assert ("Dolby TrueHD · All FPS", "+1 ms") in options
+
+
+def test_clear_from_group_index_exits_quietly():
+    gui = _grouped_gui()
+    gui.select_answers = [5]             # the clear-all row, after 5 groups
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), gui=gui)
+    view.run()
+
+    assert service.calls == [("clear", None)]
+    assert gui.oks == []                 # quiet exit, no education dialog
+    assert len(gui.selects) == 1
+
+
+def test_open_group_survives_threshold_underflow_but_top_level_reflows():
+    # 9 entries: grouped. Deleting one inside a group leaves 8 — the open
+    # group keeps rendering (no mid-flow teleport into a flat list), but
+    # the next top-level render re-evaluates and picks flat.
+    entries = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 9)}
+    entries["dolbyvision|all|truehd"] = _entry(9)
+    gui = _grouped_gui()
+    gui.select_answers = [1, 0, -1, -1]  # open HDR10, delete one, back, exit
+    gui.yesno_answers = [True]
+    view, gui, service = _build(entries, gui=gui, per_fps=True)
+    view.run()
+
+    assert len(service.calls) == 1
+    # Pass 3: still inside the (re-read) group, now 7 rows.
+    assert gui.selects[2][0] == "HDR10"
+    assert len(gui.selects[2][1]) == 7
+    # Back at the top level, 8 entries is at the threshold: flat list.
+    assert len(gui.selects[3][1]) == 9   # 8 rows + clear-all
+    assert all(isinstance(option, tuple)
+               for option in gui.selects[3][1][:-1])
