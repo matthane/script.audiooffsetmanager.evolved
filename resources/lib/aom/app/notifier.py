@@ -42,10 +42,11 @@ therefore swallowed (observed in the wild: an "applied" toast landing 5.2s
 after a 5s "saved" toast flashed for ~100ms). The notifier remembers when it
 last raised a toast and for how long, and ONLY a toast that would land inside
 that guarded window is deferred — released past the fade via a scheduled
-``RaiseToast`` (key-replaced: the newest contender wins). Every other toast
-fires immediately, exactly as before. Best-effort by design: toasts raised by
-Kodi itself or other addons share the same GUI window but are invisible to
-this bookkeeping.
+``RaiseToast`` (key-replaced: the newest contender wins, across message kinds
+too — the survivor is always the fresher fact — and an immediate raise
+cancels any pending release outright). Every other toast fires immediately,
+exactly as before. Best-effort by design: toasts raised by Kodi itself or
+other addons share the same GUI window but are invisible to this bookkeeping.
 
 Settings are read through the injected facade: the per-kind toast gates
 ``notify_apply_enabled`` / ``notify_learn_enabled`` (D10: each toast kind has
@@ -78,11 +79,15 @@ class Notifier:
     """Owns offset toasts: deferral-until-stable, dedupe, and the fade guard."""
 
     DEDUPE_SECONDS = 1.0
-    # Width of the guarded window after a toast's display time expires: covers
-    # Kodi's open-animation timer restart (the display timer starts at the end
-    # of the window's open animation, so true expiry lags our raise stamp by
-    # up to a few hundred ms) plus the close animation itself, with slop.
-    FADE_GUARD_SECONDS = 1.0
+    # Width of the guarded window after a toast's display time expires — and
+    # therefore where the deferred release lands. Budget: Kodi's display timer
+    # starts at the END of the window's open animation (so true expiry lags
+    # our raise stamp by up to a few hundred ms), the skin-defined close
+    # animation runs a few hundred more, and the release must land PAST that
+    # total with margin, never at its edge. One constant governs both the
+    # detection band and the release target so no unguarded slice can open
+    # between them.
+    FADE_GUARD_SECONDS = 1.25
     # GUIDialogKaiToast::AddToQueue clamps displayTime to a floor of
     # TOAST_MESSAGE_TIME (1000) + 500, whatever the caller asked for.
     KODI_MIN_DISPLAY_MS = 1500
@@ -97,11 +102,10 @@ class Notifier:
         self._gui = gui
         self._clock = clock
         self._log = log_debug
-        # Dedupe state: (string_id, profile identity, ms) + monotonic stamp.
-        self._last_toast = None
-        self._last_toast_at = None
-        # Fade-guard state: the duration the last raised toast was given.
-        self._last_duration_ms = None
+        # The last raised toast, or None: (dedupe key, monotonic stamp,
+        # duration given). One field so the dedupe/fade-guard lockstep is
+        # structural rather than by convention.
+        self._last_raise = None
 
         dispatcher.subscribe(events.OffsetApplied, self._on_offset_applied)
         dispatcher.subscribe(events.UserOffsetSaved, self._on_user_offset_saved)
@@ -203,9 +207,14 @@ class Notifier:
         self._log("AOMe_Notifier: surfaced store corruption notice")
 
     def _on_raise_toast(self, event):
-        # The fade-guarded release: all gating (enabled, dedupe, guard) was
-        # decided at request time; by construction the fire time is past the
-        # predecessor's fade, so raise directly.
+        # The fade-guarded release. Dedupe and the guard were decided at
+        # request time and cannot have gone stale (an immediate raise cancels
+        # this timer; a contender key-replaces it), but the per-kind gate is
+        # a live setting and must be re-checked at fire time — it rides on
+        # the event, so the release re-gates under its OWN kind's toggle
+        # (D10), never another's.
+        if not event.enabled():
+            return
         self._raise(event.string_id, event.ms, event.profile)
 
     # -- internals --------------------------------------------------------------
@@ -227,23 +236,21 @@ class Notifier:
             return
 
         now = self._clock()
+        # Dedupe at the offset-relevant granularity: with per_fps off an
+        # fps wiggle must not defeat the window and re-toast a duplicate.
         per_fps = self._settings.per_fps_offsets_enabled()
-        # Dedupe at the same offset-relevant granularity: with per_fps off
-        # an fps wiggle must not defeat the window and re-toast a duplicate.
-        identity = policies.stream_identity(profile, per_fps)
-        key = (string_id, identity, ms)
-        # _last_toast and _last_toast_at are set in lockstep, and a real key
-        # (a tuple) never equals the None sentinel, so the key comparison
-        # alone guards the subtraction.
-        if key == self._last_toast and \
-                now - self._last_toast_at < self.DEDUPE_SECONDS:
-            return
+        if self._last_raise is not None:
+            last_key, last_at, _ = self._last_raise
+            if self._dedupe_key(string_id, ms, profile, per_fps) == last_key \
+                    and now - last_at < self.DEDUPE_SECONDS:
+                return
 
         delay = self._fade_guard_delay(now)
         if delay > 0.0:
             self._dispatcher.schedule(
                 delay,
-                events.RaiseToast(string_id=string_id, ms=ms, profile=profile),
+                events.RaiseToast(string_id=string_id, ms=ms, profile=profile,
+                                  enabled=enabled),
                 key=self._FADE_KEY)
             self._log(f"AOMe_Notifier: deferring toast {delay * 1000:.0f}ms "
                       f"past the previous toast's fade-out")
@@ -256,20 +263,24 @@ class Notifier:
         Zero (raise immediately) unless the toast would land inside
         [shown, shown + FADE_GUARD_SECONDS] after our last raise, where
         ``shown`` is the display time the last toast was given, floored at
-        Kodi's internal clamp. Earlier than that window, the toast window is
-        still open and Kodi swaps the content in place with a fresh timer;
-        later, it is fully closed and reopens fresh — only the fade window
-        between them swallows toasts.
+        Kodi's internal clamp: earlier arrivals are in-place swaps on the
+        still-open window, later ones reopen it fresh (the module docstring
+        has the Kodi mechanics).
         """
-        if self._last_toast_at is None:
+        if self._last_raise is None:
             return 0.0
-        shown_s = max(self._last_duration_ms, self.KODI_MIN_DISPLAY_MS) / 1000.0
-        elapsed = now - self._last_toast_at
+        _, last_at, last_duration_ms = self._last_raise
+        shown_s = max(last_duration_ms, self.KODI_MIN_DISPLAY_MS) / 1000.0
+        elapsed = now - last_at
         if elapsed < shown_s or elapsed >= shown_s + self.FADE_GUARD_SECONDS:
             return 0.0
         return shown_s + self.FADE_GUARD_SECONDS - elapsed
 
     def _raise(self, string_id, ms, profile):
+        # This raise makes any pending deferred release stale by definition —
+        # the fresher fact is taking the window. (No-op when we ARE the
+        # deferred release: its timer was consumed before dispatch.)
+        self._dispatcher.cancel(self._FADE_KEY)
         duration_ms = self._settings.notification_duration_ms()
         # per_fps is re-read at RAISE instant (a deferral may cross a toggle
         # flip): the summary granularity and the dedupe key must agree with
@@ -291,7 +302,12 @@ class Notifier:
 
         self._gui.notification(summary, duration_ms, title=heading)
         self._log(f"AOMe_Notifier: {heading} — {summary}")
-        self._last_toast = (string_id,
-                            policies.stream_identity(profile, per_fps), ms)
-        self._last_toast_at = self._clock()
-        self._last_duration_ms = duration_ms
+        self._last_raise = (
+            self._dedupe_key(string_id, ms, profile, per_fps),
+            self._clock(), duration_ms)
+
+    @staticmethod
+    def _dedupe_key(string_id, ms, profile, per_fps):
+        # The caller reads the live per_fps toggle once and uses it for the
+        # key and the message alike, so the two can never disagree.
+        return (string_id, policies.stream_identity(profile, per_fps), ms)

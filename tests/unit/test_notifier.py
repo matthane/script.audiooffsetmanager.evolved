@@ -112,6 +112,12 @@ class Rig:
         session.mark_profile_built()
         session.mark_stable()
 
+    def applied(self, session, profile, ms):
+        """Post a non-provisional OffsetApplied for the session."""
+        self.post(events.OffsetApplied(session_id=session.session_id,
+                                       profile=profile, ms=ms,
+                                       provisional=False))
+
     def logged(self, needle):
         return any(needle in line for line in self.debug)
 
@@ -337,28 +343,24 @@ class TestStaleSessions:
 
 class TestDedupe:
 
-    def _applied(self, rig, session, profile, ms):
-        rig.post(events.OffsetApplied(session_id=session.session_id,
-                                      profile=profile, ms=ms, provisional=False))
-
     def test_identical_within_window_suppressed_after_window_toasts(self, rig):
         profile = make_profile()
         session = rig.start(profile)
 
-        self._applied(rig, session, profile, -50)
-        self._applied(rig, session, profile, -50)          # same key, same time
+        rig.applied(session, profile, -50)
+        rig.applied(session, profile, -50)                 # same key, same time
         assert len(rig.toasts) == 1
 
         rig.advance(DEDUPE + 0.5)                           # past the window
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
         assert len(rig.toasts) == 2
 
     def test_different_ms_inside_window_not_suppressed(self, rig):
         profile = make_profile()
         session = rig.start(profile)
 
-        self._applied(rig, session, profile, -50)
-        self._applied(rig, session, profile, -75)          # different ms -> key differs
+        rig.applied(session, profile, -50)
+        rig.applied(session, profile, -75)                 # different ms -> key differs
         assert len(rig.toasts) == 2
 
     def test_applied_does_not_suppress_saved(self, rig):
@@ -366,7 +368,7 @@ class TestDedupe:
         profile = make_profile()
         session = rig.start(profile)
 
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
         rig.post(events.UserOffsetSaved(session_id=session.session_id,
                                         profile=profile, ms=-50))
         assert len(rig.toasts) == 2
@@ -379,13 +381,8 @@ class TestDedupe:
 # ============================================================================
 
 class TestFadeGuard:
-    """A toast landing in the previous toast's fade-out window gets painted
-    onto the dying GUIDialogKaiToast window and vanishes with it; the guard
-    defers exactly those toasts past the fade and no others."""
-
-    def _applied(self, rig, session, profile, ms):
-        rig.post(events.OffsetApplied(session_id=session.session_id,
-                                      profile=profile, ms=ms, provisional=False))
+    """The guard defers exactly the toasts that would ride the previous
+    toast's fade-out, and no others (Kodi mechanics: notifier module doc)."""
 
     def test_toast_inside_fade_window_is_deferred_past_it(self, rig):
         # The field repro (2.0.0~beta2, CoreELEC): an "applied" toast landing
@@ -394,11 +391,11 @@ class TestFadeGuard:
         # then show for its full duration.
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
         assert len(rig.toasts) == 1
 
         rig.advance(DURATION_S + 0.2)           # inside [shown, shown+guard)
-        self._applied(rig, session, profile, -75)
+        rig.applied(session, profile, -75)
         assert len(rig.toasts) == 1             # deferred, not swallowed
         assert rig.logged("deferring toast")
 
@@ -412,19 +409,19 @@ class TestFadeGuard:
         # display timer — native behavior, no deferral allowed.
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
 
         rig.advance(DURATION_S - 0.5)
-        self._applied(rig, session, profile, -75)
+        rig.applied(session, profile, -75)
         assert len(rig.toasts) == 2
 
     def test_toast_after_fade_window_fires_immediately(self, rig):
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
 
         rig.advance(DURATION_S + GUARD)         # window fully closed
-        self._applied(rig, session, profile, -75)
+        rig.applied(session, profile, -75)
         assert len(rig.toasts) == 2
 
     def test_newest_contender_supersedes_a_deferred_toast(self, rig):
@@ -432,16 +429,77 @@ class TestFadeGuard:
         # key-replaced, so only the newest (freshest fact) surfaces.
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
 
         rig.advance(DURATION_S + 0.1)
-        self._applied(rig, session, profile, -75)   # deferred
+        rig.applied(session, profile, -75)          # deferred
         rig.advance(0.1)
-        self._applied(rig, session, profile, -60)   # key-replaces the -75
+        rig.applied(session, profile, -60)          # key-replaces the -75
 
         rig.advance(GUARD)
         assert len(rig.toasts) == 2
         assert rig.gui.titles[1] == "#32092: -60 ms"
+
+    def test_immediate_raise_cancels_a_pending_deferred_toast(self, rig):
+        # The boundary race (review finding, confirmed against the real
+        # dispatcher): an event dequeued just before the deferred release
+        # deadline whose handler's clock read lands past it raises
+        # immediately — the pending deferred toast is stale at that instant
+        # and must be cancelled, or it fires right after and paints its
+        # older value over the fresher one.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)
+        rig.applied(session, profile, -75)          # deferred, due at +GUARD
+        assert len(rig.toasts) == 1
+
+        # Sit just before the deadline, then let the enabled-gate read
+        # consume time so the guard's clock read crosses it — the
+        # handler-latency race the dispatcher's ordering cannot prevent.
+        rig.advance(GUARD - 0.25)
+        original = rig.settings.notify_apply_enabled
+        def slow_enabled():
+            rig.clock.advance(0.1)
+            return original()
+        rig.settings.notify_apply_enabled = slow_enabled
+        rig.applied(session, profile, -60)          # immediate (past band)
+        del rig.settings.notify_apply_enabled
+
+        assert rig.gui.titles[-1] == "#32092: -60 ms"
+        rig.advance(GUARD + 1.0)                    # stale timer must be dead
+        assert len(rig.toasts) == 2
+        assert not any("-75" in title for title in rig.gui.titles)
+
+    def test_deferred_toast_suppressed_when_notifications_disabled(self, rig):
+        # The enabled gate is a live setting: a toast deferred while
+        # notifications were on must not fire after the user turns them off.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)
+        rig.applied(session, profile, -75)          # deferred
+        rig.settings.apply_enabled = False
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 1
+
+    def test_deferred_toast_rechecks_its_own_gate_not_the_other(self, rig):
+        # The gate rides on the RaiseToast event (D10: per-kind toggles), so
+        # a deferred APPLY toast re-checks notify_apply at fire time and is
+        # untouched by the learn toggle flipping off inside the deferral.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)
+        rig.applied(session, profile, -75)          # deferred
+        rig.settings.learn_enabled = False
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 2
 
     def test_guard_uses_kodis_display_floor_not_the_raw_setting(self, rig):
         # Kodi clamps displayTime to KODI_MIN_DISPLAY_MS: with a 1s user
@@ -451,14 +509,14 @@ class TestFadeGuard:
         rig.settings.duration = 1000
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
 
         rig.advance(1.2)                        # raw duration passed; clamp not
-        self._applied(rig, session, profile, -75)
+        rig.applied(session, profile, -75)
         assert len(rig.toasts) == 2             # window still open: swap
 
         rig.advance(KODI_MIN_S + 0.1)           # 1.6s after the second raise
-        self._applied(rig, session, profile, -60)
+        rig.applied(session, profile, -60)
         assert len(rig.toasts) == 2             # deferred
 
         rig.advance(GUARD)
@@ -467,13 +525,13 @@ class TestFadeGuard:
     def test_deferred_toast_survives_session_end(self, rig):
         # RaiseToast is deliberately not session-stamped: the payload
         # announces a store/apply that already happened and stays true even
-        # if playback stops inside the sub-second deferral.
+        # if playback stops inside the deferral.
         profile = make_profile()
         session = rig.start(profile)
-        self._applied(rig, session, profile, -50)
+        rig.applied(session, profile, -50)
 
         rig.advance(DURATION_S + 0.2)
-        self._applied(rig, session, profile, -75)   # deferred
+        rig.applied(session, profile, -75)          # deferred
         rig.post(events.PlaybackStopped())
 
         rig.advance(GUARD)
