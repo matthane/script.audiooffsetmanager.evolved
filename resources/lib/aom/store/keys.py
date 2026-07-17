@@ -232,9 +232,12 @@ def _display_fps(segment, video_fps=None, per_fps=False):
         # rates without their own entry (lookup: exact -> all -> miss), so
         # 'All FPS' would misread as overriding the exact entries —
         # 'Other FPS' states the true semantics. With the toggle off,
-        # 'all' is the only key consulted and 'All FPS' is literally true.
+        # 'all' is the only key consulted, so the axis carries no
+        # information and the segment is OMITTED (None) — any dormant
+        # exact-rate siblings keep their rate and are tagged inactive, so
+        # the unlabelled row cannot be misread as one of them.
         # 'FPS' (not 'rates') to match the '<n> fps' unit on sibling rows.
-        return 'Other FPS' if per_fps else 'All FPS'
+        return 'Other FPS' if per_fps else None
     if isinstance(video_fps, (int, float)) and \
             not isinstance(video_fps, bool) and math.isfinite(video_fps):
         return "{0:g} fps".format(video_fps)
@@ -247,18 +250,22 @@ def describe_key(key, video_fps=None, per_fps=False):
     HDR and audio segments use the display tables, falling back to the raw
     segment verbatim when unrecognised. The 'all' fps segment renders as
     'Other FPS' when ``per_fps`` says the toggle is on (it is the
-    fallback below the exact-rate entries) and 'All FPS' when off (it
-    is the only key consulted). A numeric segment renders the EXACT
-    reported rate from the entry's ``video_fps`` metadata when the caller
-    supplies a finite number ('23' is a key identity, not a rate a user
-    recognises), degrading to the truncated segment ('<n> fps') when the
-    metadata is absent or malformed (hand-edited file).
+    fallback below the exact-rate entries) and is OMITTED when off
+    ('Dolby Vision | Dolby TrueHD') — with the toggle off 'all' is the
+    only key consulted, so the axis says nothing. A numeric segment
+    renders the EXACT reported rate from the entry's ``video_fps``
+    metadata when the caller supplies a finite number ('23' is a key
+    identity, not a rate a user recognises), degrading to the truncated
+    segment ('<n> fps') when the metadata is absent or malformed
+    (hand-edited file).
     """
     hdr, fps, audio = split_key(key)
-    hdr_name = HDR_DISPLAY.get(hdr, hdr)
-    audio_name = AUDIO_DISPLAY.get(audio, audio)
-    return "{} | {} | {}".format(
-        hdr_name, _display_fps(fps, video_fps, per_fps), audio_name)
+    parts = [HDR_DISPLAY.get(hdr, hdr)]
+    fps_name = _display_fps(fps, video_fps, per_fps)
+    if fps_name is not None:
+        parts.append(fps_name)
+    parts.append(AUDIO_DISPLAY.get(audio, audio))
+    return " | ".join(parts)
 
 
 def describe_key_in_group(key, video_fps=None, per_fps=False):
@@ -267,13 +274,18 @@ def describe_key_in_group(key, video_fps=None, per_fps=False):
     The management view's grouped drill-down lists one HDR type at a time,
     so its entry rows drop the redundant HDR name and lead with the codec
     (the stable-width part a user scans by). Same display vocabulary, fps
-    semantics, and verbatim fallbacks as ``describe_key``; an unsplittable
-    key raises ValueError exactly like ``describe_key`` does — callers show
-    those keys as themselves (the view's 'Other' bucket).
+    semantics, and verbatim fallbacks as ``describe_key`` — including the
+    omitted 'all' axis when the toggle is off, where the row is just the
+    codec name; an unsplittable key raises ValueError exactly like
+    ``describe_key`` does — callers show those keys as themselves (the
+    view's 'Other' bucket).
     """
     _hdr, fps, audio = split_key(key)
-    return "{} · {}".format(
-        AUDIO_DISPLAY.get(audio, audio), _display_fps(fps, video_fps, per_fps))
+    audio_name = AUDIO_DISPLAY.get(audio, audio)
+    fps_name = _display_fps(fps, video_fps, per_fps)
+    if fps_name is None:
+        return audio_name
+    return "{} · {}".format(audio_name, fps_name)
 
 
 def sort_key(key):
@@ -281,7 +293,7 @@ def sort_key(key):
 
     Groups the management view's rows the way a user scans them — all of
     one HDR mode together, codecs alphabetical within it, and each codec's
-    'All FPS' entry before its per-fps entries in NUMERIC rate order
+    'all' entry before its per-fps entries in NUMERIC rate order
     (string-sorting '119' before '23' is exactly the bug this avoids).
     Display names (case-folded) drive the alpha ordering so the on-screen
     grouping matches the sort. Total over hand-edited files: an

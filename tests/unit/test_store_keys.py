@@ -174,7 +174,7 @@ def test_hdr10plus_display_name_is_field_observed():
     assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
     assert keys.HDR_DISPLAY['hdr10plus'] == 'HDR10+'
     assert keys.describe_key('hdr10plus|all|truehd') == \
-        'HDR10+ | All FPS | Dolby TrueHD'
+        'HDR10+ | Dolby TrueHD'
     assert keys.profile_summary('hdr10plus', 'truehd') == \
         'HDR10+ | Dolby TrueHD'
 
@@ -220,7 +220,7 @@ def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
 
 def test_describe_key_known():
     assert keys.describe_key('dolbyvision|all|truehd') == \
-        'Dolby Vision | All FPS | Dolby TrueHD'
+        'Dolby Vision | Dolby TrueHD'
     assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
 
 
@@ -244,12 +244,12 @@ def test_describe_key_shows_exact_rate_from_video_fps_metadata():
 def test_describe_key_all_segment_is_toggle_aware():
     # per_fps ON: the 'all' entry is the fallback BELOW exact-rate entries
     # (exact -> all -> miss), so 'All FPS' would misread as an override —
-    # it renders 'Other FPS'. OFF: 'all' is the only key consulted and
-    # 'All FPS' is literally true (the default).
+    # it renders 'Other FPS'. OFF: 'all' is the only key consulted, so
+    # the fps axis carries no information and is omitted (the default).
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=True) == \
         'Dolby Vision | Other FPS | Dolby TrueHD'
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=False) == \
-        'Dolby Vision | All FPS | Dolby TrueHD'
+        'Dolby Vision | Dolby TrueHD'
     # A numeric segment is unaffected by the toggle.
     assert keys.describe_key('hdr10|23|ac3', video_fps=23.976,
                              per_fps=True) == 'HDR10 | 23.976 fps | Dolby Digital'
@@ -259,7 +259,10 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
     # 'all' is the identity: the entry's rate is just the last store
     # instant's, not what the key matches.
     assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976) == \
-        'Dolby Vision | All FPS | Dolby TrueHD'
+        'Dolby Vision | Dolby TrueHD'
+    assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976,
+                             per_fps=True) == \
+        'Dolby Vision | Other FPS | Dolby TrueHD'
 
 
 def test_describe_key_degrades_to_segment_without_usable_metadata():
@@ -273,9 +276,10 @@ def test_describe_key_degrades_to_segment_without_usable_metadata():
 
 def test_describe_key_in_group_drops_hdr_and_leads_with_codec():
     # The drill-down row: one HDR group is open, so its name is redundant —
-    # the codec leads (the stable-width part) and the rate follows.
+    # the codec leads (the stable-width part) and the rate follows. With
+    # the toggle off the 'all' axis is omitted too: just the codec.
     assert keys.describe_key_in_group('dolbyvision|all|truehd') == \
-        'Dolby TrueHD · All FPS'
+        'Dolby TrueHD'
     assert keys.describe_key_in_group(
         'dolbyvision|23|truehd', video_fps=23.976, per_fps=True) == \
         'Dolby TrueHD · 23.976 fps'
@@ -291,7 +295,7 @@ def test_describe_key_in_group_matches_describe_key_semantics():
         'Dolby Digital · 59 fps'
     # Verbatim fallback for an unlisted codec, like every display surface.
     assert keys.describe_key_in_group('sdr|all|x-future-codec') == \
-        'x-future-codec · All FPS'
+        'x-future-codec'
 
 
 def test_describe_key_in_group_raises_on_unsplittable_key():

@@ -65,10 +65,12 @@ came from.
 
 Display is toggle-aware but NEVER filtered: the injected ``per_fps`` flag
 renders the 'all' segment as 'Other FPS' when the toggle is on (it is
-the fallback below the exact-rate entries, not an override) and tags
-dormant per-fps rows '— inactive' when it is off. Every stored entry
-always lists — this view is the store's only inspection surface, and
-clear-all's confirmation must never under-represent what it deletes.
+the fallback below the exact-rate entries, not an override); when it is
+off the fps axis is OMITTED from 'all' rows ('All FPS' would restate the
+only semantics that mode has) and dormant per-fps rows keep their rate,
+tagged '— inactive'. Every stored entry always lists — this view is the
+store's only inspection surface, and clear-all's confirmation must never
+under-represent what it deletes.
 """
 
 from collections import namedtuple
@@ -140,10 +142,11 @@ class ManageView:
                  log_debug=None):
         """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
         change while the view is open — the settings dialog is closed). It
-        drives DISPLAY only: 'Other FPS' vs 'All FPS' for the 'all'
-        segment, and the '— inactive' tag on per-fps rows the lookup will
-        not consult while the toggle is off. Never filtering: this view is
-        the store's only inspection surface, so every entry always lists.
+        drives DISPLAY only: 'Other FPS' vs an omitted fps axis for the
+        'all' segment, and the '— inactive' tag on per-fps rows the
+        lookup will not consult while the toggle is off. Never filtering:
+        this view is the store's only inspection surface, so every entry
+        always lists.
         """
         self._read_entries = read_entries
         self._gui = gui
