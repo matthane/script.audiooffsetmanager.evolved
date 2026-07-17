@@ -7,7 +7,9 @@
     <section id="script.audiooffsetmanager.evolved">
         <!-- Offset learning: the product. -->
         <category id="learning" label="32105" help="32106">
-            <group id="1" label="32107">
+            <!-- One untitled group: the category name says "Offsets" and
+                 the four items say the rest (user call, beta10 pass). -->
+            <group id="1">
                 <setting id="remember_adjustments" type="boolean" label="32108" help="32109">
                     <level>0</level>
                     <default>true</default>
@@ -26,8 +28,6 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
-            </group>
-            <group id="2" label="32114">
                 <setting id="manage_offsets" type="action" label="32115" help="32116">
                     <level>0</level>
                     <data>RunScript(script.audiooffsetmanager.evolved,manage_offsets)</data>

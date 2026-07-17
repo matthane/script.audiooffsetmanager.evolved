@@ -77,10 +77,6 @@ msgctxt "#32106"
 msgid "Learning, applying, and managing stored audio offsets"
 msgstr ""
 
-msgctxt "#32107"
-msgid "Learn and apply"
-msgstr ""
-
 msgctxt "#32108"
 msgid "Learn audio offsets"
 msgstr ""
@@ -95,10 +91,6 @@ msgstr ""
 
 msgctxt "#32111"
 msgid "Learn and apply offsets separately for each video frame rate. When disabled, one offset covers all frame rates of the same HDR type and audio format. Per-rate offsets already learned are kept, but not applied, while this is disabled."
-msgstr ""
-
-msgctxt "#32114"
-msgid "Stored offsets"
 msgstr ""
 
 msgctxt "#32115"
