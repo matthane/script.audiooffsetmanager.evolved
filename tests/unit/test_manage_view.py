@@ -133,9 +133,9 @@ def test_index_rows_sorted_by_hdr_label_with_clear_all_last():
 
     options = gui.selects[0][1]
     assert options == [
-        "Dolby Vision — 1 entry",
-        "HDR10 — 1 entry",
-        "HLG — 1 entry",
+        "[B]Dolby Vision[/B] — 1 entry",
+        "[B]HDR10[/B] — 1 entry",
+        "[B]HLG[/B] — 1 entry",
         "#32126",
     ]
 
@@ -173,8 +173,11 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
 
     options = gui.selects[0][1]
     assert options[0] == ("Dolby Vision | Dolby Digital Plus", "-25 ms")
-    assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
-                          "+125 ms — inactive")
+    # Dormant rows dim whole (label AND detail) on top of the tag —
+    # Kodi's gray-out idiom for present-but-not-in-effect.
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]+125 ms — inactive[/COLOR]")
     assert len(options) == 3               # both entries + clear-all
 
 
@@ -213,12 +216,13 @@ def test_rows_group_by_codec_then_numeric_rate():
     view.run()
 
     profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
+    # The toggle is off here, so the per-fps rows are dormant and dim.
     assert profiles == [
         "Dolby Vision | Dolby Digital",
         "Dolby Vision | Dolby Digital Plus",
-        "Dolby Vision | 23.976 fps | Dolby Digital Plus",
-        "Dolby Vision | 119.88 fps | Dolby Digital Plus",
-        "Dolby Vision | 24 fps | Dolby TrueHD",
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]Dolby Vision | 119.88 fps | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]Dolby Vision | 24 fps | Dolby TrueHD[/COLOR]",
     ]
 
 
@@ -483,12 +487,13 @@ def test_multi_group_store_renders_group_index_with_counts():
     assert heading == "#32115"
     # HDR-display order, 'Other' forced last (its raw key would otherwise
     # interleave: 'scribbled-key' sorts before 'sdr'), clear-all closing.
+    # The group name is bolded against its count — index rows only.
     assert options == [
-        "Dolby Vision — 3 entries",
-        "HDR10 — 3 entries",
-        "HLG — 2 entries",
-        "SDR — 1 entry",
-        "Other — 1 entry",
+        "[B]Dolby Vision[/B] — 3 entries",
+        "[B]HDR10[/B] — 3 entries",
+        "[B]HLG[/B] — 2 entries",
+        "[B]SDR[/B] — 1 entry",
+        "[B]Other[/B] — 1 entry",
         "#32126",
     ]
     # The index is single-line rows only — no detail tuples.
@@ -512,8 +517,8 @@ def test_single_group_renders_flat_and_second_group_flips_to_index():
     two_groups = {"hdr10|all|ac3": _entry(1), DV: _entry(2)}
     view, gui, _ = _build(two_groups, gui=_grouped_gui())
     view.run()
-    assert gui.selects[0][1] == ["Dolby Vision — 1 entry", "HDR10 — 1 entry",
-                                 "#32126"]
+    assert gui.selects[0][1] == ["[B]Dolby Vision[/B] — 1 entry",
+                                 "[B]HDR10[/B] — 1 entry", "#32126"]
 
 
 def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
@@ -589,9 +594,9 @@ def test_deleting_a_groups_last_entry_returns_to_index_without_it():
     # The emptied group falls back to the index (9 entries: still
     # grouped), its row gone, everything else intact.
     final_options = gui.selects[-1][1]
-    assert not any(isinstance(option, str) and option.startswith("SDR")
+    assert not any(isinstance(option, str) and "SDR" in option
                    for option in final_options)
-    assert "Other — 1 entry" in final_options
+    assert "[B]Other[/B] — 1 entry" in final_options
 
 
 def test_store_emptied_under_an_open_group_lands_on_empty_state():
@@ -637,7 +642,7 @@ def test_reread_per_pass_reflects_external_mutations():
     # (2 rows + the group-clear row).
     assert len(gui.selects[1][1]) == 3
     # And the re-rendered index shows the new count.
-    assert "Dolby Vision — 2 entries" in gui.selects[2][1]
+    assert "[B]Dolby Vision[/B] — 2 entries" in gui.selects[2][1]
 
 
 def test_dormant_rows_count_and_tag_at_both_levels():
@@ -648,10 +653,12 @@ def test_dormant_rows_count_and_tag_at_both_levels():
 
     # The index counts the dormant 23-fps row (never-under-represent:
     # every stored entry is countable from the index).
-    assert "Dolby Vision — 3 entries" in gui.selects[0][1]
-    # And the drill-down tags it exactly as the flat list would.
+    assert "[B]Dolby Vision[/B] — 3 entries" in gui.selects[0][1]
+    # And the drill-down tags AND dims it exactly as the flat list would;
+    # active rows stay unstyled.
     options = gui.selects[1][1]
-    assert ("Dolby TrueHD · 23.976 fps", "+2 ms — inactive") in options
+    assert ("[COLOR gray]Dolby TrueHD · 23.976 fps[/COLOR]",
+            "[COLOR gray]+2 ms — inactive[/COLOR]") in options
     assert ("Dolby TrueHD", "+1 ms") in options
 
 
@@ -689,8 +696,8 @@ def test_deletes_never_flip_the_mode_until_a_group_empties():
     # the INDEX, not a flat list.
     assert gui.selects[2][0] == "HDR10"
     assert len(gui.selects[2][1]) == 8
-    assert gui.selects[3][1] == ["Dolby Vision — 1 entry",
-                                 "HDR10 — 7 entries", "#32126"]
+    assert gui.selects[3][1] == ["[B]Dolby Vision[/B] — 1 entry",
+                                 "[B]HDR10[/B] — 7 entries", "#32126"]
     # Emptying the DV group leaves one group: NOW the top level is flat —
     # the single remaining group's contents.
     assert gui.selects[4][0] == "Dolby Vision"
@@ -765,8 +772,8 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
     view, gui, _ = _build(entries, gui=gui, per_fps=True)
     view.run()
 
-    assert gui.selects[0][1] == ["HDR10 — 8 entries", "Other — 2 entries",
-                                 "#32126"]
+    assert gui.selects[0][1] == ["[B]HDR10[/B] — 8 entries",
+                                 "[B]Other[/B] — 2 entries", "#32126"]
     heading, options = gui.selects[1]
     assert heading == "Other"
     assert options == [
@@ -792,8 +799,10 @@ def test_group_clear_confirmation_shows_scope_and_decline_sends_nothing():
     heading, message = gui.yesnos[0]
     assert heading == "#32115"
     assert "#32139" in message
-    # The scope line is the index row's exact copy: name — count.
+    # The scope line is the index row's copy PLAIN — same content, no
+    # bold markup in dialog message text.
     assert "Dolby Vision — 3 entries" in message
+    assert "[B]" not in message
     assert service.calls == []
     # Declined: still in the group, re-rendered.
     assert gui.selects[2][0] == "Dolby Vision"
@@ -817,9 +826,9 @@ def test_group_clear_deletes_every_group_key_and_lands_on_index():
     # no error/education dialog.
     assert gui.oks == []
     final_options = gui.selects[-1][1]
-    assert not any(isinstance(option, str) and option.startswith("Dolby Vision")
+    assert not any(isinstance(option, str) and "Dolby Vision" in option
                    for option in final_options)
-    assert "HDR10 — 3 entries" in final_options
+    assert "[B]HDR10[/B] — 3 entries" in final_options
 
 
 def test_group_clear_of_the_entire_store_exits_quietly():
@@ -921,4 +930,4 @@ def test_count_template_degrades_on_malformed_or_placeholderless_translation():
         gui.localized_strings[32136] = bad
         view, gui, _ = _build(_grouped_entries(), gui=gui)
         view.run()
-        assert "Dolby Vision — 3 entries" in gui.selects[0][1], bad
+        assert "[B]Dolby Vision[/B] — 3 entries" in gui.selects[0][1], bad

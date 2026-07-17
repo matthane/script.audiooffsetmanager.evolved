@@ -71,6 +71,14 @@ only semantics that mode has) and dormant per-fps rows keep their rate,
 tagged '— inactive'. Every stored entry always lists — this view is the
 store's only inspection surface, and clear-all's confirmation must never
 under-represent what it deletes.
+
+List rows carry Kodi label markup, applied at RENDER time only: dormant
+rows are dimmed gray (Kodi's idiom for present-but-not-in-effect; the
+'— inactive' tag stays for skins where color alone reads poorly) and the
+group index bolds the group name against its count. The ``_Row`` strings
+stay plain so confirmations — which reuse them — render unstyled; bold
+degrades to regular weight on skins without a bold list font, so no
+information may live in markup alone.
 """
 
 from collections import namedtuple
@@ -127,8 +135,17 @@ _FALLBACKS = {
 # One presentable entry: the full profile line (flat rows AND the first
 # line of the delete confirmation), the in-group line (drill-down rows —
 # the redundant HDR name dropped, codec leading), the value/meta detail
-# line, and the literal store key the delete mutation targets.
-_Row = namedtuple("_Row", "describe short detail key")
+# line, the literal store key the delete mutation targets, and the
+# dormancy flag that dims the row at render time. All strings PLAIN —
+# markup is a list-render concern, and these feed confirmations too.
+_Row = namedtuple("_Row", "describe short detail key dormant")
+
+# Kodi label markup for the list renders. COLOR is skin-independent;
+# [B] needs the skin's bold list font (Estuary has one) and silently
+# renders regular weight without it — acceptable, because the bold
+# carries no information the text does not.
+_DIM = "[COLOR gray]{0}[/COLOR]"
+_BOLD = "[B]{0}[/B]"
 
 
 def _noop(_message):
@@ -204,7 +221,7 @@ class ManageView:
 
     def _flat_pass(self, heading, rows):
         """The single-list render: every entry as a two-line row + clear-all."""
-        options = [(row.describe, row.detail) for row in rows]
+        options = [self._list_row(row.describe, row) for row in rows]
         options.append(self._gui.localized(_LABEL_CLEAR_ALL))
 
         # Cancel/Back is the exit; the router then reopens the settings
@@ -228,7 +245,7 @@ class ManageView:
         """
         self._log("AOMe_ManageView: rendering group index ({0} group(s))"
                   .format(len(groups)))
-        options = [self._group_row(segment, count)
+        options = [self._group_row(segment, count, emphasize=True)
                    for segment, count in groups]
         options.append(self._gui.localized(_LABEL_CLEAR_ALL))
 
@@ -262,7 +279,7 @@ class ManageView:
             self._group = None
             return None
 
-        options = [(row.short, row.detail) for row in group_rows]
+        options = [self._list_row(row.short, row) for row in group_rows]
         # The scoped clear row: the whole-store clear-all stays at the top
         # level, but the set THIS row deletes is exactly the list above it.
         options.append(self._gui.localized(_LABEL_CLEAR_GROUP))
@@ -334,15 +351,28 @@ class ManageView:
         first, numeric order) — total even over hand-edited keys, so the
         list never shuffles between renders.
         """
-        rows = [
-            _Row(self._describe(key, entry),
-                 self._describe_short(key, entry),
-                 self._detail(entry, inactive=self._is_dormant(key)),
-                 key)
-            for key, entry in entries.items()
-        ]
+        rows = []
+        for key, entry in entries.items():
+            dormant = self._is_dormant(key)
+            rows.append(_Row(self._describe(key, entry),
+                             self._describe_short(key, entry),
+                             self._detail(entry, inactive=dormant),
+                             key,
+                             dormant))
         rows.sort(key=lambda row: sort_key(row.key))
         return rows
+
+    @staticmethod
+    def _list_row(label, row):
+        """One two-line select option; a dormant row is dimmed whole.
+
+        Markup lives HERE, not in the ``_Row`` strings: confirmations
+        reuse those and must render unstyled. Both lines dim — half a
+        gray row would read as two different states.
+        """
+        if row.dormant:
+            return (_DIM.format(label), _DIM.format(row.detail))
+        return (label, row.detail)
 
     def _is_dormant(self, key):
         """True for a per-fps entry the lookup will not consult right now.
@@ -449,8 +479,13 @@ class ManageView:
             return self._text(_LABEL_OTHER_GROUP)
         return HDR_DISPLAY.get(segment, segment)
 
-    def _group_row(self, segment, count):
-        """One index row: 'Dolby Vision — 6 entries' (single-line)."""
+    def _group_row(self, segment, count, *, emphasize=False):
+        """One index row: 'Dolby Vision — 6 entries' (single-line).
+
+        ``emphasize`` bolds the group name against its count — the index
+        list only; the clear-group confirmation reuses this row PLAIN
+        (dialog message text, same content, no list to stand out in).
+        """
         string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
         template = self._text(string_id)
         if '{' not in template:
@@ -467,7 +502,10 @@ class ManageView:
             # ('{0' ValueError, '{1}' IndexError, '{x}' KeyError, '{0.n}'
             # AttributeError, '{0[x]}' TypeError...).
             counted = _FALLBACKS[string_id].format(count)
-        return "{0} — {1}".format(self._group_name(segment), counted)
+        name = self._group_name(segment)
+        if emphasize:
+            name = _BOLD.format(name)
+        return "{0} — {1}".format(name, counted)
 
     # -- actions --------------------------------------------------------------
 
