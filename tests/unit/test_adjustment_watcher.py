@@ -9,9 +9,11 @@ and a real AdjustmentWatcher. UserOffsetSaved posts are collected off the bus.
 
 E2: stores land in the sparse store under the D4 write key (derived at store
 instant from the live profile + per_fps toggle); eligibility is
-remember-adjustments + not-paused (the classic per-HDR/unknown-axis gates
-died with their features); the settings-dialog store deferral is DELETED —
-offsets are not settings, so the dialog cannot clobber them.
+remember-adjustments only — the apply toggle is orthogonal and never gates
+learning (D9 amended in the beta9 field pass; the classic per-HDR/
+unknown-axis gates died with their features); the settings-dialog store
+deferral is DELETED — offsets are not settings, so the dialog cannot
+clobber them.
 
 Timing facts the tests rely on (all derived from the class constants):
 
@@ -543,15 +545,29 @@ class TestEligibilityAndChain:
         assert rig.offset_table.stored == [(KEY_A, -50)]
         assert rig.session.miss_announced is None      # chain invalidated
 
-    def test_paused_is_not_watched(self, rig):
-        # The global pause (D9) stops learning too: a paused addon must not
-        # write store entries behind the user's back.
+    def test_apply_off_is_still_watched(self, rig):
+        # D9 amended (beta9 field pass): learning and applying are
+        # orthogonal. With applying off the addon leaves playback alone,
+        # but adjustments still watch and store — the re-teach mode. The
+        # toggle is explicit about recording, so this is not the old
+        # "paused addon writing behind the user's back" hazard.
         profile = make_profile()
-        rig.facade.paused = True
+        rig.facade.apply_offsets = False
         rig.start(profile)
         rig.set_delay('-0.050 s')
         rig.arm()
-        assert not rig.watching
+        assert rig.watching
+
+    def test_apply_off_stores_the_adjustment_end_to_end(self, rig):
+        # The full learn-only loop: with applying off the applier never
+        # touched the delay, so the session baseline is whatever Kodi
+        # holds (adopted silently); a foreign change away from it still
+        # quiesces into the store under the D4 write key.
+        rig.facade.apply_offsets = False
+        rig.begin(make_profile())              # baseline 0 adopted
+        rig.observe_foreign('-0.050 s')
+        rig.hold_to_quiescence()
+        assert rig.offset_table.stored == [(KEY_A, -50)]
 
     def test_incomplete_profile_is_still_watched(self, rig):
         # Eligibility no longer axis-gates: an audio-unknown stream is

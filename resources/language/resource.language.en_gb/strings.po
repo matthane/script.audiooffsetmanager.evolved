@@ -134,7 +134,7 @@ msgid "Learn audio offsets"
 msgstr ""
 
 msgctxt "#32109"
-msgid "When you adjust the audio offset during playback, the value is saved for that stream profile and applied automatically whenever a matching stream plays. Turning this off stops new offsets from being saved. Offsets already saved still apply."
+msgid "When you adjust the audio offset during playback, the value is saved for that stream profile. Turning this off stops new offsets from being saved. Applying saved offsets is controlled by Apply audio offsets."
 msgstr ""
 
 msgctxt "#32110"
@@ -143,14 +143,6 @@ msgstr ""
 
 msgctxt "#32111"
 msgid "Learn and apply offsets separately for each video frame rate. When disabled, one offset covers all frame rates of the same HDR type and audio format. Per-rate offsets already learned are kept, but not applied, while this is disabled."
-msgstr ""
-
-msgctxt "#32112"
-msgid "Pause automatic offsets"
-msgstr ""
-
-msgctxt "#32113"
-msgid "Temporarily stop applying stored offsets and learning new ones. Everything already stored is kept."
 msgstr ""
 
 msgctxt "#32114"
@@ -251,4 +243,12 @@ msgstr ""
 
 msgctxt "#32139"
 msgid "Delete all stored offsets in this group?"
+msgstr ""
+
+msgctxt "#32140"
+msgid "Apply audio offsets"
+msgstr ""
+
+msgctxt "#32141"
+msgid "Apply the saved audio offset automatically when a matching stream plays. Turning this off stops the addon from setting the offset during playback. Saved offsets are kept and learning is not affected."
 msgstr ""

@@ -14,9 +14,14 @@ self-scheduled ``WatchTick`` events. No threads, no dialog IDs, no
 open/close state machine — every source of an adjustment is caught because
 we watch the VALUE, not the GUI that (sometimes) sets it.
 
-Eligibility (``_eligible``) is deliberately minimal: a profile exists,
+Eligibility (``_eligible``) is deliberately minimal: a profile exists and
 learning is on ("Learn audio offsets" — the promoted core of the
-product, P2), and the addon is not paused (D9). No axis-gating happens here
+product, P2). The apply toggle is deliberately NOT consulted (D9 amended
+in the beta9 field pass: the global pause became the orthogonal "Apply
+audio offsets" toggle): with applying off the addon stops SETTING the
+audio offset (opt-in seek-backs keep their own toggles and still fire),
+but adjustments the user dials still store — the re-teach mode
+the old pause made impossible. No axis-gating happens here
 — the store path (``_store``) re-validates the WHOLE profile
 (``policies.is_complete``) before writing, so an incomplete stream is
 watched but never stored.
@@ -133,18 +138,19 @@ class AdjustmentWatcher:
     # -- eligibility ------------------------------------------------------------
 
     def _eligible(self, profile):
-        """Watch when a profile exists, learning is on, and not paused.
+        """Watch when a profile exists and learning is on.
 
-        The classic per-HDR enable and hdr/fps unknown-checks are gone with
-        their features: the HDR axis always resolves under the open
-        vocabulary (sdr default), and completeness is the STORE path's
-        concern (_store re-validates the whole profile before writing, so
-        an incomplete stream is watched but never persisted — classic
-        parity for the audio-unknown case, now uniform).
+        The apply toggle is NOT consulted — learning and applying are
+        orthogonal (module docstring). The classic per-HDR enable and
+        hdr/fps unknown-checks are gone with their features: the HDR axis
+        always resolves under the open vocabulary (sdr default), and
+        completeness is the STORE path's concern (_store re-validates the
+        whole profile before writing, so an incomplete stream is watched
+        but never persisted — classic parity for the audio-unknown case,
+        now uniform).
         """
         return (profile is not None
                 and self._settings.remember_adjustments_enabled()
-                and not self._settings.pause_enabled()
                 # A permanently unwritable store (newer-schema file after a
                 # downgrade) must stop the learn loop outright — otherwise
                 # every quiescence cycle re-detects and re-fails the same

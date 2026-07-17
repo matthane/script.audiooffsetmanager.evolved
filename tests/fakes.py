@@ -124,8 +124,9 @@ class FakeFacade:
     ``per_fps`` drives the detector's identity granularity and the offset
     table's key composition; ``seek_configs`` maps a seek reason to its
     (enabled, seconds) pair, defaulting every reason to (True, 4);
-    ``remember_adjustments`` / ``paused`` gate the adjustment watcher and
-    (paused) the applier; ``notify_apply`` / ``notify_learn`` /
+    ``remember_adjustments`` gates the adjustment watcher and
+    ``apply_offsets`` the applier (orthogonal — D9 amended);
+    ``notify_apply`` / ``notify_learn`` /
     ``notification_ms`` cover the Notifier's per-kind toast gates and
     duration (D10 defaults: both gates ON). Offset reads/writes live on
     ``FakeOffsetTable`` (matching the real split:
@@ -136,7 +137,7 @@ class FakeFacade:
         self.per_fps = per_fps
         self.seek_configs = {}
         self.remember_adjustments = True
-        self.paused = False
+        self.apply_offsets = True
         self.notify_apply = True
         self.notify_learn = True
         self.notification_ms = 5000
@@ -144,8 +145,8 @@ class FakeFacade:
     def per_fps_offsets_enabled(self):
         return self.per_fps
 
-    def pause_enabled(self):
-        return self.paused
+    def apply_enabled(self):
+        return self.apply_offsets
 
     def remember_adjustments_enabled(self):
         return self.remember_adjustments

@@ -126,9 +126,16 @@ class Settings:
         """The ONE fps-granularity knob (D2/D3): OFF = the `all` key world."""
         return self.get_bool('per_fps_offsets')
 
-    def pause_enabled(self):
-        """The global pause (D9) — replaced every per-HDR enable toggle."""
-        return self.get_bool('pause_offsets')
+    def apply_enabled(self):
+        """The apply toggle (D9, amended in the beta9 field pass).
+
+        D9's single global pause replaced classic's per-HDR enables; the
+        field pass then split it into orthogonal Learn/Apply toggles and
+        this is the apply half — it gates the applier ONLY, never the
+        watcher. Defaults ON like the learn toggle: applying is the
+        product, so an unreadable setting must never silently disable it.
+        """
+        return self.get_bool('apply_offsets', True)
 
     def remember_adjustments_enabled(self):
         """The learn loop's opt-out (classic 'active monitoring', promoted

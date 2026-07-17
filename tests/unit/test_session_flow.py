@@ -69,7 +69,7 @@ def rig(monkeypatch):
 
     # --- settings seams (the single Settings adapter, shared by all) ----------
     settings = runtime.settings
-    monkeypatch.setattr(settings, 'pause_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'apply_enabled', lambda: True)
     monkeypatch.setattr(settings, 'per_fps_offsets_enabled', lambda: False)
     # Every profile resolves to a stored -125 at its all-level key, so the
     # apply path always has an entry (the learn/miss flows have their own

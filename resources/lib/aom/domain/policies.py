@@ -116,24 +116,25 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     return 'seek'
 
 
-def should_apply(profile, paused):
+def should_apply(profile, apply_enabled):
     """Decide whether an offset may be applied for this profile.
 
     The classic gates are gone with their features: no ``new_install``
     (an empty store already yields a lookup miss — P1), no per-HDR enables
-    (replaced by the ONE global pause, D9). What remains: the addon is not
-    paused, and the profile is complete enough to key the store.
+    (replaced by the ONE 'Apply audio offsets' toggle — D9 as amended;
+    it gates applying only, never learning). What remains: applying
+    is on, and the profile is complete enough to key the store.
 
     Args:
         profile: StreamProfile or None.
-        paused: bool — the global pause toggle (caller resolves it).
+        apply_enabled: bool — the apply toggle (caller resolves it).
 
     Returns:
         (allowed, reason) — reason is None when allowed, else one of
-        'paused', 'no_profile', 'unknown_format'.
+        'apply_off', 'no_profile', 'unknown_format'.
     """
-    if paused:
-        return False, 'paused'
+    if not apply_enabled:
+        return False, 'apply_off'
     if profile is None:
         return False, 'no_profile'
     if not is_complete(profile):

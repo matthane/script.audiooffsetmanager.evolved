@@ -11,7 +11,8 @@ test_session_flow.py; here it is asserted directly at the gateway boundary.
 E2: the applier resolves through the sparse-store adapter — hit/fallback
 apply, MISS IS A NO-OP (D3: Kodi's delay untouched, one debug line per
 distinct consulted chain), and the classic new_install/per-HDR gates are
-replaced by the single global pause (D9).
+replaced by the single "Apply audio offsets" toggle (D9 as amended: it
+gates applying only; learning is the watcher's own toggle).
 """
 
 import pytest
@@ -40,13 +41,13 @@ def make_profile(hdr_type='dolbyvision', audio_format='truehd',
 
 
 class FakeSettings:
-    """The applier's settings read surface: the global pause only."""
+    """The applier's settings read surface: the apply toggle only."""
 
     def __init__(self):
-        self.paused = False
+        self.apply_offsets = True
 
-    def pause_enabled(self):
-        return self.paused
+    def apply_enabled(self):
+        return self.apply_offsets
 
 
 class Rig:
@@ -249,12 +250,12 @@ class TestMissIsNoOp:
 
 class TestGating:
 
-    def test_paused_skips(self, rig):
-        rig.settings.paused = True
+    def test_apply_off_skips(self, rig):
+        rig.settings.apply_offsets = False
         rig.start(make_profile())
         rig.profile_changed()
         assert rig.gateway.applied == []
-        assert rig.logged('paused')
+        assert rig.logged('applying is off')
 
     def test_incomplete_profile_skips(self, rig):
         rig.start(make_profile(audio_format='unknown'))
@@ -411,13 +412,13 @@ class TestZeroReset:
 
         assert resets == []
 
-    def test_paused_addon_never_resets(self, rig):
+    def test_apply_off_never_resets(self, rig):
         profile = make_profile()
         session = rig.start(profile, offset_ms=-125)
         rig.gateway.infolabels[DELAY_LABEL] = '-0.125 s'
         rig.profile_changed()
 
-        rig.settings.paused = True
+        rig.settings.apply_offsets = False
         session.profile = make_profile(audio_format='ac3')
         session.miss_announced = None
         rig.profile_changed()
@@ -429,7 +430,7 @@ class TestSettingsChangedReapply:
     """Immediate-effect edge (E7): a settings save re-runs the decision.
 
     Every decision input is already read at decision instant (the per_fps
-    toggle inside resolve, the pause gate in the policy), so the trigger
+    toggle inside resolve, the apply toggle in the policy), so the trigger
     itself is most of the feature. The one trigger-specific divergence
     (E7 review): a save changes no profile, so a foreign delay — the
     user's hand — survives the miss path's baseline reset; only our own
@@ -570,28 +571,28 @@ class TestSettingsChangedReapply:
 
         assert rig.gateway.applied == []
 
-    def test_unpausing_applies_immediately(self, rig):
-        rig.settings.paused = True
+    def test_enabling_apply_applies_immediately(self, rig):
+        rig.settings.apply_offsets = False
         session = rig.start(make_profile(), offset_ms=-125)
         rig.profile_changed()
         assert rig.gateway.applied == []                    # gated off
 
-        rig.settings.paused = False                         # user unpauses
+        rig.settings.apply_offsets = True                   # user enables
         rig.settings_changed()
 
         assert rig.gateway.applied == [(1, -0.125)]
         assert session.applied == (ALL_KEY, -125)
 
-    def test_pausing_gates_but_never_reverts(self, rig):
+    def test_disabling_apply_gates_but_never_reverts(self, rig):
         session = rig.start(make_profile(), offset_ms=-125)
         rig.profile_changed()
 
-        rig.settings.paused = True                          # user pauses
+        rig.settings.apply_offsets = False                  # user disables
         rig.settings_changed()
 
         assert rig.gateway.applied == [(1, -0.125)]         # left in force
         assert session.applied == (ALL_KEY, -125)
-        assert rig.logged('paused')
+        assert rig.logged('applying is off')
 
     def test_deleted_live_profile_resets_on_settings_save(self, rig):
         # A settings save is a resolve moment, so a pending deletion marker
@@ -650,13 +651,13 @@ class TestStoreMutatedReapply:
         assert rig.gateway.applied == []
         assert rig.errors == []
 
-    def test_paused_addon_holds_the_marker(self, rig):
-        # The standing gates hold on this trigger too: a paused addon does
-        # nothing, and the marker stays pending for a later unpaused
-        # resolve instead of being consumed blind.
+    def test_apply_off_holds_the_marker(self, rig):
+        # The standing gates hold on this trigger too: with applying off
+        # the addon does nothing, and the marker stays pending for a later
+        # apply-enabled resolve instead of being consumed blind.
         session = rig.start(make_profile(), offset_ms=-125)
         rig.profile_changed()
-        rig.settings.paused = True
+        rig.settings.apply_offsets = False
         del rig.offsets.offsets[ALL_KEY]
         rig.offsets.resets = {ALL_KEY}
 

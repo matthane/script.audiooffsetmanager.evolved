@@ -104,7 +104,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     # A mutable holder so a test can flip per_fps live (D3: OFF = the `all`
     # key world; ON = exact -> all -> miss).
     per_fps_holder = {'on': per_fps}
-    monkeypatch.setattr(settings, 'pause_enabled', lambda: False)
+    monkeypatch.setattr(settings, 'apply_enabled', lambda: True)
     monkeypatch.setattr(settings, 'per_fps_offsets_enabled',
                         lambda: per_fps_holder['on'])
     monkeypatch.setattr(settings, 'remember_adjustments_enabled', lambda: True)

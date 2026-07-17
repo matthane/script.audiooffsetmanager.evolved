@@ -13,12 +13,15 @@
                     <default>true</default>
                     <control type="toggle"/>
                 </setting>
-                <setting id="per_fps_offsets" type="boolean" label="32110" help="32111">
+                <!-- The apply half of the learn/apply pair (D9 amended in
+                     the beta9 field pass: the global pause split into two
+                     orthogonal toggles). Both off = the old pause. -->
+                <setting id="apply_offsets" type="boolean" label="32140" help="32141">
                     <level>0</level>
-                    <default>false</default>
+                    <default>true</default>
                     <control type="toggle"/>
                 </setting>
-                <setting id="pause_offsets" type="boolean" label="32112" help="32113">
+                <setting id="per_fps_offsets" type="boolean" label="32110" help="32111">
                     <level>0</level>
                     <default>false</default>
                     <control type="toggle"/>

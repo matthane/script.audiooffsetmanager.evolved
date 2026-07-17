@@ -120,25 +120,28 @@ def test_identity_never_includes_incidental_fields():
 # --- should_apply ------------------------------------------------------------
 
 def test_should_apply_ok():
-    assert policies.should_apply(make_profile(), paused=False) == (True, None)
-
-
-def test_should_apply_paused_blocks_first():
-    # The global pause is checked before anything else (D9): a paused addon
-    # skips regardless of profile state.
-    assert policies.should_apply(None, paused=True) == (False, "paused")
     assert policies.should_apply(make_profile(),
-                                 paused=True) == (False, "paused")
+                                 apply_enabled=True) == (True, None)
+
+
+def test_should_apply_off_blocks_first():
+    # The apply toggle is checked before anything else (D9 amended): with
+    # applying off the addon skips regardless of profile state.
+    assert policies.should_apply(None,
+                                 apply_enabled=False) == (False, "apply_off")
+    assert policies.should_apply(make_profile(),
+                                 apply_enabled=False) == (False, "apply_off")
 
 
 def test_should_apply_no_profile():
-    assert policies.should_apply(None, paused=False) == (False, "no_profile")
+    assert policies.should_apply(None,
+                                 apply_enabled=True) == (False, "no_profile")
 
 
 def test_should_apply_unknown_format():
     profile = make_profile(audio_format="unknown")
-    assert policies.should_apply(profile,
-                                 paused=False) == (False, "unknown_format")
+    assert policies.should_apply(
+        profile, apply_enabled=True) == (False, "unknown_format")
 
 
 def test_should_apply_has_no_new_install_gate():

@@ -11,10 +11,11 @@ Notifier). One decision path, four triggers:
   common already-applied case a no-op.
 - ``SettingsChanged`` — the immediate-effect edge (E7): every input to the
   decision is already read fresh at decision instant (the ``per_fps``
-  toggle inside the OffsetTable's resolve, the pause gate in the policy),
-  so re-running the decision when the user saves the settings dialog makes
-  mid-playback edits act NOW instead of at the next stream event, through
-  the same gates as any other trigger (a paused addon still does nothing).
+  toggle inside the OffsetTable's resolve, the apply toggle in the
+  policy), so re-running the decision when the user saves the settings
+  dialog makes mid-playback edits act NOW instead of at the next stream
+  event, through the same gates as any other trigger (with applying off
+  the apply is still skipped).
   One deliberate divergence from the stream-change triggers: a settings
   save does NOT change the profile, so a foreign delay (the user's hand)
   still targets the stream in force — the miss path's baseline reset is
@@ -22,10 +23,15 @@ Notifier). One decision path, four triggers:
   (``profile_unchanged``), where a stream change would reset it and
   toast. Only our own orphaned residue (a toggle flip stranding the
   value WE applied) is reset by a save. Corollary: an offset the user
-  re-dialed while the addon was paused survives un-pausing the same way
-  — the dedupe sees the stored value as already applied and leaves the
-  user's hand alone until the next stream event. No live session, no
-  work.
+  re-dialed while applying was off survives switching it back on the
+  same way — the dedupe sees the stored value as already applied and
+  leaves the user's hand alone until the next stream event. That holds
+  once the re-dial has QUIESCED into the store (which sets
+  ``session.applied``); a still-pending pre-quiescence dial is
+  superseded by the enable instead — the structural supersede drops it
+  by design (an unsettled dial is not yet an adjustment, and preserving
+  it would store a value the re-apply just pushed off screen). No live
+  session, no work.
 - ``StoreMutated`` — the management-view edge (E7, user call
   2026-07-16): a delete/clear that actually changed the store is a
   resolve moment too, so deleting the PLAYING profile's offset takes
@@ -336,13 +342,13 @@ class OffsetApplier:
     def _should_apply(self, profile):
         """Resolve the inputs and log the reason; the decision is the policy's."""
         allowed, reason = policies.should_apply(
-            profile, paused=self._settings.pause_enabled())
+            profile, apply_enabled=self._settings.apply_enabled())
         if allowed:
             return True
 
-        if reason == 'paused':
-            self._log("AOMe_OffsetApplier: paused; skipping audio offset "
-                      "application")
+        if reason == 'apply_off':
+            self._log("AOMe_OffsetApplier: applying is off; skipping audio "
+                      "offset application")
         elif reason == 'no_profile':
             self._log("AOMe_OffsetApplier: No stream profile available; "
                       "skipping offset")

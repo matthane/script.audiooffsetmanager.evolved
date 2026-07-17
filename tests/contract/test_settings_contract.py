@@ -84,7 +84,7 @@ def _collect_python_read_ids():
         getattr(settings, method_name)(*args)
 
     exercise("per_fps_offsets_enabled")
-    exercise("pause_enabled")
+    exercise("apply_enabled")
     exercise("remember_adjustments_enabled")
     exercise("notify_apply_enabled")
     exercise("notify_learn_enabled")
