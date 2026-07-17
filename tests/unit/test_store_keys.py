@@ -165,6 +165,20 @@ def test_display_known_names():
     assert keys.HDR_DISPLAY['hdr10+'] == 'HDR10+'
 
 
+def test_hdr10plus_display_name_is_field_observed():
+    # E7 beta9 (Kodi 22 beta1/Windows): Kodi's native HDR10+ detection
+    # reports 'hdr10plus', which rendered verbatim until this display
+    # entry. DISPLAY-only, deliberately NOT an alias: the segment stays
+    # verbatim in keys ('hdr10plus' composes and matches as itself), so
+    # offsets already stored under either spelling keep resolving.
+    assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
+    assert keys.HDR_DISPLAY['hdr10plus'] == 'HDR10+'
+    assert keys.describe_key('hdr10plus|all|truehd') == \
+        'HDR10+ | All FPS | Dolby TrueHD'
+    assert keys.profile_summary('hdr10plus', 'truehd') == \
+        'HDR10+ | Dolby TrueHD'
+
+
 @pytest.mark.parametrize('segment, commercial', [
     # Dolby family: commercial names, not the E-AC-3/AC-3 spec spellings.
     ('ac3', 'Dolby Digital'),

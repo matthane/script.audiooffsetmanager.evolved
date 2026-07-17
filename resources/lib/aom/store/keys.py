@@ -61,10 +61,15 @@ _HDR_ALIASES = {'hlghdr': 'hlg'}
 HDR_DISPLAY = {
     'dolbyvision': 'Dolby Vision',
     'hdr10': 'HDR10',
-    # Verbatim acceptance means the '+' survives into the key: 'hdr10+' is
-    # the only spelling the store ever produces ('hdr10plus' was the
-    # settings-id-era rewrite and would be a speculative alias here).
+    # Both spellings of HDR10+ display the same, and NEITHER aliases to
+    # the other: 'hdr10plus' is what Kodi 22's native HDR10+ detection
+    # reports (E7 beta9 field observation, Windows/Kodi 22 beta1) and
+    # 'hdr10+' is the older spelling this table already carried. A key
+    # alias would rewrite future composition and strand offsets already
+    # stored under the other spelling — display entries are free, key
+    # rewrites are not.
     'hdr10+': 'HDR10+',
+    'hdr10plus': 'HDR10+',
     'hlg': 'HLG',
     'sdr': 'SDR',
     UNKNOWN: 'Unknown',
