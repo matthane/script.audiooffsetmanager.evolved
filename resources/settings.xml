@@ -121,7 +121,7 @@
 
         <!-- Advanced -->
         <category id="advanced" label="32100" help="32101">
-            <group id="5" label="32102">
+            <group id="5">
                 <setting id="enable_debug_logging" type="boolean" label="32103" help="32104">
                     <level>0</level>
                     <default>false</default>

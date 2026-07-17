@@ -57,10 +57,6 @@ msgctxt "#32101"
 msgid "Advanced settings"
 msgstr ""
 
-msgctxt "#32102"
-msgid "Debug"
-msgstr ""
-
 msgctxt "#32103"
 msgid "Enable debug logging"
 msgstr ""
