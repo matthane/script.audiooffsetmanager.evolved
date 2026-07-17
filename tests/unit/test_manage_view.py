@@ -17,7 +17,7 @@ import inspect
 import pytest
 
 from resources.lib.aom.store.offset_store import StoreUnreadable
-from resources.lib.aom.view.manage import FLAT_THRESHOLD, ManageView
+from resources.lib.aom.view.manage import ManageView
 from tests.fakes import FakeGui
 
 
@@ -102,18 +102,21 @@ def test_unreadable_store_shows_notice_and_never_selects():
 # -- rendering ---------------------------------------------------------------
 
 def test_rows_render_verbatim_signed_milliseconds():
+    # Single HDR type -> flat list (multi-type stores render the group
+    # index; flat rendering is pinned on the store shape that shows it).
     entries = {
         DV: _entry(-115, updated="2026-07-15T12:00:00Z"),
-        HDR10: _entry(9999, updated="2026-07-14T09:30:00Z"),
-        HLG: _entry(-2500, updated="2026-07-13T00:00:00Z"),
+        "dolbyvision|all|ac3": _entry(9999, updated="2026-07-14T09:30:00Z"),
+        "dolbyvision|all|eac3": _entry(-2500, updated="2026-07-13T00:00:00Z"),
     }
     view, gui, _ = _build(entries)  # no select answers -> exhausted -> -1 -> exit
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | All FPS | Dolby TrueHD", "-115 ms")
-    assert options[1] == ("HDR10 | All FPS | Dolby Digital", "+9999 ms")
-    assert options[2] == ("HLG | All FPS | Dolby Digital Plus", "-2500 ms")
+    assert options[0] == ("Dolby Vision | All FPS | Dolby Digital", "+9999 ms")
+    assert options[1] == ("Dolby Vision | All FPS | Dolby Digital Plus",
+                          "-2500 ms")
+    assert options[2] == ("Dolby Vision | All FPS | Dolby TrueHD", "-115 ms")
     # Verbatim: the odd values appear exactly, no rounding/step-snapping.
     details = [detail for _profile, detail in options[:3]]
     assert any("+9999 ms" in detail for detail in details)
@@ -121,18 +124,21 @@ def test_rows_render_verbatim_signed_milliseconds():
     assert any("-2500 ms" in detail for detail in details)
 
 
-def test_rows_sorted_by_label_with_clear_all_last():
+def test_index_rows_sorted_by_hdr_label_with_clear_all_last():
+    # A multi-type store renders the group index, ordered by HDR display
+    # name with clear-all last as a plain string row.
     entries = {HLG: _entry(1), DV: _entry(2), HDR10: _entry(3)}
-    view, gui, _ = _build(entries)
+    gui = _grouped_gui()
+    view, gui, _ = _build(entries, gui=gui)
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0][0].startswith("Dolby Vision")
-    assert options[1][0].startswith("HDR10")
-    assert options[2][0].startswith("HLG")
-    # Clear-all is the last row and stays a plain string (no detail line);
-    # Cancel/Back is the exit (the router returns to the settings dialog).
-    assert options[-1] == "#32126"
+    assert options == [
+        "Dolby Vision — 1 entry",
+        "HDR10 — 1 entry",
+        "HLG — 1 entry",
+        "#32126",
+    ]
 
 
 def test_per_fps_rows_show_the_exact_reported_rate():
@@ -142,15 +148,15 @@ def test_per_fps_rows_show_the_exact_reported_rate():
     # edited) degrade to the segment.
     entries = {
         "dolbyvision|23|eac3": dict(_entry(-25), video_fps=23.976),
-        "hdr10|59|ac3": _entry(75),                # no metadata -> segment
+        "dolbyvision|59|ac3": _entry(75),          # no metadata -> segment
     }
     view, gui, _ = _build(entries, per_fps=True)
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
+    assert options[0] == ("Dolby Vision | 59 fps | Dolby Digital", "+75 ms")
+    assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
                           "-25 ms")
-    assert options[1] == ("HDR10 | 59 fps | Dolby Digital", "+75 ms")
 
 
 def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
@@ -193,27 +199,27 @@ def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
                    for opt in options)
 
 
-def test_rows_group_by_hdr_then_codec_then_numeric_rate():
-    # The tuned display order: all of one HDR mode together, codecs
-    # alphabetical within it, and each codec's 'All FPS' entry before its
-    # per-fps entries in NUMERIC rate order (119 after 23, not before).
+def test_rows_group_by_codec_then_numeric_rate():
+    # The tuned display order within one HDR mode: codecs alphabetical,
+    # and each codec's 'All FPS' entry before its per-fps entries in
+    # NUMERIC rate order (119 after 23, not before).
     entries = {
         "dolbyvision|119|eac3": dict(_entry(1), video_fps=119.88),
         "dolbyvision|23|eac3": dict(_entry(2), video_fps=23.976),
         "dolbyvision|all|eac3": _entry(3),
         "dolbyvision|24|truehd": dict(_entry(4), video_fps=24.0),
-        "hdr10|all|ac3": _entry(5),
+        "dolbyvision|all|ac3": _entry(5),
     }
     view, gui, _ = _build(entries)
     view.run()
 
     profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
     assert profiles == [
+        "Dolby Vision | All FPS | Dolby Digital",
         "Dolby Vision | All FPS | Dolby Digital Plus",
         "Dolby Vision | 23.976 fps | Dolby Digital Plus",
         "Dolby Vision | 119.88 fps | Dolby Digital Plus",
         "Dolby Vision | 24 fps | Dolby TrueHD",
-        "HDR10 | All FPS | Dolby Digital",
     ]
 
 
@@ -241,9 +247,9 @@ def test_cancel_exits_without_channel_traffic():
 
 
 def test_delete_flow_sends_exact_key_and_re_reads():
-    entries = {DV: _entry(-115), HDR10: _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
     gui = FakeGui()
-    gui.select_answers = [0, -1]     # delete the first (DV) row, then cancel
+    gui.select_answers = [1, -1]     # delete the TrueHD row, then cancel
     gui.yesno_answers = [True]
     view, gui, service = _build(entries, gui=gui)
     view.run()
@@ -254,7 +260,7 @@ def test_delete_flow_sends_exact_key_and_re_reads():
     assert len(gui.selects) == 2
     assert len(gui.selects[0][1]) == 3     # 2 entries + clear
     assert len(gui.selects[1][1]) == 2     # 1 entry + clear
-    assert not any(isinstance(opt, tuple) and opt[0].startswith("Dolby Vision")
+    assert not any(isinstance(opt, tuple) and "TrueHD" in opt[0]
                    for opt in gui.selects[1][1])
 
 
@@ -301,7 +307,7 @@ def test_declined_delete_sends_nothing_and_loops():
 
 
 def test_clear_flow_sends_clear_none_and_exits_quietly():
-    entries = {DV: _entry(-115), HDR10: _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
     gui = FakeGui()
     gui.select_answers = [2]         # the clear-all row (index == len(rows))
     gui.yesno_answers = [True]
@@ -376,9 +382,9 @@ def test_constructor_exposes_no_store_writer_seam():
 def test_only_delete_and_clear_ops_are_ever_emitted():
     # Walk a full scenario (delete then clear) and pin that nothing but the
     # whitelisted ops — and never a 'set' value write — reaches the channel.
-    entries = {DV: _entry(-115), HDR10: _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
     gui = FakeGui()
-    gui.select_answers = [0, 1]      # delete DV, then clear-all (index 1 after)
+    gui.select_answers = [0, 1]      # delete a row, then clear-all (index 1 after)
     gui.yesno_answers = [True, True]
     view, gui, service = _build(entries, gui=gui)
     view.run()
@@ -436,11 +442,14 @@ def test_blank_localization_falls_back_to_english():
 
 # -- U0 grouped drill-down ----------------------------------------------------
 #
-# Above FLAT_THRESHOLD entries the top level is an HDR-group index; a group
+# When the store spans 2+ HDR groups the top level is a group index; a group
 # opens into its entries with the redundant HDR name dropped from the row
 # copy (DU-2), Back returns to the index, and clear-all lives only at the
-# top level. These tests give the count templates and the 'Other' label real
-# translations so the labels read as they would on screen.
+# top level. A single-group store renders the flat list (DU-1 re-ruled after
+# the beta9 field pass: mode comes from the GROUP count, never the entry
+# count, so a delete can never silently dissolve the categories). These
+# tests give the count templates and the 'Other' label real translations so
+# the labels read as they would on screen.
 
 _COUNT_OVERRIDES = {32135: "{0} entry", 32136: "{0} entries", 32137: "Other"}
 
@@ -452,8 +461,8 @@ def _grouped_gui():
 
 
 def _grouped_entries():
-    # 10 entries -> above the threshold: four real HDR groups plus one
-    # hand-scribbled unsplittable key (the 'Other' bucket).
+    # Four real HDR groups plus one hand-scribbled unsplittable key (the
+    # 'Other' bucket) -> multi-group store, renders the index.
     return {
         "dolbyvision|all|truehd": _entry(1),
         "dolbyvision|23|truehd": dict(_entry(2), video_fps=23.976),
@@ -468,7 +477,7 @@ def _grouped_entries():
     }
 
 
-def test_above_threshold_renders_group_index_with_counts():
+def test_multi_group_store_renders_group_index_with_counts():
     view, gui, service = _build(_grouped_entries(), gui=_grouped_gui())
     view.run()
 
@@ -489,22 +498,24 @@ def test_above_threshold_renders_group_index_with_counts():
     assert service.calls == []
 
 
-def test_flat_threshold_boundary_picks_flat_vs_grouped():
-    at_limit = {"hdr10|{0}|ac3".format(i): _entry(i)
-                for i in range(1, FLAT_THRESHOLD + 1)}
-    view, gui, _ = _build(at_limit, per_fps=True)
+def test_single_group_renders_flat_and_second_group_flips_to_index():
+    # DU-1 (re-ruled): flat vs grouped is a function of the GROUP count
+    # only. A single-group store — however large — stays flat (its index
+    # would be one row of pure overhead)...
+    single = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 10)}
+    view, gui, _ = _build(single, per_fps=True)
     view.run()
-    # At the threshold: today's flat list, every entry a two-line row.
-    assert len(gui.selects[0][1]) == FLAT_THRESHOLD + 1   # rows + clear-all
+    assert len(gui.selects[0][1]) == 10          # 9 rows + clear-all
     assert all(isinstance(option, tuple)
                for option in gui.selects[0][1][:-1])
 
-    over_limit = dict(at_limit)
-    over_limit["hdr10|99|ac3"] = _entry(99)
-    view, gui, _ = _build(over_limit, gui=_grouped_gui(), per_fps=True)
+    # ...and a second HDR type — however small the store — flips to the
+    # index.
+    two_groups = {"hdr10|all|ac3": _entry(1), DV: _entry(2)}
+    view, gui, _ = _build(two_groups, gui=_grouped_gui())
     view.run()
-    # One over: grouped, even when the store holds a single group.
-    assert gui.selects[0][1] == ["HDR10 — 9 entries", "#32126"]
+    assert gui.selects[0][1] == ["Dolby Vision — 1 entry", "HDR10 — 1 entry",
+                                 "#32126"]
 
 
 def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
@@ -653,26 +664,35 @@ def test_clear_from_group_index_exits_quietly():
     assert len(gui.selects) == 1
 
 
-def test_open_group_survives_threshold_underflow_but_top_level_reflows():
-    # 9 entries: grouped. Deleting one inside a group leaves 8 — the open
-    # group keeps rendering (no mid-flow teleport into a flat list), but
-    # the next top-level render re-evaluates and picks flat.
+def test_deletes_never_flip_the_mode_until_a_group_empties():
+    # The beta9 field find, pinned as the DU-1 re-ruling: deleting entries
+    # NEVER dissolves the category level while 2+ groups remain; the flat
+    # list appears only when the store is down to a single group — a
+    # transition the user just caused (they emptied a category) and can
+    # see.
     entries = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 9)}
     entries["dolbyvision|all|truehd"] = _entry(9)
     gui = _grouped_gui()
-    gui.select_answers = [1, 0, -1, -1]  # open HDR10, delete one, back, exit
-    gui.yesno_answers = [True]
+    # open HDR10, delete one, back — then open DV, delete its only entry,
+    # exit from the flat list that (comprehensibly) remains.
+    gui.select_answers = [1, 0, -1, 0, 0, -1]
+    gui.yesno_answers = [True, True]
     view, gui, service = _build(entries, gui=gui, per_fps=True)
     view.run()
 
-    assert len(service.calls) == 1
-    # Pass 3: still inside the (re-read) group, now 7 rows.
+    assert len(service.calls) == 2
+    # Deleting inside HDR10 (9 -> 8 entries, the exact field scenario):
+    # the group re-renders, and Back lands on the INDEX, not a flat list.
     assert gui.selects[2][0] == "HDR10"
     assert len(gui.selects[2][1]) == 7
-    # Back at the top level, 8 entries is at the threshold: flat list.
-    assert len(gui.selects[3][1]) == 9   # 8 rows + clear-all
+    assert gui.selects[3][1] == ["Dolby Vision — 1 entry",
+                                 "HDR10 — 7 entries", "#32126"]
+    # Emptying the DV group leaves one group: NOW the top level is flat —
+    # the single remaining group's contents.
+    assert gui.selects[4][0] == "Dolby Vision"
+    assert len(gui.selects[5][1]) == 8   # 7 rows + clear-all
     assert all(isinstance(option, tuple)
-               for option in gui.selects[3][1][:-1])
+               for option in gui.selects[5][1][:-1])
 
 
 # -- U0 review pins ------------------------------------------------------------

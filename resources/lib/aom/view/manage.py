@@ -29,13 +29,22 @@ VERBATIM: the odd signed millisecond integers the store keeps (-115, +9999)
 are shown exactly, never rounded or step-snapped. The empty state is the
 first-run education: nothing is stored until the user fixes lipsync once.
 
-Above ``FLAT_THRESHOLD`` entries the top level renders as an HDR-group
-index instead of one flat list (U0 drill-down): one single-line row per
-HDR type present — display name plus entry count — with hand-edited keys
-that cannot claim an HDR name (unsplittable, or a blank hdr segment)
-bucketed under 'Other', sorted last (verbatim acceptance extends to
-grouping: a scribbled key still lists and still deletes, and it never
-gets to render a nameless group row or a blank dialog heading).
+When the store spans MORE THAN ONE HDR group, the top level renders as a
+group index instead of one flat list (U0 drill-down): one single-line
+row per HDR type present — display name plus entry count — with
+hand-edited keys that cannot claim an HDR name (unsplittable, or a blank
+hdr segment) bucketed under 'Other', sorted last (verbatim acceptance
+extends to grouping: a scribbled key still lists and still deletes, and
+it never gets to render a nameless group row or a blank dialog heading).
+A single-group store renders the flat list — its index would be one row
+of pure overhead, and the flat list IS that group's contents. The mode
+derives from the GROUP count, never the entry count (DU-1 re-ruled after
+the beta9 field pass: the original 8-entry threshold meant one delete
+could silently dissolve the categories into a flat list whose visible
+rows all shared one HDR name — field-read as being trapped inside a
+category with no way back). A delete can therefore never flip the mode;
+it flips only when a whole group appears or empties — a transition the
+user just caused and can see.
 Selecting a group lists only its entries, headed by the group name, with
 the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
 23.976 fps'); Back from a group returns to the top level, Back from the
@@ -43,9 +52,9 @@ top level exits. Clear-all lives ONLY at the top level, where the whole store
 it deletes is represented. Counts include dormant rows — the index
 inherits never-under-represent: every stored entry is countable there and
 reachable from it. Every pass at either level re-reads the store. An open
-group survives the store shrinking below the threshold (deleting inside
-'Dolby Vision' must not teleport the user into a flat list), while the
-top level picks flat vs grouped fresh on every render; delete
+group survives external mutations that leave it the only group (deleting
+inside 'Dolby Vision' must not teleport the user into a flat list
+mid-flow), while the top level re-evaluates fresh on every render; delete
 confirmations always show the FULL profile line, never the shortened
 in-group copy — a confirmation must not depend on which list the user
 came from.
@@ -78,12 +87,6 @@ _MSG_FUTURE = 32131        # StoreUnreadable(future=True): preserved, not shown
 _LABEL_GROUP_ENTRY = 32135    # "{0} entry" — group-index count, singular
 _LABEL_GROUP_ENTRIES = 32136  # "{0} entries" — group-index count, plural
 _LABEL_OTHER_GROUP = 32137    # "Other" — the unsplittable-key bucket
-
-# The flat/grouped boundary (DU-1): at or below this many entries the view
-# renders the single flat list — grouping a handful of entries adds a
-# navigation level without shortening any scroll. Above it, the top level
-# is the HDR-group index.
-FLAT_THRESHOLD = 8
 
 # English fallbacks for the strings that must never render blank:
 # localized() degrades to '' on a transient failure, and a blank
@@ -174,10 +177,15 @@ class ManageView:
 
             if self._group is not None:
                 outcome = self._group_pass(heading, rows)
-            elif len(rows) > FLAT_THRESHOLD:
-                outcome = self._index_pass(heading, rows)
             else:
-                outcome = self._flat_pass(heading, rows)
+                # The mode question is "how many groups", never "how many
+                # entries" (DU-1): a delete can empty a group, but it can
+                # never silently dissolve the whole category level.
+                groups = self._group_index(rows)
+                if len(groups) > 1:
+                    outcome = self._index_pass(heading, groups)
+                else:
+                    outcome = self._flat_pass(heading, rows)
             if outcome is _CLOSE:
                 return
 
@@ -199,14 +207,14 @@ class ManageView:
         return self._settle(heading,
                             self._confirm_delete(heading, rows[choice]))
 
-    def _index_pass(self, heading, rows):
+    def _index_pass(self, heading, groups):
         """The group index: one single-line row per HDR type + clear-all.
 
-        Clear-all stays on this level (and only this level) when grouped:
-        its confirmation covers the whole store, so it belongs where the
-        whole store is represented.
+        ``groups`` is run()'s ordered ``(segment, count)`` list — the same
+        one that decided the mode. Clear-all stays on this level (and only
+        this level) when grouped: its confirmation covers the whole store,
+        so it belongs where the whole store is represented.
         """
-        groups = self._group_index(rows)
         self._log("AOMe_ManageView: rendering group index ({0} group(s))"
                   .format(len(groups)))
         options = [self._group_row(segment, count)
@@ -226,8 +234,8 @@ class ManageView:
     def _group_pass(self, heading, rows):
         """One open group's entries; Back returns to the top level.
 
-        The open group survives the store shrinking below the flat
-        threshold — deleting inside a group must not teleport the user
+        The open group survives external mutations that leave it the
+        only group — deleting inside a group must not teleport the user
         into a flat list mid-flow — but a group that emptied under us
         (last delete, or another session) falls back to the top level,
         which re-evaluates flat vs grouped fresh. The select is headed by
