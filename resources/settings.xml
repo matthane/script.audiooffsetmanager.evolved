@@ -4,7 +4,7 @@
      behavior settings. Every id must be read by Python and vice versa - the
      two-way contract test enforces it. -->
 <settings version="1">
-    <section id="script.audiooffsetmanagerevolved">
+    <section id="script.audiooffsetmanager.evolved">
         <!-- Offset learning: the product. -->
         <category id="learning" label="32105" help="32106">
             <group id="1" label="32107">
@@ -30,7 +30,7 @@
             <group id="2" label="32114">
                 <setting id="manage_offsets" type="action" label="32115" help="32116">
                     <level>0</level>
-                    <data>RunScript(script.audiooffsetmanagerevolved,manage_offsets)</data>
+                    <data>RunScript(script.audiooffsetmanager.evolved,manage_offsets)</data>
                     <!-- close: the write-ordering doctrine survives for
                          behavior settings - never act while the dialog's
                          save-on-close is pending. -->

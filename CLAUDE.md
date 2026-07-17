@@ -6,7 +6,7 @@ Guidance for working on this branch. Dev-only: `export-ignore`'d in
 ## What this is
 
 **Branch `evolved/1.0` builds a different addon than `main` does:**
-`script.audiooffsetmanagerevolved` ("AOM Evolved") — a from-the-2.0-core
+`script.audiooffsetmanager.evolved` ("AOM Evolved") — a from-the-2.0-core
 rework of Audio Offset Manager whose product is the learn loop: the user
 fixes lipsync once with Kodi's native audio-offset slider during playback,
 and Evolved remembers the value per stream profile (HDR type, audio format,
@@ -59,7 +59,7 @@ See the `aom/` module docstrings — they are the architecture documentation.
 **What Evolved replaces (the offset data model):**
 
 - Offsets live in a **sparse JSON store**
-  (`special://profile/addon_data/script.audiooffsetmanagerevolved/offsets.json`),
+  (`special://profile/addon_data/script.audiooffsetmanager.evolved/offsets.json`),
   never in settings.xml. Written ONLY by the dispatcher thread (single
   writer). Atomic persistence (temp + `os.replace`), `.bad` corruption
   recovery, versioned schema.

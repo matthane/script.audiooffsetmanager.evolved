@@ -59,7 +59,7 @@ directions: the read side (vendor busy-property list as DATA — PM4K's two
 properties today; its busy-recency is deliberately cross-session, legacy
 ``_last_pm4k_busy`` parity — aggregated with session activity into the
 policy's ``last_activity`` view) and the write side (the seek actuator,
-which sets our reciprocal ``script.audiooffsetmanagerevolved.seeking`` property
+which sets our reciprocal ``script.audiooffsetmanager.evolved.seeking`` property
 around the seek so other addons get the courtesy we consume from PM4K).
 
 Pure app layer: Kodi I/O through the injected gateway, settings through the
@@ -82,7 +82,7 @@ class ExternalSeekCoordinator:
         'script.plex.playback_seeking',
         'script.plex.playback_initializing',
     )
-    RECIPROCAL_PROPERTY = 'script.audiooffsetmanagerevolved.seeking'
+    RECIPROCAL_PROPERTY = 'script.audiooffsetmanager.evolved.seeking'
 
     def __init__(self, gateway, clock=time.monotonic, *, log_debug):
         self._gateway = gateway

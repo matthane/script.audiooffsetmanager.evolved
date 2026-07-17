@@ -75,7 +75,7 @@ decision table).
 ## Notes carried into later phases
 
 - **Reciprocal window property renamed** in the identity commit
-  (`script.audiooffsetmanagerevolved.seeking`). It was a documented
+  (`script.audiooffsetmanager.evolved.seeking`). It was a documented
   courtesy-broadcast protocol under the classic name; consumers (if any)
   see a new sender name. E7 checklist item 11 (PM4K interplay) verifies
   coordination end-to-end — the read side (PM4K's own properties) is

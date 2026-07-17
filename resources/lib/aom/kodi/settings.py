@@ -38,7 +38,7 @@ importing any legacy ``resources.lib.<module>`` fails
 import xbmc
 import xbmcaddon
 
-ADDON_ID = 'script.audiooffsetmanagerevolved'
+ADDON_ID = 'script.audiooffsetmanager.evolved'
 
 # The sparse offset store's on-disk home. Lives beside ADDON_ID (addon
 # identity constants) because BOTH processes need it: the service runtime

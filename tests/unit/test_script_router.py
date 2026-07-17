@@ -60,7 +60,7 @@ def test_default_route_opens_the_settings_dialog():
 
     assert len(RecordingAddon.instances) == 1
     assert RecordingAddon.instances[0].addon_id == \
-        'script.audiooffsetmanagerevolved'
+        'script.audiooffsetmanager.evolved'
     assert RecordingAddon.instances[0].opened == 1
 
 

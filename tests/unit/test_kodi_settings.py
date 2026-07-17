@@ -48,7 +48,7 @@ class _Spy:
 
 
 def test_addon_id_constant():
-    assert ADDON_ID == 'script.audiooffsetmanagerevolved'
+    assert ADDON_ID == 'script.audiooffsetmanager.evolved'
 
 
 def test_settings_keeps_parent_addon_alive():
