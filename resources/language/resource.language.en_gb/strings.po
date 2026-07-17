@@ -118,11 +118,11 @@ msgid "Show log items and debug snapshots within Kodi's standard log level"
 msgstr ""
 
 msgctxt "#32105"
-msgid "Offset Learning"
+msgid "Offsets"
 msgstr ""
 
 msgctxt "#32106"
-msgid "How audio offsets are learned during playback and applied on later playbacks"
+msgid "Learning, applying, and managing stored audio offsets"
 msgstr ""
 
 msgctxt "#32107"
