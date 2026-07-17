@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="caseD" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A2B2F"/><stop offset="1" stop-color="#1F2023"/>
+    </linearGradient>
+    <radialGradient id="knobChrome" cx="0.38" cy="0.32" r="0.9">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#CFD0D3"/>
+    </radialGradient>
+    <linearGradient id="ledFill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#D97706"/><stop offset="1" stop-color="#FFB246"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.30"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="#17181B"/>
+
+  <g>
+    <rect x="88" y="86"  width="336" height="64" rx="32" fill="url(#caseD)" stroke="#33343A"/>
+    <rect x="88" y="178" width="336" height="64" rx="32" fill="url(#caseD)" stroke="#33343A"/>
+    <rect x="88" y="270" width="336" height="64" rx="32" fill="url(#caseD)" stroke="#33343A"/>
+    <rect x="88" y="362" width="336" height="64" rx="32" fill="url(#caseD)" stroke="#33343A"/>
+    <rect x="100" y="98"  width="312" height="40" rx="20" fill="#0E0F11"/>
+    <rect x="100" y="190" width="312" height="40" rx="20" fill="#0E0F11"/>
+    <rect x="100" y="282" width="312" height="40" rx="20" fill="#0E0F11"/>
+    <rect x="100" y="374" width="312" height="40" rx="20" fill="#0E0F11"/>
+  </g>
+
+  <g>
+    <rect x="100" y="98"  width="240" height="40" rx="20" fill="url(#ledFill)" opacity="0.55" filter="url(#glow)"/>
+    <rect x="100" y="190" width="110" height="40" rx="20" fill="url(#ledFill)" opacity="0.55" filter="url(#glow)"/>
+    <rect x="100" y="282" width="175" height="40" rx="20" fill="url(#ledFill)" opacity="0.55" filter="url(#glow)"/>
+    <rect x="100" y="374" width="75"  height="40" rx="20" fill="url(#ledFill)" opacity="0.55" filter="url(#glow)"/>
+    <rect x="100" y="98"  width="240" height="40" rx="20" fill="url(#ledFill)"/>
+    <rect x="100" y="190" width="110" height="40" rx="20" fill="url(#ledFill)"/>
+    <rect x="100" y="282" width="175" height="40" rx="20" fill="url(#ledFill)"/>
+    <rect x="100" y="374" width="75"  height="40" rx="20" fill="url(#ledFill)"/>
+  </g>
+
+  <g filter="url(#soft)">
+    <circle cx="340" cy="118" r="30" fill="url(#knobChrome)" stroke="#43444A"/>
+    <circle cx="210" cy="210" r="30" fill="url(#knobChrome)" stroke="#43444A"/>
+    <circle cx="275" cy="302" r="30" fill="url(#knobChrome)" stroke="#43444A"/>
+    <circle cx="175" cy="394" r="30" fill="url(#knobChrome)" stroke="#43444A"/>
+  </g>
+  <g fill="none" stroke="#1B1C1F" stroke-width="6">
+    <circle cx="340" cy="118" r="15"/><circle cx="210" cy="210" r="15"/>
+    <circle cx="275" cy="302" r="15"/><circle cx="175" cy="394" r="15"/>
+  </g>
+</svg>
