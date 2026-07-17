@@ -15,7 +15,7 @@ open/close state machine — every source of an adjustment is caught because
 we watch the VALUE, not the GUI that (sometimes) sets it.
 
 Eligibility (``_eligible``) is deliberately minimal: a profile exists,
-learning is on ("remember manual adjustments" — the promoted core of the
+learning is on ("Learn audio offsets" — the promoted core of the
 product, P2), and the addon is not paused (D9). No axis-gating happens here
 — the store path (``_store``) re-validates the WHOLE profile
 (``policies.is_complete``) before writing, so an incomplete stream is

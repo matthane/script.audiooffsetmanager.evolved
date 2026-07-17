@@ -130,11 +130,11 @@ msgid "Learning"
 msgstr ""
 
 msgctxt "#32108"
-msgid "Remember manual adjustments"
+msgid "Learn audio offsets"
 msgstr ""
 
 msgctxt "#32109"
-msgid "Save manual audio offset adjustments made during playback and re-apply them automatically whenever content with the same stream profile plays"
+msgid "When you adjust the audio offset during playback, the value is saved for that stream profile and applied automatically whenever a matching stream plays. Turning this off stops new offsets from being saved. Offsets already saved still apply."
 msgstr ""
 
 msgctxt "#32110"
