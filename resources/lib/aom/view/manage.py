@@ -31,13 +31,15 @@ first-run education: nothing is stored until the user fixes lipsync once.
 
 Above ``FLAT_THRESHOLD`` entries the top level renders as an HDR-group
 index instead of one flat list (U0 drill-down): one single-line row per
-HDR type present — display name plus entry count — with unsplittable
-hand-edited keys bucketed under 'Other', sorted last (verbatim acceptance
-extends to grouping: a scribbled key still lists and still deletes).
+HDR type present — display name plus entry count — with hand-edited keys
+that cannot claim an HDR name (unsplittable, or a blank hdr segment)
+bucketed under 'Other', sorted last (verbatim acceptance extends to
+grouping: a scribbled key still lists and still deletes, and it never
+gets to render a nameless group row or a blank dialog heading).
 Selecting a group lists only its entries, headed by the group name, with
 the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
-23.976 fps'); Back from a group returns to the index, Back from the top
-level exits. Clear-all lives ONLY at the top level, where the whole store
+23.976 fps'); Back from a group returns to the top level, Back from the
+top level exits. Clear-all lives ONLY at the top level, where the whole store
 it deletes is represented. Counts include dormant rows — the index
 inherits never-under-represent: every stored entry is countable there and
 reachable from it. Every pass at either level re-reads the store. An open
@@ -302,32 +304,27 @@ class ManageView:
             return False
 
     def _describe(self, key, entry):
-        """describe_key with a verbatim fallback for a hand-edited key.
-
-        A key that does not split into three segments would raise; the store
-        doctrine is verbatim acceptance, so an unrecognised key is SHOWN as
-        itself rather than crashing the view on a scribbled file. The entry's
-        ``video_fps`` metadata renders the EXACT reported rate for per-fps
-        keys (the truncated segment is identity, not display).
-        """
-        try:
-            return describe_key(key, video_fps=entry.get("video_fps"),
-                                per_fps=self._per_fps)
-        except ValueError:
-            return key
+        """The full profile line (flat rows, delete confirmations)."""
+        return self._render_key(describe_key, key, entry)
 
     def _describe_short(self, key, entry):
-        """The in-group row label; the raw key verbatim when unsplittable.
+        """The in-group row label: the HDR group name is redundant there,
+        so the codec leads and the rate follows (DU-2)."""
+        return self._render_key(describe_key_in_group, key, entry)
 
-        Inside one HDR group the group name is redundant, so the codec
-        leads and the rate follows (DU-2). Same fallback contract as
-        ``_describe`` — an unsplittable key shows as itself (it lives in
-        the 'Other' bucket, where there is no name to drop anyway).
+    def _render_key(self, describe_fn, key, entry):
+        """One describe function + THE verbatim fallback, written once.
+
+        A key that does not split into three segments raises; the store
+        doctrine is verbatim acceptance, so an unrecognised key is SHOWN
+        as itself rather than crashing the view on a scribbled file (in
+        the 'Other' bucket there is no name to drop anyway). The entry's
+        ``video_fps`` metadata renders the EXACT reported rate for
+        per-fps keys (the truncated segment is identity, not display).
         """
         try:
-            return describe_key_in_group(key,
-                                         video_fps=entry.get("video_fps"),
-                                         per_fps=self._per_fps)
+            return describe_fn(key, video_fps=entry.get("video_fps"),
+                               per_fps=self._per_fps)
         except ValueError:
             return key
 
@@ -354,12 +351,18 @@ class ManageView:
 
         Verbatim acceptance extends to grouping — a key that does not
         split still lists, still counts, and still deletes; it just
-        cannot claim an HDR group.
+        cannot claim an HDR group. A splittable key with a BLANK hdr
+        segment ('|all|truehd' — hand-edited; the store's writers map an
+        absent HDR to the 'unknown' sentinel, never '') joins the same
+        bucket: its display name would be empty, and a nameless group row
+        with a blank drill-down heading represents nothing (E-review U0
+        finding).
         """
         try:
-            return split_key(key)[0]
+            hdr = split_key(key)[0]
         except ValueError:
             return _OTHER_GROUP
+        return hdr if hdr.strip() else _OTHER_GROUP
 
     def _group_index(self, rows):
         """Ordered ``(segment, count)`` pairs for the group index.
@@ -391,16 +394,22 @@ class ManageView:
 
     def _group_row(self, segment, count):
         """One index row: 'Dolby Vision — 6 entries' (single-line)."""
-        singular = count == 1
-        template = self._text(_LABEL_GROUP_ENTRY if singular
-                              else _LABEL_GROUP_ENTRIES)
+        string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
+        template = self._text(string_id)
+        if '{' not in template:
+            # A translation that dropped the placeholder would not raise —
+            # format() would just return it, silently swallowing the count
+            # (never-under-represent applies to the index too).
+            template = _FALLBACKS[string_id]
         try:
             counted = template.format(count)
-        except (IndexError, KeyError, ValueError):
-            # A malformed translation (stray braces) degrades to the
-            # English template rather than crashing the view.
-            counted = _FALLBACKS[_LABEL_GROUP_ENTRY if singular
-                                 else _LABEL_GROUP_ENTRIES].format(count)
+        except Exception:
+            # A malformed translation degrades to the English template
+            # rather than crashing the view. Deliberately broad: which
+            # exception a bad template raises is the translator's choice
+            # ('{0' ValueError, '{1}' IndexError, '{x}' KeyError, '{0.n}'
+            # AttributeError, '{0[x]}' TypeError...).
+            counted = _FALLBACKS[string_id].format(count)
         return "{0} — {1}".format(self._group_name(segment), counted)
 
     # -- actions --------------------------------------------------------------

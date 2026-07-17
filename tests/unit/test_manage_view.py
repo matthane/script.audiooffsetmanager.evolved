@@ -673,3 +673,91 @@ def test_open_group_survives_threshold_underflow_but_top_level_reflows():
     assert len(gui.selects[3][1]) == 9   # 8 rows + clear-all
     assert all(isinstance(option, tuple)
                for option in gui.selects[3][1][:-1])
+
+
+# -- U0 review pins ------------------------------------------------------------
+
+def test_group_declined_delete_sends_nothing_and_stays_in_group():
+    # The flat path's declined-loops pin, re-pinned for the drill-down:
+    # declining must keep the user IN the open group (a regression that
+    # cleared the open group would silently teleport them to the index).
+    gui = _grouped_gui()
+    gui.select_answers = [0, 0, -1, -1]  # open DV, pick a row, back, exit
+    gui.yesno_answers = [False]
+    view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
+    view.run()
+
+    assert service.calls == []
+    assert len(gui.selects) == 4
+    assert gui.selects[2][0] == "Dolby Vision"      # same group, re-rendered
+    assert gui.selects[2][1] == gui.selects[1][1]
+
+
+def test_group_delete_failed_ack_reports_under_main_heading_and_stays():
+    # The flat path's ack-failure pin, re-pinned for the drill-down: the
+    # failure dialog carries the MAIN heading (not the group name) and the
+    # user stays in the open group with the entry still listed.
+    gui = _grouped_gui()
+    gui.select_answers = [0, 0, -1, -1]
+    gui.yesno_answers = [True]
+    view, gui, service = _build(
+        _grouped_entries(), acks=[{"ok": False, "detail": "read_only"}],
+        gui=gui, per_fps=True)
+    view.run()
+
+    assert service.calls == [("delete", "dolbyvision|all|eac3")]
+    heading, message = gui.oks[0]
+    assert heading == "#32115"
+    assert "#32128" in message and "read_only" in message
+    # Failed ack changed nothing: still in the group, all 3 rows present.
+    assert gui.selects[2][0] == "Dolby Vision"
+    assert len(gui.selects[2][1]) == 3
+
+
+def test_group_delete_ack_timeout_reports_service_missing_and_stays():
+    gui = _grouped_gui()
+    gui.select_answers = [0, 0, -1, -1]
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), acks=[None], gui=gui,
+                                per_fps=True)
+    view.run()
+
+    assert ("#32115", "#32125") in gui.oks
+    assert gui.selects[2][0] == "Dolby Vision"
+    assert len(gui.selects[2][1]) == 3
+
+
+def test_blank_hdr_segment_key_joins_the_other_bucket():
+    # '|all|truehd' splits fine (three parts, blank hdr), so it would
+    # otherwise form a NAMELESS group sorted first, with '' as the
+    # drill-down heading. It belongs in 'Other' with the unsplittable
+    # keys: no blank row, no blank heading, still fully deletable.
+    entries = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 9)}
+    entries["|all|truehd"] = _entry(9)
+    entries["scribbled-key"] = _entry(10)
+    gui = _grouped_gui()
+    gui.select_answers = [1, -1, -1]     # open Other, back, exit
+    view, gui, _ = _build(entries, gui=gui, per_fps=True)
+    view.run()
+
+    assert gui.selects[0][1] == ["HDR10 — 8 entries", "Other — 2 entries",
+                                 "#32126"]
+    heading, options = gui.selects[1]
+    assert heading == "Other"
+    assert options == [
+        ("Dolby TrueHD · Other FPS", "+9 ms"),   # blank hdr, audio intact
+        ("scribbled-key", "+10 ms"),
+    ]
+
+
+def test_count_template_degrades_on_malformed_or_placeholderless_translation():
+    # '{0.n}' raises AttributeError, '{0[x]}' TypeError — outside the
+    # original (IndexError, KeyError, ValueError) guard — and a template
+    # with NO placeholder never raises at all, silently dropping the
+    # count. All three must degrade to the English template, never crash.
+    for bad in ("{0.n} entries", "{0[x]} entries", "entries", "{0"):
+        gui = _grouped_gui()
+        gui.localized_strings[32136] = bad
+        view, gui, _ = _build(_grouped_entries(), gui=gui)
+        view.run()
+        assert "Dolby Vision — 3 entries" in gui.selects[0][1], bad
