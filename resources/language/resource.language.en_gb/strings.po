@@ -226,7 +226,7 @@ msgid "Audio format change"
 msgstr ""
 
 msgctxt "#32147"
-msgid "Offset saved"
+msgid "Manual offset change"
 msgstr ""
 
 msgctxt "#32148"
