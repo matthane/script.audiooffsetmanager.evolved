@@ -22,59 +22,11 @@ msgid "Settings related to addon playback behavior"
 msgstr ""
 
 msgctxt "#32018"
-msgid "Seek Back Settings"
-msgstr ""
-
-msgctxt "#32019"
-msgid "Seek back on audio format change"
-msgstr ""
-
-msgctxt "#32020"
-msgid "Control whether playback will seek back after changing audio format to re-synchronize audio and video tracks"
+msgid "Seek back"
 msgstr ""
 
 msgctxt "#32021"
 msgid "Seek back amount (seconds)"
-msgstr ""
-
-msgctxt "#32022"
-msgid "Control the amount of time that the player seeks back after changing audio format"
-msgstr ""
-
-msgctxt "#32034"
-msgid "Seek back upon opening video player"
-msgstr ""
-
-msgctxt "#32035"
-msgid "Control whether playback will seek back after opening video player to synchronize audio and video tracks"
-msgstr ""
-
-msgctxt "#32037"
-msgid "Control the amount of time that the player seeks back upon opening the video player"
-msgstr ""
-
-msgctxt "#32038"
-msgid "Seek back on unpausing video"
-msgstr ""
-
-msgctxt "#32039"
-msgid "Control whether playback will seek back after unpausing to re-synchronize audio and video tracks"
-msgstr ""
-
-msgctxt "#32041"
-msgid "Control the amount of time that the player seeks back after unpausing"
-msgstr ""
-
-msgctxt "#32048"
-msgid "Seek back on manual offset change"
-msgstr ""
-
-msgctxt "#32049"
-msgid "Control whether playback will seek back after manual adjustments to audio offset"
-msgstr ""
-
-msgctxt "#32050"
-msgid "Control the amount of time that the player seeks back after making manual adjustements to audio offset"
 msgstr ""
 
 msgctxt "#32081"
@@ -251,4 +203,32 @@ msgstr ""
 
 msgctxt "#32141"
 msgid "Apply the saved audio offset automatically when a matching stream plays. Turning this off stops the addon from setting the offset during playback. Saved offsets are kept and learning is not affected."
+msgstr ""
+
+msgctxt "#32142"
+msgid "Seek back after"
+msgstr ""
+
+msgctxt "#32143"
+msgid "Seek backwards after the selected events, replaying the last few seconds. With nothing selected, playback position is never changed."
+msgstr ""
+
+msgctxt "#32144"
+msgid "Playback start"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Unpause"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Audio format change"
+msgstr ""
+
+msgctxt "#32147"
+msgid "Offset saved"
+msgstr ""
+
+msgctxt "#32148"
+msgid "How far back the player seeks after a selected event"
 msgstr ""

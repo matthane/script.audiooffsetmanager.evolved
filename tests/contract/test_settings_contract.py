@@ -45,6 +45,7 @@ UI_ONLY_SETTING_IDS = {"manage_offsets"}
 NON_INTENT_CALLABLES = {
     "get_bool",
     "get_int",
+    "get_string_list",
     "store_boolean_if_changed",
     "store_integer_if_changed",
 }
@@ -75,6 +76,9 @@ def _collect_python_read_ids():
     )
     settings.get_int = lambda setting_id, default=0: (
         recorded.append(setting_id) or 0
+    )
+    settings.get_string_list = lambda setting_id: (
+        recorded.append(setting_id) or []
     )
 
     exercised = set()
@@ -144,3 +148,21 @@ def test_direction_b_every_declared_id_is_read():
         "settings.xml declares ids no Python read consumes (add a read or "
         "whitelist as UI-only): {0}".format(sorted(unread))
     )
+
+
+def test_seek_back_option_values_match_scheduler_reasons():
+    # The multiselect's option VALUES must be the scheduler's reason
+    # vocabulary VERBATIM: seek_back_config is a membership test against
+    # them, and nothing else would catch a rename — the fakes bypass the
+    # real mapping, so a drifted value ('change' -> 'store', or a
+    # well-meaning edit toward the display label) would silently disable
+    # that seek forever with every suite green. The labels may say
+    # anything; the values may not move.
+    tree = ET.parse(str(SETTINGS_XML))
+    options = [
+        option.text
+        for setting in tree.iter("setting")
+        if setting.get("id") == "seek_back_events"
+        for option in setting.iter("option")
+    ]
+    assert sorted(options) == sorted(SeekScheduler.REASONS)

@@ -80,6 +80,21 @@ class Settings:
                 f"Using default: {default}", xbmc.LOGWARNING)
             return default
 
+    def get_string_list(self, setting_id):
+        """Read a list-of-strings setting; on ANY error, log and return ``[]``.
+
+        The empty-list fallback reads as "no options selected", which is
+        every list setting's do-nothing state — same fail-quiet doctrine
+        as the other primitives.
+        """
+        try:
+            return list(self._settings.getStringList(setting_id))
+        except Exception:
+            self._log(
+                f"AOMe_Settings: Error getting string list setting "
+                f"'{setting_id}'. Using default: []", xbmc.LOGWARNING)
+            return []
+
     def store_boolean_if_changed(self, setting_id, value):
         """Write a boolean only if it differs from the stored value.
 
@@ -144,9 +159,16 @@ class Settings:
         return self.get_bool('remember_adjustments', True)
 
     def seek_back_config(self, reason):
-        """Return ``(enabled, seconds)`` for a seek-back reason; seconds >= 0."""
-        return (self.get_bool(f"enable_seek_back_{reason}"),
-                max(self.get_int(f"seek_back_{reason}_seconds"), 0))
+        """Return ``(enabled, seconds)`` for a seek-back reason; seconds >= 0.
+
+        enabled = membership in the ``seek_back_events`` multiselect,
+        whose option values are the SeekScheduler REASONS verbatim (the
+        settings contract test pins that); the amount is the one shared
+        slider. An unreadable read yields 0, which the scheduler treats
+        as disabled (legacy fail-quiet parity).
+        """
+        return (reason in self.get_string_list('seek_back_events'),
+                max(self.get_int('seek_back_seconds'), 0))
 
     def notify_apply_enabled(self):
         """The 'offset applied' toast gate (D10: each toast kind has its own

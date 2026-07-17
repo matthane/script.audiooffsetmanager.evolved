@@ -44,84 +44,32 @@
         <!-- Playback behavior: seek-backs and notifications. -->
         <category id="playback" label="32016" help="32017">
             <group id="3" label="32018">
-                <!-- Seek back upon opening video player -->
-                <setting id="enable_seek_back_resume" type="boolean" label="32034" help="32035">
+                <!-- One multiselect replaces the four per-reason enable
+                     toggles and one shared amount the four per-reason
+                     sliders (beta9 field pass). Option VALUES are the
+                     SeekScheduler.REASONS vocabulary verbatim - the
+                     seek_back_config membership test depends on it. -->
+                <setting id="seek_back_events" type="list[string]" label="32142" help="32143">
                     <level>0</level>
-                    <default>false</default>
-                    <control type="toggle"/>
-                </setting>
-                <setting id="seek_back_resume_seconds" parent="enable_seek_back_resume" type="integer" label="32021" help="32037">
-                    <level>0</level>
-                    <dependencies>
-                        <dependency type="visible" setting="enable_seek_back_resume">true</dependency>
-                    </dependencies>
-                    <default>4</default>
+                    <default></default>
                     <constraints>
-                        <minimum>1</minimum>
-                        <step>1</step>
-                        <maximum>10</maximum>
+                        <options>
+                            <option label="32144">resume</option>
+                            <option label="32145">unpause</option>
+                            <option label="32146">adjust</option>
+                            <option label="32147">change</option>
+                        </options>
+                        <delimiter>,</delimiter>
                     </constraints>
-                    <control type="slider" format="integer">
-                        <popup>false</popup>
+                    <control type="list" format="string">
+                        <heading>32142</heading>
+                        <multiselect>true</multiselect>
                     </control>
                 </setting>
-
-                <!-- Seek back on unpausing video -->
-                <setting id="enable_seek_back_unpause" type="boolean" label="32038" help="32039">
-                    <level>0</level>
-                    <default>false</default>
-                    <control type="toggle"/>
-                </setting>
-                <setting id="seek_back_unpause_seconds" parent="enable_seek_back_unpause" type="integer" label="32021" help="32041">
+                <setting id="seek_back_seconds" type="integer" label="32021" help="32148">
                     <level>0</level>
                     <dependencies>
-                        <dependency type="visible" setting="enable_seek_back_unpause">true</dependency>
-                    </dependencies>
-                    <default>4</default>
-                    <constraints>
-                        <minimum>1</minimum>
-                        <step>1</step>
-                        <maximum>10</maximum>
-                    </constraints>
-                    <control type="slider" format="integer">
-                        <popup>false</popup>
-                    </control>
-                </setting>
-
-                <!-- Seek back on audio format change (the scheduler's
-                     'adjust' reason: a change-announcing stabilization) -->
-                <setting id="enable_seek_back_adjust" type="boolean" label="32019" help="32020">
-                    <level>0</level>
-                    <default>false</default>
-                    <control type="toggle"/>
-                </setting>
-                <setting id="seek_back_adjust_seconds" parent="enable_seek_back_adjust" type="integer" label="32021" help="32022">
-                    <level>0</level>
-                    <dependencies>
-                        <dependency type="visible" setting="enable_seek_back_adjust">true</dependency>
-                    </dependencies>
-                    <default>4</default>
-                    <constraints>
-                        <minimum>1</minimum>
-                        <step>1</step>
-                        <maximum>10</maximum>
-                    </constraints>
-                    <control type="slider" format="integer">
-                        <popup>false</popup>
-                    </control>
-                </setting>
-
-                <!-- Seek back on manual offset change (the scheduler's
-                     'change' reason: the watcher stored an adjustment) -->
-                <setting id="enable_seek_back_change" type="boolean" label="32048" help="32049">
-                    <level>0</level>
-                    <default>false</default>
-                    <control type="toggle"/>
-                </setting>
-                <setting id="seek_back_change_seconds" parent="enable_seek_back_change" type="integer" label="32021" help="32050">
-                    <level>0</level>
-                    <dependencies>
-                        <dependency type="visible" setting="enable_seek_back_change">true</dependency>
+                        <dependency type="visible" setting="seek_back_events" operator="!is"></dependency>
                     </dependencies>
                     <default>4</default>
                     <constraints>

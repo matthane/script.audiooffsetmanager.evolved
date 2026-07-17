@@ -112,6 +112,25 @@ class TestTypedReads:
         assert settings.get_int('missing') == 0
 
 
+class TestGetStringList:
+    def test_returns_a_plain_list(self):
+        settings, logs = _make_settings()
+        settings._settings.getStringList = _Spy(result=('unpause', 'change'))
+        assert settings.get_string_list('seek_back_events') == [
+            'unpause', 'change']
+        assert logs == []
+
+    def test_error_returns_empty_list_and_warns(self):
+        # Empty list = "no options selected" = every list setting's
+        # do-nothing state (fail-quiet doctrine, like the other reads).
+        settings, logs = _make_settings()
+        settings._settings.getStringList = _Spy(raises=RuntimeError("boom"))
+        assert settings.get_string_list('seek_back_events') == []
+        message, level = logs[0]
+        assert level == xbmc.LOGWARNING
+        assert "Error getting string list setting 'seek_back_events'" in message
+
+
 # --- store_*_if_changed ------------------------------------------------------
 
 class TestStoreBooleanIfChanged:
@@ -276,19 +295,25 @@ class TestIntentReads:
         # warning is idempotent-annoying at worst, silence is worse.
         assert spy.calls == [('coexistence_warned',)]
 
-    def test_seek_back_config_maps_ids(self):
+    def test_seek_back_config_is_list_membership_plus_shared_seconds(self):
+        # The four enable toggles collapsed into one multiselect whose
+        # option values are the scheduler's reason vocabulary verbatim,
+        # and the four sliders into one shared amount.
         settings, _ = _make_settings()
-        settings.get_bool = _Spy(result=True)
+        settings.get_string_list = _Spy(result=['unpause', 'change'])
         settings.get_int = _Spy(result=8)
         enabled, seconds = settings.seek_back_config('unpause')
         assert enabled is True
         assert seconds == 8
-        assert settings.get_bool.calls == [('enable_seek_back_unpause',)]
-        assert settings.get_int.calls == [('seek_back_unpause_seconds',)]
+        assert settings.get_string_list.calls == [('seek_back_events',)]
+        assert settings.get_int.calls == [('seek_back_seconds',)]
+
+        enabled, _seconds = settings.seek_back_config('resume')
+        assert enabled is False               # not a member -> disabled
 
     def test_seek_back_config_clamps_negative_seconds(self):
         settings, _ = _make_settings()
-        settings.get_bool = _Spy(result=False)
+        settings.get_string_list = _Spy(result=[])
         settings.get_int = _Spy(result=-4)
         enabled, seconds = settings.seek_back_config('resume')
         assert enabled is False
