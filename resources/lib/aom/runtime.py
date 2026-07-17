@@ -169,8 +169,8 @@ class ServiceRuntime:
             "Classic Audio Offset Manager detected")
         body = self.gui.localized(STRING_COEXISTENCE_BODY) or (
             "AOM Evolved and the classic Audio Offset Manager are both "
-            "enabled. Running both can apply audio offsets twice — "
-            "consider disabling the classic addon.")
+            "enabled. Running both can apply audio offsets twice. "
+            "Consider disabling the classic addon.")
         if not self.gui.ok(heading, body):
             # The dialog never rendered: leave the flag unset so the
             # warning retries on a future start (E4 review — the flag

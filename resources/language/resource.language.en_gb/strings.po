@@ -186,7 +186,7 @@ msgid "Stored offsets were unreadable and were reset (backup kept as offsets.jso
 msgstr ""
 
 msgctxt "#32122"
-msgid "Evolved learns as you adjust — nothing stored yet. Fix lipsync once with Kodi's audio offset slider during playback and it will be remembered."
+msgid "Nothing is stored yet. Adjust Kodi's audio offset during playback and the value will be saved for that stream profile."
 msgstr ""
 
 msgctxt "#32123"
@@ -198,7 +198,7 @@ msgid "Delete ALL stored offsets? Every learned profile will be forgotten."
 msgstr ""
 
 msgctxt "#32125"
-msgid "The Audio Offset Manager service is not running — the change could not be made."
+msgid "The Audio Offset Manager service is not running. The change could not be made."
 msgstr ""
 
 msgctxt "#32126"
@@ -218,7 +218,7 @@ msgid "Classic Audio Offset Manager detected"
 msgstr ""
 
 msgctxt "#32130"
-msgid "AOM Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice — consider disabling the classic addon."
+msgid "AOM Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice. Consider disabling the classic addon."
 msgstr ""
 
 msgctxt "#32131"
@@ -230,7 +230,7 @@ msgid "Offset not saved"
 msgstr ""
 
 msgctxt "#32133"
-msgid "Reset to 0 ms — nothing stored for this stream"
+msgid "Reset to 0 ms. Nothing is stored for this stream"
 msgstr ""
 
 msgctxt "#32135"

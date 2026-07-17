@@ -749,7 +749,7 @@ class TestUnsavedOffsetDiscarded:
         self._discard(rig, session)
 
         message, _duration = rig.toasts[0]
-        assert 'nothing stored' in message
+        assert 'Nothing is stored' in message
         assert rig.gui.titles == ["Offset not saved"]
 
 

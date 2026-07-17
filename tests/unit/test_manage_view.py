@@ -437,7 +437,7 @@ def test_blank_localization_falls_back_to_english():
     view.run()
 
     heading, message = gui.oks[0]
-    assert "Evolved learns as you adjust" in message
+    assert "Nothing is stored yet" in message
 
 
 # -- U0 grouped drill-down ----------------------------------------------------

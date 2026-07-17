@@ -103,11 +103,11 @@ _MSG_CONFIRM_CLEAR_GROUP = 32139
 # render a nameless group), and the count templates are the only content
 # beside the group name.
 _FALLBACKS = {
-    _MSG_EMPTY: ("Evolved learns as you adjust — nothing stored yet. Fix "
-                 "lipsync once with Kodi's audio offset slider during "
-                 "playback and it will be remembered."),
-    _MSG_NO_SERVICE: ("The Audio Offset Manager service is not running — "
-                      "the change could not be made."),
+    _MSG_EMPTY: ("Nothing is stored yet. Adjust Kodi's audio offset during "
+                 "playback and the value will be saved for that stream "
+                 "profile."),
+    _MSG_NO_SERVICE: ("The Audio Offset Manager service is not running. "
+                      "The change could not be made."),
     _MSG_UNREADABLE: ("The stored offsets file is unreadable. The service "
                       "will quarantine and reset it the next time it "
                       "starts."),

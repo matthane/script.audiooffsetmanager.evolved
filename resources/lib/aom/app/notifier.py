@@ -71,7 +71,7 @@ STRING_OFFSET_SAVED = 32093
 # runtime with the typed StoreCorrupted event, per the E4 ledger).
 STRING_STORE_CORRUPTED = 32121
 CORRUPTION_NOTICE_MS = 7000
-# "Offset not saved" / "Reset to 0 ms — nothing stored for this stream":
+# "Offset not saved" / "Reset to 0 ms. Nothing is stored for this stream":
 # the zero-reset discarded a manual adjustment that never reached the
 # store (D3 amendment, E7).
 STRING_OFFSET_NOT_SAVED = 32132
@@ -192,7 +192,7 @@ class Notifier:
         title = self._gui.localized(STRING_OFFSET_NOT_SAVED) or (
             "Offset not saved")
         message = self._gui.localized(STRING_RESET_BASELINE) or (
-            "Reset to 0 ms — nothing stored for this stream")
+            "Reset to 0 ms. Nothing is stored for this stream")
         self._log(f"AOMe_Notifier: {title} — discarded unstored "
                   f"{event.ms}ms for {event.profile.describe()}")
         self._present(message, self._settings.notification_duration_ms(),

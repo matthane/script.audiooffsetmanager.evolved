@@ -20,7 +20,7 @@ v1.0.0~beta8 (2026-07-16)
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
              earlier changelogs live in the git history. -->
-        <summary lang="en_GB">Fix lipsync once — Evolved remembers it per stream profile</summary>
+        <summary lang="en_GB">Fix lipsync once and Evolved remembers it per stream profile</summary>
         <description lang="en_GB">Adjust Kodi's audio offset during playback the way you always have. AOM Evolved remembers the value for that stream's HDR type, audio format, and refresh rate, then re-applies it automatically on every matching playback. Includes seek-back after adjustments, playback notifications, and a management view of everything it has learned.</description>
         <platform>all</platform>
         <license>GPL-3.0-or-later</license>
