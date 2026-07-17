@@ -48,8 +48,12 @@ user just caused and can see.
 Selecting a group lists only its entries, headed by the group name, with
 the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
 23.976 fps'); Back from a group returns to the top level, Back from the
-top level exits. Clear-all lives ONLY at the top level, where the whole store
-it deletes is represented. Counts include dormant rows — the index
+top level exits. The whole-store clear-all lives ONLY at the top level,
+where the whole store it deletes is represented; each open group carries
+its own scoped clear row instead, implemented as LOOPED SINGLE DELETES
+over the channel — the P6 whitelist stays delete/clear, no batch op
+exists on the wire — with a confirmation that restates the scope exactly
+as the index row did ('Dolby Vision — 6 entries'). Counts include dormant rows — the index
 inherits never-under-represent: every stored entry is countable there and
 reachable from it. Every pass at either level re-reads the store. An open
 group survives external mutations that leave it the only group (deleting
@@ -87,6 +91,8 @@ _MSG_FUTURE = 32131        # StoreUnreadable(future=True): preserved, not shown
 _LABEL_GROUP_ENTRY = 32135    # "{0} entry" — group-index count, singular
 _LABEL_GROUP_ENTRIES = 32136  # "{0} entries" — group-index count, plural
 _LABEL_OTHER_GROUP = 32137    # "Other" — the unsplittable-key bucket
+_LABEL_CLEAR_GROUP = 32138    # the scoped clear row inside an open group
+_MSG_CONFIRM_CLEAR_GROUP = 32139
 
 # English fallbacks for the strings that must never render blank:
 # localized() degrades to '' on a transient failure, and a blank
@@ -112,6 +118,8 @@ _FALLBACKS = {
     _LABEL_GROUP_ENTRY: "{0} entry",
     _LABEL_GROUP_ENTRIES: "{0} entries",
     _LABEL_OTHER_GROUP: "Other",
+    _LABEL_CLEAR_GROUP: "Clear all offsets in this group",
+    _MSG_CONFIRM_CLEAR_GROUP: "Delete all stored offsets in this group?",
 }
 
 # One presentable entry: the full profile line (flat rows AND the first
@@ -252,12 +260,50 @@ class ManageView:
             return None
 
         options = [(row.short, row.detail) for row in group_rows]
+        # The scoped clear row: the whole-store clear-all stays at the top
+        # level, but the set THIS row deletes is exactly the list above it.
+        options.append(self._gui.localized(_LABEL_CLEAR_GROUP))
         choice = self._gui.select(self._group_name(self._group), options)
         if choice < 0:
             self._group = None
             return None
+        if choice == len(group_rows):
+            return self._clear_group(heading, group_rows, whole_store=(
+                len(group_rows) == len(rows)))
         return self._settle(heading,
                             self._confirm_delete(heading, group_rows[choice]))
+
+    def _clear_group(self, heading, group_rows, *, whole_store):
+        """Batch-delete every entry of the open group.
+
+        LOOPED SINGLE DELETES over the existing channel — there is no
+        batch op on the wire, so the P6 whitelist (delete/clear) is
+        untouched and the service side needs no change. The confirmation
+        restates the scope exactly as the index row did (group name —
+        count). Per-delete semantics mirror the single-delete flow: a
+        'missing' ack is satisfied intent (the entry raced away) and the
+        batch continues; a timeout or hard failure reports ONCE and stops
+        — the re-rendered list is the truth about what remains. Clearing
+        a group that was the ENTIRE store at render exits quietly like
+        clear-all (looping would land on the first-run education dialog
+        right after a deliberate wipe — E4 review doctrine).
+        """
+        message = (self._text(_MSG_CONFIRM_CLEAR_GROUP) + "\n"
+                   + self._group_row(self._group, len(group_rows)))
+        if not self._gui.yesno(heading, message):
+            return None
+        self._log("AOMe_ManageView: clearing group {0} ({1} entries)"
+                  .format(self._group_name(self._group), len(group_rows)))
+        for row in group_rows:
+            ack = self._send_mutation("delete", row.key)
+            if ack is None or (not ack.get("ok")
+                               and ack.get("detail") != "missing"):
+                self._report_ack(heading, ack)
+                return None
+        if whole_store:
+            self._log("AOMe_ManageView: store cleared; closing view")
+            return _CLOSE
+        return None
 
     def _settle(self, heading, ack):
         """Post-confirmation tail shared by every pass.

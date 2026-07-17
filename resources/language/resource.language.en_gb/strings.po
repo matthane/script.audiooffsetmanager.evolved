@@ -244,3 +244,11 @@ msgstr ""
 msgctxt "#32137"
 msgid "Other"
 msgstr ""
+
+msgctxt "#32138"
+msgid "Clear all offsets in this group"
+msgstr ""
+
+msgctxt "#32139"
+msgid "Delete all stored offsets in this group?"
+msgstr ""

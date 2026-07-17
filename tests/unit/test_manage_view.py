@@ -526,13 +526,16 @@ def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
 
     assert len(gui.selects) == 3
     # The drill-down is headed by the group name and lists ONLY its
-    # entries — HDR name dropped, codec leading (DU-2), no clear-all row.
+    # entries — HDR name dropped, codec leading (DU-2) — plus the scoped
+    # group-clear row; the whole-store clear-all row stays at the top
+    # level only.
     heading, options = gui.selects[1]
     assert heading == "Dolby Vision"
     assert options == [
         ("Dolby Digital Plus · Other FPS", "+3 ms"),
         ("Dolby TrueHD · Other FPS", "+1 ms"),
         ("Dolby TrueHD · 23.976 fps", "+2 ms"),
+        "#32138",
     ]
     assert "#32126" not in options
     # Back from the group re-rendered the index; Back from the index
@@ -552,7 +555,7 @@ def test_other_bucket_lists_unsplittable_key_verbatim():
     assert heading == "Other"
     # Verbatim acceptance: the scribbled key shows as itself (there is no
     # HDR name to drop), value verbatim, never a crash.
-    assert options == [("scribbled-key", "+10 ms")]
+    assert options == [("scribbled-key", "+10 ms"), "#32138"]
 
 
 def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
@@ -570,10 +573,11 @@ def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
     assert "Dolby Vision | Other FPS | Dolby Digital Plus" in message
     assert "+3 ms" in message
     assert service.calls == [("delete", "dolbyvision|all|eac3")]
-    # After the delete the (re-read) group re-rendered with 2 rows.
+    # After the delete the (re-read) group re-rendered with 2 rows (+ the
+    # group-clear row).
     assert len(gui.selects) == 4
     assert gui.selects[2][0] == "Dolby Vision"
-    assert len(gui.selects[2][1]) == 2
+    assert len(gui.selects[2][1]) == 3
 
 
 def test_deleting_a_groups_last_entry_returns_to_index_without_it():
@@ -631,8 +635,9 @@ def test_reread_per_pass_reflects_external_mutations():
     view = ManageView(service.read, gui, service.send, per_fps=True)
     view.run()
 
-    # The drill-down read fresh: the raced-away row is already gone.
-    assert len(gui.selects[1][1]) == 2
+    # The drill-down read fresh: the raced-away row is already gone
+    # (2 rows + the group-clear row).
+    assert len(gui.selects[1][1]) == 3
     # And the re-rendered index shows the new count.
     assert "Dolby Vision — 2 entries" in gui.selects[2][1]
 
@@ -682,9 +687,10 @@ def test_deletes_never_flip_the_mode_until_a_group_empties():
 
     assert len(service.calls) == 2
     # Deleting inside HDR10 (9 -> 8 entries, the exact field scenario):
-    # the group re-renders, and Back lands on the INDEX, not a flat list.
+    # the group re-renders (7 rows + group-clear row), and Back lands on
+    # the INDEX, not a flat list.
     assert gui.selects[2][0] == "HDR10"
-    assert len(gui.selects[2][1]) == 7
+    assert len(gui.selects[2][1]) == 8
     assert gui.selects[3][1] == ["Dolby Vision — 1 entry",
                                  "HDR10 — 7 entries", "#32126"]
     # Emptying the DV group leaves one group: NOW the top level is flat —
@@ -729,9 +735,10 @@ def test_group_delete_failed_ack_reports_under_main_heading_and_stays():
     heading, message = gui.oks[0]
     assert heading == "#32115"
     assert "#32128" in message and "read_only" in message
-    # Failed ack changed nothing: still in the group, all 3 rows present.
+    # Failed ack changed nothing: still in the group, all 3 rows present
+    # (+ the group-clear row).
     assert gui.selects[2][0] == "Dolby Vision"
-    assert len(gui.selects[2][1]) == 3
+    assert len(gui.selects[2][1]) == 4
 
 
 def test_group_delete_ack_timeout_reports_service_missing_and_stays():
@@ -744,7 +751,7 @@ def test_group_delete_ack_timeout_reports_service_missing_and_stays():
 
     assert ("#32115", "#32125") in gui.oks
     assert gui.selects[2][0] == "Dolby Vision"
-    assert len(gui.selects[2][1]) == 3
+    assert len(gui.selects[2][1]) == 4
 
 
 def test_blank_hdr_segment_key_joins_the_other_bucket():
@@ -767,7 +774,143 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
     assert options == [
         ("Dolby TrueHD · Other FPS", "+9 ms"),   # blank hdr, audio intact
         ("scribbled-key", "+10 ms"),
+        "#32138",
     ]
+
+
+# -- per-group clear -----------------------------------------------------------
+#
+# The scoped clear row inside an open group: looped single deletes over the
+# existing channel — no batch op exists on the wire, the P6 whitelist stays
+# delete/clear. Confirmation restates the scope as the index row shows it.
+
+def test_group_clear_confirmation_shows_scope_and_decline_sends_nothing():
+    gui = _grouped_gui()
+    gui.select_answers = [0, 3, -1, -1]  # open DV, its clear row, back, exit
+    gui.yesno_answers = [False]
+    view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
+    view.run()
+
+    heading, message = gui.yesnos[0]
+    assert heading == "#32115"
+    assert "#32139" in message
+    # The scope line is the index row's exact copy: name — count.
+    assert "Dolby Vision — 3 entries" in message
+    assert service.calls == []
+    # Declined: still in the group, re-rendered.
+    assert gui.selects[2][0] == "Dolby Vision"
+
+
+def test_group_clear_deletes_every_group_key_and_lands_on_index():
+    gui = _grouped_gui()
+    gui.select_answers = [0, 3, -1]      # open DV, clear the group, exit
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
+    view.run()
+
+    # One delete per group entry, exact keys, display order — and nothing
+    # but deletes on the wire (P6: no batch op exists).
+    assert service.calls == [
+        ("delete", "dolbyvision|all|eac3"),
+        ("delete", "dolbyvision|all|truehd"),
+        ("delete", "dolbyvision|23|truehd"),
+    ]
+    # The emptied group falls back to the index: DV gone, others intact,
+    # no error/education dialog.
+    assert gui.oks == []
+    final_options = gui.selects[-1][1]
+    assert not any(isinstance(option, str) and option.startswith("Dolby Vision")
+                   for option in final_options)
+    assert "HDR10 — 3 entries" in final_options
+
+
+def test_group_clear_of_the_entire_store_exits_quietly():
+    # The open group can BE the whole store (another session shrank the
+    # rest away): clearing it then mirrors clear-all's quiet exit — no
+    # first-run education dialog right after a deliberate wipe.
+    entries = {
+        "dolbyvision|all|truehd": _entry(1),
+        "dolbyvision|all|eac3": _entry(2),
+        "hdr10|all|ac3": _entry(3),
+    }
+    service = FakeService(entries)
+    gui = _grouped_gui()
+    gui.select_answers = [0, 2]          # open DV, then its clear row
+    gui.yesno_answers = [True]
+    original_select = gui.select
+
+    def select_then_shrink(heading, options):
+        choice = original_select(heading, options)
+        # After the index selection, the other group races away.
+        if len(gui.selects) == 1:
+            service.entries.pop("hdr10|all|ac3")
+        return choice
+
+    gui.select = select_then_shrink
+    view = ManageView(service.read, gui, service.send)
+    view.run()
+
+    assert service.calls == [
+        ("delete", "dolbyvision|all|eac3"),
+        ("delete", "dolbyvision|all|truehd"),
+    ]
+    assert service.entries == {}
+    # Quiet exit: no education dialog, no further renders.
+    assert gui.oks == []
+    assert len(gui.selects) == 2
+
+
+def test_group_clear_stops_on_hard_failure_and_reports_once():
+    gui = _grouped_gui()
+    # open DV, clear the group; the second delete is refused -> one
+    # failure dialog, batch stops, back in the group with the remainder.
+    gui.select_answers = [0, 3, -1, -1]
+    gui.yesno_answers = [True]
+    view, gui, service = _build(
+        _grouped_entries(),
+        acks=[{"ok": True, "detail": "deleted"},
+              {"ok": False, "detail": "read_only"}],
+        gui=gui, per_fps=True)
+    view.run()
+
+    assert len(service.calls) == 2       # third delete never attempted
+    failure_dialogs = [m for _h, m in gui.oks if "#32128" in m]
+    assert len(failure_dialogs) == 1
+    assert "read_only" in failure_dialogs[0]
+    # The re-rendered group holds the two survivors (+ clear row).
+    assert gui.selects[2][0] == "Dolby Vision"
+    assert len(gui.selects[2][1]) == 3
+
+
+def test_group_clear_timeout_reports_service_missing_and_stops():
+    gui = _grouped_gui()
+    gui.select_answers = [0, 3, -1, -1]
+    gui.yesno_answers = [True]
+    view, gui, service = _build(_grouped_entries(), acks=[None], gui=gui,
+                                per_fps=True)
+    view.run()
+
+    assert len(service.calls) == 1       # D5 report-only: stop immediately
+    assert ("#32115", "#32125") in gui.oks
+    # Nothing was deleted: the group re-renders with all 3 rows.
+    assert len(gui.selects[2][1]) == 4
+
+
+def test_group_clear_missing_acks_are_satisfied_and_continue():
+    # Every entry raced away between render and delete: each 'missing'
+    # ack is satisfied intent — the batch continues silently, exactly
+    # like the single-delete flow.
+    gui = _grouped_gui()
+    gui.select_answers = [0, 3, -1, -1]
+    gui.yesno_answers = [True]
+    missing = {"ok": False, "detail": "missing"}
+    view, gui, service = _build(
+        _grouped_entries(), acks=[dict(missing), dict(missing), dict(missing)],
+        gui=gui, per_fps=True)
+    view.run()
+
+    assert len(service.calls) == 3       # all attempted, none aborted
+    assert gui.oks == []                 # and no error dialog for no-ops
 
 
 def test_count_template_degrades_on_malformed_or_placeholderless_translation():
