@@ -257,6 +257,36 @@ def test_describe_key_degrades_to_segment_without_usable_metadata():
             'HDR10+ | 23 fps | AAC'
 
 
+def test_describe_key_in_group_drops_hdr_and_leads_with_codec():
+    # The drill-down row: one HDR group is open, so its name is redundant —
+    # the codec leads (the stable-width part) and the rate follows.
+    assert keys.describe_key_in_group('dolbyvision|all|truehd') == \
+        'Dolby TrueHD · All FPS'
+    assert keys.describe_key_in_group(
+        'dolbyvision|23|truehd', video_fps=23.976, per_fps=True) == \
+        'Dolby TrueHD · 23.976 fps'
+
+
+def test_describe_key_in_group_matches_describe_key_semantics():
+    # Same fps display rules as describe_key: toggle-aware 'all', exact
+    # rate from metadata, segment degradation without it — one vocabulary.
+    assert keys.describe_key_in_group('dolbyvision|all|truehd',
+                                      per_fps=True) == \
+        'Dolby TrueHD · Other FPS'
+    assert keys.describe_key_in_group('hdr10|59|ac3') == \
+        'Dolby Digital · 59 fps'
+    # Verbatim fallback for an unlisted codec, like every display surface.
+    assert keys.describe_key_in_group('sdr|all|x-future-codec') == \
+        'x-future-codec · All FPS'
+
+
+def test_describe_key_in_group_raises_on_unsplittable_key():
+    # Same contract as describe_key: the caller owns the verbatim fallback
+    # (the view's 'Other' bucket shows the raw key as itself).
+    with pytest.raises(ValueError):
+        keys.describe_key_in_group('not-a-key')
+
+
 def test_sort_key_groups_hdr_then_codec_then_numeric_rate():
     ordered = sorted([
         'hdr10|all|ac3',

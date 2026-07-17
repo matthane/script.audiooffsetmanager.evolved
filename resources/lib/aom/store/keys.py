@@ -256,6 +256,21 @@ def describe_key(key, video_fps=None, per_fps=False):
         hdr_name, _display_fps(fps, video_fps, per_fps), audio_name)
 
 
+def describe_key_in_group(key, video_fps=None, per_fps=False):
+    """In-group row label, e.g. 'Dolby TrueHD · 23.976 fps'.
+
+    The management view's grouped drill-down lists one HDR type at a time,
+    so its entry rows drop the redundant HDR name and lead with the codec
+    (the stable-width part a user scans by). Same display vocabulary, fps
+    semantics, and verbatim fallbacks as ``describe_key``; an unsplittable
+    key raises ValueError exactly like ``describe_key`` does — callers show
+    those keys as themselves (the view's 'Other' bucket).
+    """
+    _hdr, fps, audio = split_key(key)
+    return "{} · {}".format(
+        AUDIO_DISPLAY.get(audio, audio), _display_fps(fps, video_fps, per_fps))
+
+
 def sort_key(key):
     """Deterministic display ordering: HDR type, then codec, then rate.
 
