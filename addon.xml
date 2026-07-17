@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta9" name="AOM Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta10" name="AOM Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,15 +7,17 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
-        <news>v1.0.0~beta9 (2026-07-17)
+        <news>v1.0.0~beta10 (2026-07-17)
+- New addon ID, icon, and fanart. Install this version fresh; to keep learned offsets, copy offsets.json from the old addon_data folder to the new one
+- Learning and applying are now separate toggles: Learn audio offsets stores your adjustments, Apply audio offsets replays stored ones. Both off matches the old pause
+- The four seek-back toggles merged into one Seek back after selection with a shared seconds slider
+- Offset change seek-back now fires when an adjustment settles, not only when it is saved
+- Manage view groups whenever two or more HDR types are stored, each group can be cleared on its own, and HDR10+ is labeled correctly
+
+v1.0.0~beta9 (2026-07-17)
 - Manage view groups by HDR type when more than 8 offsets are stored: pick a group to browse its entries, Back returns to the group list; rows inside a group lead with the codec
 - Small collections keep the familiar flat list; Clear all stays on the top level
 - Notifications no longer vanish when raised during the previous toast's fade-out
-
-v1.0.0~beta8 (2026-07-16)
-- Settings changes now take effect during playback: flipping per-refresh-rate offsets or un-pausing re-applies the right offset immediately
-- Deleting the playing stream's offset in the manage view now resets the delay right away (idle-time deletes still apply at the next playback)
-- A settings save or delete never discards a manual adjustment you are dialing in
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
