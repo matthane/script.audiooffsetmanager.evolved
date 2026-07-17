@@ -86,7 +86,7 @@ msgid "Learn audio offsets"
 msgstr ""
 
 msgctxt "#32109"
-msgid "When you adjust the audio offset during playback, the value is saved for that stream profile. Turning this off stops new offsets from being saved. Applying saved offsets is controlled by Apply audio offsets."
+msgid "When you adjust the audio offset during playback, the value is saved for that stream profile. Profiles are based on the HDR type and audio format of the video itself, not the display's output mode. Turning this off stops new offsets from being saved. Applying saved offsets is controlled by Apply audio offsets."
 msgstr ""
 
 msgctxt "#32110"
