@@ -44,11 +44,15 @@ def test_service_runtime_graph_wiring(runtime):
                       runtime.adjustment_watcher):
         assert component._sessions is runtime.session_tracker
 
-    # UserOffsetSaved fans out to the seek scheduler ('change' replay) and
-    # the notifier (manual-offset toast) — both typed, both session-stamped.
+    # The settle/save split (beta9): the seek scheduler's 'change' replay
+    # rides the SETTLE (user-action) fact; the notifier's saved toast
+    # rides the STORE fact — both typed, both session-stamped.
+    settled_handlers = runtime.dispatcher._subscribers[events.UserOffsetSettled]
+    assert runtime.seek_scheduler._on_user_offset_settled in settled_handlers
     saved_handlers = runtime.dispatcher._subscribers[events.UserOffsetSaved]
-    assert runtime.seek_scheduler._on_user_offset_saved in saved_handlers
     assert runtime.notifier._on_user_offset_saved in saved_handlers
+    assert all(getattr(h, '__self__', None) is not runtime.seek_scheduler
+               for h in saved_handlers)
 
 
 def test_runtime_subscription_order_is_pinned(runtime):

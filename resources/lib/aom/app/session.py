@@ -85,9 +85,15 @@ class PlaybackSession:
     # it can become a user adjustment, so a pre-existing delay the watcher
     # first observes (e.g. left behind by a failed apply RPC) is adopted
     # silently, never stored. watch_pending is the quiescence candidate:
-    # (observed_ms, first_seen_monotonic).
+    # (observed_ms, first_seen_monotonic). watch_settled_ms is the value
+    # the current observation episode last posted UserOffsetSettled for:
+    # the store-failure retry path deliberately re-settles the same value
+    # (baseline kept so the store retries), and the marker keeps the EVENT
+    # at one per user action — without it every retry cycle would fire
+    # another 'change' seek-back.
     watch_baseline_ms: Optional[int] = None
     watch_pending: tuple = None
+    watch_settled_ms: Optional[int] = None
 
     def describe(self):
         """One-line state snapshot for field logs (replaces debug_snapshot).

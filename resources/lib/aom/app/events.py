@@ -181,6 +181,23 @@ class UnsavedOffsetDiscarded:
 
 
 @dataclass(frozen=True)
+class UserOffsetSettled:
+    """A manual audio-offset adjustment held through quiescence.
+
+    The USER-ACTION fact, posted by the AdjustmentWatcher at the settle
+    instant for every quiesced foreign value — before, and regardless
+    of, whether the learn loop stores it (``UserOffsetSaved`` is the
+    STORAGE fact). Consumers reacting to the user's adjustment itself —
+    the seek scheduler's 'change' replay — subscribe here, so they keep
+    working with learning off, an incomplete profile, or an unwritable
+    store (beta9 field pass: the replay follows the user's hand, not the
+    learn loop). ``ms`` is the settled value, for logging only.
+    """
+    session_id: int
+    ms: int
+
+
+@dataclass(frozen=True)
 class UserOffsetSaved:
     """The adjustment watcher stored a user's manual offset change.
 

@@ -8,11 +8,13 @@ FakeFacade (eligibility reads) + FakeOffsetTable (the store adapter fake),
 and a real AdjustmentWatcher. UserOffsetSaved posts are collected off the bus.
 
 E2: stores land in the sparse store under the D4 write key (derived at store
-instant from the live profile + per_fps toggle); eligibility is
-remember-adjustments only — the apply toggle is orthogonal and never gates
-learning (D9 amended in the beta9 field pass; the classic per-HDR/
-unknown-axis gates died with their features); the settings-dialog store
-deferral is DELETED — offsets are not settings, so the dialog cannot
+instant from the live profile + per_fps toggle). Watching and storing are
+separately gated (beta9 field pass): the watcher runs whenever a profile
+exists and posts UserOffsetSettled for EVERY quiesced adjustment (the
+user-action fact the 'change' seek rides); the learn toggle + store
+writability gate only the store step (UserOffsetSaved, the storage fact).
+Neither half consults the apply toggle (D9 amended). The settings-dialog
+store deferral is DELETED — offsets are not settings, so the dialog cannot
 clobber them.
 
 Timing facts the tests rely on (all derived from the class constants):
@@ -87,6 +89,9 @@ class Rig:
             log_warning=self.warnings.append)
         self.saved = []
         self.dispatcher.subscribe(events.UserOffsetSaved, self.saved.append)
+        self.settled = []
+        self.dispatcher.subscribe(events.UserOffsetSettled,
+                                  self.settled.append)
 
     # -- pumping ----------------------------------------------------------------
 
@@ -367,7 +372,9 @@ class TestQuiescence:
 
     def test_observed_equals_already_stored_value_stores_nothing(self, rig):
         # The user dials to a value that is ALREADY stored at the write key:
-        # no store call, no event — baseline simply adopts it.
+        # no store call, no Saved — baseline simply adopts it. The SETTLE
+        # still posts (the user did act, and the 'change' replay follows
+        # the action, not the storage outcome).
         profile = make_profile()
         rig.offset_table.offsets[KEY_A] = -50
         rig.begin(profile, baseline_delay='0.000 s')
@@ -377,6 +384,7 @@ class TestQuiescence:
 
         assert rig.offset_table.stored == []
         assert rig.saved == []
+        assert [event.ms for event in rig.settled] == [-50]
         assert rig.session.watch_baseline_ms == -50
 
     def test_fallback_valued_nudge_writes_the_specific_key(self, rig):
@@ -462,6 +470,8 @@ class TestStorePathGuards:
 
         assert rig.offset_table.stored == []
         assert rig.saved == []
+        assert rig.settled == []                       # a dying player's
+        # quiesced 0 is not a user action either: no settle, no seek.
         assert rig.session.watch_pending is None
         assert rig.session.watch_baseline_ms is None   # chain fully cleared
         assert rig.logged('no active player at store time')
@@ -484,6 +494,7 @@ class TestStorePathGuards:
         assert rig.saved == []
         assert rig.session.watch_baseline_ms == 0      # NOT updated on failure
         assert any('failed to store' in m for m in rig.warnings)
+        assert [event.ms for event in rig.settled] == [-50]
 
         # The value is still foreign, so a later cycle retries and succeeds.
         rig.offset_table.store_ok = True
@@ -492,6 +503,28 @@ class TestStorePathGuards:
 
         assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
+        # ONE settle event for the whole retry episode (review finding:
+        # without the watch_settled_ms marker every ~2s retry cycle would
+        # re-post Settled and fire another 'change' seek — a rewind loop).
+        assert [event.ms for event in rig.settled] == [-50]
+
+    def test_store_failure_retry_loop_settles_once_while_failing(self, rig):
+        # The storm variant: the store KEEPS failing. However many retry
+        # cycles pass, one adjustment posts exactly one Settled — the seek
+        # replay must not rewind playback every quiescence cycle.
+        rig.offset_table.store_ok = False
+        rig.begin(make_profile(), baseline_delay='0.000 s')
+
+        rig.observe_foreign('-0.050 s')
+        for _ in range(4):                             # several full cycles
+            rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == []
+        assert [event.ms for event in rig.settled] == [-50]
+        # A DIFFERENT adjustment mid-failure is a new user action: it posts.
+        rig.observe_foreign('-0.080 s')
+        rig.hold_to_quiescence()
+        assert [event.ms for event in rig.settled] == [-50, -80]
 
 
 # ============================================================================
@@ -500,36 +533,72 @@ class TestStorePathGuards:
 
 class TestEligibilityAndChain:
 
-    def test_ineligible_stops_chain_and_re_enable_resumes(self, rig):
+    def test_learning_off_keeps_watching_and_settles_without_storing(self, rig):
+        # Watchability is profile-only (beta9 field pass): the learn
+        # toggle gates the STORE step, not the watch. A settle with
+        # learning off posts the user-action fact and stores nothing.
+        profile = make_profile()
+        rig.facade.remember_adjustments = False
+        rig.begin(profile, baseline_delay='0.000 s')
+        assert rig.watching
+
+        rig.observe_foreign('-0.050 s')
+        rig.hold_to_quiescence()
+
+        assert [event.ms for event in rig.settled] == [-50]
+        assert rig.saved == []
+        assert rig.offset_table.stored == []
+        # Accounted for: the settled value is the new baseline, so the
+        # SAME adjustment never re-settles on later ticks.
+        assert rig.session.watch_baseline_ms == -50
+        rig.advance(IDLE)
+        rig.advance(IDLE)
+        assert len(rig.settled) == 1
+
+        # Re-enabling learning mid-session is read fresh at the NEXT
+        # settle instant: a new adjustment stores normally.
+        rig.facade.remember_adjustments = True
+        rig.observe_foreign('-0.080 s')
+        rig.hold_to_quiescence()
+        assert rig.offset_table.stored == [(KEY_A, -80)]
+        assert [event.ms for event in rig.settled] == [-50, -80]
+        assert len(rig.saved) == 1
+
+    def test_profileless_session_stops_chain_and_profile_resumes(self, rig):
+        # The one thing that still gates WATCHING: no profile, no watch.
         profile = make_profile()
         rig.begin(profile, baseline_delay='0.000 s')
         assert rig.watching
 
-        # Disable learning + SettingsChanged -> the chain is cancelled.
-        rig.facade.remember_adjustments = False
-        rig.post(events.SettingsChanged())
+        rig.session.profile = None
+        rig.post(events.SettingsChanged())             # re-evaluate
         assert not rig.watching
+        assert rig.logged('not watching')
 
-        # Re-enable + SettingsChanged -> the chain resumes.
-        rig.facade.remember_adjustments = True
-        rig.post(events.SettingsChanged())
+        rig.session.profile = profile
+        rig.post(events.ProfileChanged(session_id=rig.session.session_id))
         assert rig.watching
 
-        # A due tick that finds learning disabled reschedules NOTHING.
-        rig.facade.remember_adjustments = False
-        rig.advance(IDLE)                              # the pending tick fires
-        assert not rig.watching
-        assert rig.logged('no longer eligible')
-
-    def test_read_only_store_is_not_watched(self, rig):
-        # E2 review finding: a permanently unwritable store (newer-schema
-        # file after a downgrade) must stop the learn loop outright, not
-        # re-detect and re-fail the same adjustment every quiescence cycle.
+    def test_read_only_store_settles_but_never_stores(self, rig):
+        # E2 review finding, restated structurally: a permanently
+        # unwritable store must never produce a re-detect/re-fail loop.
+        # The watch continues (settles are user-action facts the seek
+        # replay needs), the store step is skipped entirely, and the
+        # baseline advance means the same adjustment settles ONCE.
         rig.offset_table.read_only = True
-        rig.start(make_profile())
-        rig.set_delay('-0.050 s')
-        rig.arm()
-        assert not rig.watching
+        rig.begin(make_profile(), baseline_delay='0.000 s')
+        assert rig.watching
+
+        rig.observe_foreign('-0.050 s')
+        rig.hold_to_quiescence()
+
+        assert [event.ms for event in rig.settled] == [-50]
+        assert rig.saved == []
+        assert rig.offset_table.stored == []
+        assert rig.warnings == []                      # no store attempt
+        rig.advance(IDLE)
+        rig.advance(IDLE)
+        assert len(rig.settled) == 1                   # no loop
 
     def test_successful_store_clears_the_miss_dedupe(self, rig):
         # E2 review finding: the applier's once-per-chain miss log dedupes
@@ -604,24 +673,28 @@ class TestEligibilityAndChain:
 
     def test_baseline_cleared_when_watching_stops(self, rig):
         # Only a change observed WHILE watching is an adjustment: a delay
-        # changed during a learning-disabled gap must be re-adopted as the
-        # baseline on re-enable, never stored against the stale baseline
-        # (fresh-state parity with a restarted legacy monitor).
+        # changed during a not-watching gap must be re-adopted as the
+        # baseline on resume, never stored against the stale baseline
+        # (fresh-state parity with a restarted legacy monitor). The gap
+        # here is a profile-less stretch — the one thing that still stops
+        # the watch now that the learn toggle only gates the store step.
         profile = make_profile()
         rig.begin(profile, baseline_delay='0.000 s')
         assert rig.session.watch_baseline_ms == 0
 
-        rig.facade.remember_adjustments = False
+        rig.session.profile = None
         rig.post(events.SettingsChanged())             # chain stops
         assert rig.session.watch_baseline_ms is None   # observation state gone
 
         rig.set_delay('-0.080 s')                      # changed while not watching
-        rig.facade.remember_adjustments = True
-        rig.post(events.SettingsChanged())             # chain resumes
+        rig.session.profile = profile
+        rig.post(events.ProfileChanged(
+            session_id=rig.session.session_id))        # chain resumes
         rig.advance(IDLE)                              # first tick re-adopts
         assert rig.session.watch_baseline_ms == -80
         assert rig.offset_table.stored == []
         assert rig.saved == []
+        assert rig.settled == []                       # adoption is silent
 
         # A change observed while watching still stores normally.
         rig.observe_foreign('-0.050 s')

@@ -375,8 +375,9 @@ def test_applied_is_recorded_before_the_rpc_executes(rig):
 def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
     # End-to-end self-echo: with the watcher armed and Kodi's infolabel
     # echoing our own automatic apply, ticks must adopt the value as
-    # baseline — never store it or post UserOffsetSaved (which would toast
-    # the user and fire a 'change' seek for our own write).
+    # baseline — never store it, post UserOffsetSaved (which would toast
+    # the user), or post UserOffsetSettled (which would fire a 'change'
+    # seek for our own write).
     runtime, clock, gateway, _applied, _notified = rig
 
     monkeypatch.setattr(runtime.settings, 'remember_adjustments_enabled',
@@ -387,6 +388,8 @@ def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
                             (profile.describe(), ms)) or profile.describe())
     saved = []
     runtime.dispatcher.subscribe(events.UserOffsetSaved, saved.append)
+    settled = []
+    runtime.dispatcher.subscribe(events.UserOffsetSettled, settled.append)
 
     runtime.dispatcher.post(events.PlaybackStarted())
     runtime.dispatcher.run_pending()
@@ -402,6 +405,7 @@ def test_auto_apply_never_emits_user_offset_saved(rig, monkeypatch):
     assert session.watch_baseline_ms == -125   # adopted as ours
     assert stored == []
     assert saved == []
+    assert settled == []
 
 
 def test_settings_save_reapply_reads_as_self_echo_not_adjustment(

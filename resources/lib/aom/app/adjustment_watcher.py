@@ -14,17 +14,26 @@ self-scheduled ``WatchTick`` events. No threads, no dialog IDs, no
 open/close state machine — every source of an adjustment is caught because
 we watch the VALUE, not the GUI that (sometimes) sets it.
 
-Eligibility (``_eligible``) is deliberately minimal: a profile exists and
-learning is on ("Learn audio offsets" — the promoted core of the
-product, P2). The apply toggle is deliberately NOT consulted (D9 amended
-in the beta9 field pass: the global pause became the orthogonal "Apply
-audio offsets" toggle): with applying off the addon stops SETTING the
-audio offset (opt-in seek-backs keep their own toggles and still fire),
-but adjustments the user dials still store — the re-teach mode
-the old pause made impossible. No axis-gating happens here
+WATCHING and STORING are separately gated (beta9 field pass). Watchability
+(``_watchable``) is just "a profile exists": the watcher observes and
+settles adjustments whenever something plays, because the settle is a
+USER-ACTION fact with its own consumers — every quiesced foreign value
+posts ``UserOffsetSettled`` (the seek scheduler's 'change' replay rides
+it), independent of the learn loop. STORING is the separately-gated learn
+half (``_store_eligible``: "Learn audio offsets" on — the promoted core
+of the product, P2 — and the store writable): only then does the settle
+also store and post ``UserOffsetSaved``. A settle that cannot store still
+advances the baseline (this covers the E2 unwritable-store finding
+structurally: no re-detect/re-fail loop, because the settled value is
+accounted for without a store attempt), and the ``watch_settled_ms``
+marker keeps the EVENT at one per adjustment even on the store-failure
+retry path, which deliberately keeps the baseline so the store retries.
+The apply toggle is consulted by NEITHER half (D9 amended: with applying
+off the addon stops setting the offset, but dials still settle and — with
+learning on — still store; the re-teach mode). No axis-gating happens here
 — the store path (``_store``) re-validates the WHOLE profile
 (``policies.is_complete``) before writing, so an incomplete stream is
-watched but never stored.
+watched, settles, but never stores.
 
 Baseline rule: ``session.watch_baseline_ms`` is the last delay value we have
 ACCOUNTED FOR (our own apply, or a value already stored). Only a CHANGE away
@@ -86,9 +95,11 @@ the write key is derived from ``session.profile`` + the live ``per_fps``
 toggle at the store instant (D4: one rule, never conditional on lookup
 history — the OffsetTable routes through ``resolve.write_key``).
 
-On a successful store the watcher posts a session-stamped
-``UserOffsetSaved`` (profile + ms + resolved key captured at store time),
-the typed replacement for the legacy unstamped ``USER_ADJUSTMENT`` signal.
+Every settle posts a session-stamped ``UserOffsetSettled`` (the
+user-action fact — the seek scheduler's 'change' replay rides it); a
+successful store additionally posts ``UserOffsetSaved`` (profile + ms +
+resolved key captured at store time), the typed replacement for the
+legacy unstamped ``USER_ADJUSTMENT`` signal.
 
 Pure app layer: Kodi I/O via the injected gateway, eligibility reads via the
 injected settings adapter, offset reads/writes via the injected OffsetTable
@@ -135,29 +146,30 @@ class AdjustmentWatcher:
         dispatcher.subscribe(events.PlaybackStopped, self._on_playback_ended)
         dispatcher.subscribe(events.PlaybackEnded, self._on_playback_ended)
 
-    # -- eligibility ------------------------------------------------------------
+    # -- watchability and the learn gate ----------------------------------------
 
-    def _eligible(self, profile):
-        """Watch when a profile exists and learning is on.
-
-        The apply toggle is NOT consulted — learning and applying are
-        orthogonal (module docstring). The classic per-HDR enable and
-        hdr/fps unknown-checks are gone with their features: the HDR axis
-        always resolves under the open vocabulary (sdr default), and
-        completeness is the STORE path's concern (_store re-validates the
-        whole profile before writing, so an incomplete stream is watched
-        but never persisted — classic parity for the audio-unknown case,
-        now uniform).
+    def _watchable(self, profile):
+        """Watch whenever a profile exists — settling is a user-action
+        fact with its own consumers, so neither the learn toggle nor the
+        store's writability gates the watch (module docstring; the
+        settle-time ``_store_eligible`` check owns those). The classic
+        per-HDR enable and hdr/fps unknown-checks are gone with their
+        features; completeness is the STORE path's concern.
         """
-        return (profile is not None
-                and self._settings.remember_adjustments_enabled()
-                # A permanently unwritable store (newer-schema file after a
-                # downgrade) must stop the learn loop outright — otherwise
-                # every quiescence cycle re-detects and re-fails the same
-                # adjustment forever (E2 review finding).
+        return profile is not None
+
+    def _store_eligible(self):
+        """The learn half's gate, read fresh at settle instant.
+
+        Learning on, and the store writable — a permanently unwritable
+        store (newer-schema file after a downgrade) must never reach a
+        store attempt (E2 review finding; the settle path's baseline
+        advance is what prevents the re-detect loop).
+        """
+        return (self._settings.remember_adjustments_enabled()
                 and not self._offsets.read_only)
 
-    # -- eligibility triggers (dispatcher thread) -------------------------------
+    # -- watch triggers (dispatcher thread) -------------------------------------
 
     def _on_profile_changed(self, event):
         if not self._sessions.is_alive(event.session_id):
@@ -198,7 +210,7 @@ class AdjustmentWatcher:
         self._clear_observation(self._sessions.current)
 
     def _evaluate(self, session):
-        if self._eligible(session.profile):
+        if self._watchable(session.profile):
             # key-replace keeps exactly one live chain, so re-evaluating
             # (ProfileChanged + SettingsChanged in quick succession) is
             # idempotent — never spawns a second watch loop.
@@ -219,9 +231,9 @@ class AdjustmentWatcher:
         if not self._sessions.is_alive(event.session_id):
             return  # a superseded session's chain is inert
         session = self._sessions.current
-        if not self._eligible(session.profile):
+        if not self._watchable(session.profile):
             self._clear_observation(session)
-            self._log("AOMe_AdjustmentWatcher: no longer eligible; stopping "
+            self._log("AOMe_AdjustmentWatcher: no longer watchable; stopping "
                       "watch")
             return  # ProfileChanged/SettingsChanged restart the chain
         # One poll, one reschedule: _observe classifies the reading and only
@@ -283,10 +295,35 @@ class AdjustmentWatcher:
             self._log("AOMe_AdjustmentWatcher: no active player at store "
                       "time; discarding pending adjustment")
             return self.IDLE_TICK_SECONDS
-        self._store(session, observed)
+        self._settle(session, observed)
         return self.IDLE_TICK_SECONDS
 
-    # -- store (dispatcher thread) ----------------------------------------------
+    # -- settle + store (dispatcher thread) --------------------------------------
+
+    def _settle(self, session, observed_ms):
+        """A foreign value held through quiescence: the user-action fact.
+
+        ``UserOffsetSettled`` posts before and independent of storage —
+        the 'change' seek replay follows the user's hand, not the learn
+        loop — but at most ONCE per adjustment: the store-failure branch
+        deliberately keeps the baseline so the store retries, and without
+        the ``watch_settled_ms`` marker every ~2s retry cycle would
+        re-post the event and rewind playback in a loop (review finding).
+        The marker is episode state: ``_clear_observation`` resets it, so
+        a re-dial of the same value after a gap/supersede posts fresh.
+        The store step is the separately-gated learn half; when it is
+        gated off, the settled value is ACCOUNTED FOR immediately.
+        """
+        if session.watch_settled_ms != observed_ms:
+            session.watch_settled_ms = observed_ms
+            self._dispatcher.post(events.UserOffsetSettled(
+                session_id=session.session_id, ms=observed_ms))
+        if self._store_eligible():
+            self._store(session, observed_ms)
+            return
+        self._account(session, observed_ms)
+        self._log(f"AOMe_AdjustmentWatcher: adjustment {observed_ms}ms "
+                  f"settled; not stored (learning off or store read-only)")
 
     def _store(self, session, observed_ms):
         session.watch_pending = None
@@ -299,7 +336,7 @@ class AdjustmentWatcher:
             # chase it, but never write an incomplete key.
             self._log(f"AOMe_AdjustmentWatcher: profile incomplete "
                       f"({profile}); not storing {observed_ms}ms")
-            session.watch_baseline_ms = observed_ms
+            self._account(session, observed_ms)
             return
 
         write_key = self._offsets.write_key(profile)
@@ -309,13 +346,13 @@ class AdjustmentWatcher:
             # the guard keeps the invariant local.
             self._log(f"AOMe_AdjustmentWatcher: no write key for {profile}; "
                       f"not storing {observed_ms}ms")
-            session.watch_baseline_ms = observed_ms
+            self._account(session, observed_ms)
             return
 
         if self._offsets.stored_ms_at(write_key) == observed_ms:
             # Already the stored value (e.g. re-dialed to the configured
-            # offset): account for it, emit nothing.
-            session.watch_baseline_ms = observed_ms
+            # offset): account for it, emit nothing further.
+            self._account(session, observed_ms)
             self._log(f"AOMe_AdjustmentWatcher: {observed_ms}ms already stored "
                       f"for {write_key}; nothing to do")
             return
@@ -347,6 +384,18 @@ class AdjustmentWatcher:
 
     # -- internals --------------------------------------------------------------
 
+    def _account(self, session, observed_ms):
+        """The settled value is ACCOUNTED FOR: it can never re-detect.
+
+        One helper for the invariant's two halves (candidate dropped AND
+        baseline advanced) — the E2 re-detect loop is exactly what one
+        half without the other reintroduces. The store-failure branch is
+        the deliberate exception: it keeps the baseline so the store
+        retries (the settled marker keeps the EVENT from repeating).
+        """
+        session.watch_pending = None
+        session.watch_baseline_ms = observed_ms
+
     def _clear_observation(self, session):
         """Drop ALL observation state whenever the watch chain stops.
 
@@ -355,10 +404,12 @@ class AdjustmentWatcher:
         stale baseline on re-enable and be stored as a fresh adjustment —
         but only a change observed WHILE watching is an adjustment. Clearing
         makes the first post-gap observation re-adopt silently (exactly the
-        fresh state a restarted legacy monitor had).
+        fresh state a restarted legacy monitor had). The settled marker is
+        episode state and falls with the rest.
         """
         session.watch_pending = None
         session.watch_baseline_ms = None
+        session.watch_settled_ms = None
 
     def _schedule_tick(self, session_id, delay):
         """One place for the self-scheduled poll chain (key-replaced)."""
