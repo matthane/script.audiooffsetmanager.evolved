@@ -78,7 +78,7 @@ msgid "Learning, applying, and managing stored audio offsets"
 msgstr ""
 
 msgctxt "#32107"
-msgid "Learning"
+msgid "Learn and apply"
 msgstr ""
 
 msgctxt "#32108"
