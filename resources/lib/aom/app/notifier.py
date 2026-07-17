@@ -31,6 +31,22 @@ from the legacy path. The dedupe clock is the injected ``time.monotonic`` — a
 deliberate upgrade from the legacy ``time.time``, which mis-measured the
 window across wall-clock adjustments.
 
+The fade guard (classic 2.0.0~beta3 field fix, cherry-picked) covers a Kodi
+GUI hazard the legacy path never noticed: GUIDialogKaiToast swaps a queued
+toast's content into the window in place while it is showing (restarting the
+display timer, window stays open — fine) and opens fresh when fully closed
+(fine), but a toast popping from Kodi's queue during the window's CLOSE
+ANIMATION is painted onto the dying window and vanishes with the fade. A
+toast raised in roughly [duration, duration + fade] after its predecessor is
+therefore swallowed (observed in the wild: an "applied" toast landing 5.2s
+after a 5s "saved" toast flashed for ~100ms). The notifier remembers when it
+last raised a toast and for how long, and ONLY a toast that would land inside
+that guarded window is deferred — released past the fade via a scheduled
+``RaiseToast`` (key-replaced: the newest contender wins). Every other toast
+fires immediately, exactly as before. Best-effort by design: toasts raised by
+Kodi itself or other addons share the same GUI window but are invisible to
+this bookkeeping.
+
 Settings are read through the injected facade: the per-kind toast gates
 ``notify_apply_enabled`` / ``notify_learn_enabled`` (D10: each toast kind has
 its own toggle, both default ON) plus ``notification_duration_ms``. Toasts go
@@ -59,12 +75,23 @@ STRING_RESET_BASELINE = 32133
 
 
 class Notifier:
-    """Owns offset toasts: deferral-until-stable and the 1s dedupe window."""
+    """Owns offset toasts: deferral-until-stable, dedupe, and the fade guard."""
 
     DEDUPE_SECONDS = 1.0
+    # Width of the guarded window after a toast's display time expires: covers
+    # Kodi's open-animation timer restart (the display timer starts at the end
+    # of the window's open animation, so true expiry lags our raise stamp by
+    # up to a few hundred ms) plus the close animation itself, with slop.
+    FADE_GUARD_SECONDS = 1.0
+    # GUIDialogKaiToast::AddToQueue clamps displayTime to a floor of
+    # TOAST_MESSAGE_TIME (1000) + 500, whatever the caller asked for.
+    KODI_MIN_DISPLAY_MS = 1500
+
+    _FADE_KEY = 'aom.notifier.toast'
 
     def __init__(self, dispatcher, session_tracker, settings, gui,
                  clock=time.monotonic, *, log_debug):
+        self._dispatcher = dispatcher
         self._sessions = session_tracker
         self._settings = settings
         self._gui = gui
@@ -73,6 +100,8 @@ class Notifier:
         # Dedupe state: (string_id, profile identity, ms) + monotonic stamp.
         self._last_toast = None
         self._last_toast_at = None
+        # Fade-guard state: the duration the last raised toast was given.
+        self._last_duration_ms = None
 
         dispatcher.subscribe(events.OffsetApplied, self._on_offset_applied)
         dispatcher.subscribe(events.UserOffsetSaved, self._on_user_offset_saved)
@@ -80,6 +109,7 @@ class Notifier:
         dispatcher.subscribe(events.StoreCorrupted, self._on_store_corrupted)
         dispatcher.subscribe(events.UnsavedOffsetDiscarded,
                              self._on_unsaved_discarded)
+        dispatcher.subscribe(events.RaiseToast, self._on_raise_toast)
 
     # -- handlers (dispatcher thread) -------------------------------------------
 
@@ -172,6 +202,12 @@ class Notifier:
         self._gui.notification(message, CORRUPTION_NOTICE_MS)
         self._log("AOMe_Notifier: surfaced store corruption notice")
 
+    def _on_raise_toast(self, event):
+        # The fade-guarded release: all gating (enabled, dedupe, guard) was
+        # decided at request time; by construction the fire time is past the
+        # predecessor's fade, so raise directly.
+        self._raise(event.string_id, event.ms, event.profile)
+
     # -- internals --------------------------------------------------------------
 
     def _same_stream(self, held, current):
@@ -203,6 +239,42 @@ class Notifier:
                 now - self._last_toast_at < self.DEDUPE_SECONDS:
             return
 
+        delay = self._fade_guard_delay(now)
+        if delay > 0.0:
+            self._dispatcher.schedule(
+                delay,
+                events.RaiseToast(string_id=string_id, ms=ms, profile=profile),
+                key=self._FADE_KEY)
+            self._log(f"AOMe_Notifier: deferring toast {delay * 1000:.0f}ms "
+                      f"past the previous toast's fade-out")
+            return
+        self._raise(string_id, ms, profile)
+
+    def _fade_guard_delay(self, now):
+        """Seconds to wait so this toast misses the previous toast's fade.
+
+        Zero (raise immediately) unless the toast would land inside
+        [shown, shown + FADE_GUARD_SECONDS] after our last raise, where
+        ``shown`` is the display time the last toast was given, floored at
+        Kodi's internal clamp. Earlier than that window, the toast window is
+        still open and Kodi swaps the content in place with a fresh timer;
+        later, it is fully closed and reopens fresh — only the fade window
+        between them swallows toasts.
+        """
+        if self._last_toast_at is None:
+            return 0.0
+        shown_s = max(self._last_duration_ms, self.KODI_MIN_DISPLAY_MS) / 1000.0
+        elapsed = now - self._last_toast_at
+        if elapsed < shown_s or elapsed >= shown_s + self.FADE_GUARD_SECONDS:
+            return 0.0
+        return shown_s + self.FADE_GUARD_SECONDS - elapsed
+
+    def _raise(self, string_id, ms, profile):
+        duration_ms = self._settings.notification_duration_ms()
+        # per_fps is re-read at RAISE instant (a deferral may cross a toggle
+        # flip): the summary granularity and the dedupe key must agree with
+        # the offset system as it stands when the toast actually shows.
+        per_fps = self._settings.per_fps_offsets_enabled()
         # Toast shape (E7 field fix, beta1 on Windows): the saved/applied
         # line rides as the toast TITLE and the profile summary is the
         # whole message — packing both into the message with a newline made
@@ -217,9 +289,9 @@ class Notifier:
             profile.hdr_type, profile.audio_format,
             profile.video_fps if per_fps else None)
 
-        self._gui.notification(summary,
-                               self._settings.notification_duration_ms(),
-                               title=heading)
+        self._gui.notification(summary, duration_ms, title=heading)
         self._log(f"AOMe_Notifier: {heading} — {summary}")
-        self._last_toast = key
-        self._last_toast_at = now
+        self._last_toast = (string_id,
+                            policies.stream_identity(profile, per_fps), ms)
+        self._last_toast_at = self._clock()
+        self._last_duration_ms = duration_ms
