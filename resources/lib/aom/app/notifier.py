@@ -39,14 +39,17 @@ display timer, window stays open — fine) and opens fresh when fully closed
 ANIMATION is painted onto the dying window and vanishes with the fade. A
 toast raised in roughly [duration, duration + fade] after its predecessor is
 therefore swallowed (observed in the wild: an "applied" toast landing 5.2s
-after a 5s "saved" toast flashed for ~100ms). The notifier remembers when it
-last raised a toast and for how long, and ONLY a toast that would land inside
-that guarded window is deferred — released past the fade via a scheduled
-``RaiseToast`` (key-replaced: the newest contender wins, across message kinds
-too — the survivor is always the fresher fact — and an immediate raise
-cancels any pending release outright). Every other toast fires immediately,
-exactly as before. Best-effort by design: toasts raised by Kodi itself or
-other addons share the same GUI window but are invisible to this bookkeeping.
+after a 5s "saved" toast flashed for ~100ms). EVERY toast the notifier
+raises — the offset toasts AND the discard/corruption notices — flows
+through one choke point (``_present``/``_raise``) that remembers when the
+last toast was raised and for how long, and ONLY a toast that would land
+inside that guarded window is deferred — released past the fade via a
+scheduled ``RaiseToast`` carrying the surface pre-rendered at request time
+(key-replaced: the newest contender wins, across message kinds too — the
+survivor is always the fresher fact — and an immediate raise cancels any
+pending release outright). Every other toast fires immediately, exactly as
+before. Best-effort by design: toasts raised by Kodi itself or OTHER addons
+share the same GUI window but are invisible to this bookkeeping.
 
 Settings are read through the injected facade: the per-kind toast gates
 ``notify_apply_enabled`` / ``notify_learn_enabled`` (D10: each toast kind has
@@ -179,32 +182,40 @@ class Notifier:
         # amendment): the user's manual adjustment was discarded by the
         # zero-reset because it never reached the store — the toast is the
         # "why did my offset vanish" answer. Deliberately outside the
-        # dedupe window (it fires once per reset by construction) and with
-        # English fallbacks (its whole content is the explanation).
+        # dedupe window (dedupe_key=None; it fires once per reset by
+        # construction) and with English fallbacks (its whole content is
+        # the explanation). It rides the fade guard like every toast: a
+        # zero-reset lands on stream changes, right where apply/saved
+        # toasts fade out — the one-shot explanation must not be swallowed.
         if not self._settings.notify_learn_enabled():
             return
         title = self._gui.localized(STRING_OFFSET_NOT_SAVED) or (
             "Offset not saved")
         message = self._gui.localized(STRING_RESET_BASELINE) or (
             "Reset to 0 ms — nothing stored for this stream")
-        self._gui.notification(message,
-                               self._settings.notification_duration_ms(),
-                               title=title)
         self._log(f"AOMe_Notifier: {title} — discarded unstored "
                   f"{event.ms}ms for {event.profile.describe()}")
+        self._present(message, self._settings.notification_duration_ms(),
+                      title=title, dedupe_key=None,
+                      enabled=self._settings.notify_learn_enabled)
 
     def _on_store_corrupted(self, _event):
         # An error notice, not a per-kind toast: deliberately outside the
-        # notify_apply/notify_learn gates and the dedupe window (it fires
-        # once per quarantine, has no session, and must never be muted).
-        # localized() degrades to '' on a transient failure, and this is
-        # the user's ONLY signal that stored offsets were reset — fall back
-        # to the English source string rather than raising a blank toast.
+        # notify_apply/notify_learn gates (enabled=None — must never be
+        # muted, so the deferred release re-checks nothing) and the dedupe
+        # window (dedupe_key=None; it fires once per quarantine, has no
+        # session). It still flows through the choke point so its 7s
+        # window is stamped and the first apply toast of the playback
+        # cannot ride its fade-out. localized() degrades to '' on a
+        # transient failure, and this is the user's ONLY signal that
+        # stored offsets were reset — fall back to the English source
+        # string rather than raising a blank toast.
         message = self._gui.localized(STRING_STORE_CORRUPTED) or (
             "Stored offsets were unreadable and were reset "
             "(backup kept as offsets.json.bad)")
-        self._gui.notification(message, CORRUPTION_NOTICE_MS)
         self._log("AOMe_Notifier: surfaced store corruption notice")
+        self._present(message, CORRUPTION_NOTICE_MS,
+                      title=None, dedupe_key=None, enabled=None)
 
     def _on_raise_toast(self, event):
         # The fade-guarded release. Dedupe and the guard were decided at
@@ -212,10 +223,11 @@ class Notifier:
         # this timer; a contender key-replaces it), but the per-kind gate is
         # a live setting and must be re-checked at fire time — it rides on
         # the event, so the release re-gates under its OWN kind's toggle
-        # (D10), never another's.
-        if not event.enabled():
+        # (D10), never another's. None = an ungated notice.
+        if event.enabled is not None and not event.enabled():
             return
-        self._raise(event.string_id, event.ms, event.profile)
+        self._raise(event.message, event.duration_ms, event.title,
+                    event.dedupe_key)
 
     # -- internals --------------------------------------------------------------
 
@@ -239,23 +251,48 @@ class Notifier:
         # Dedupe at the offset-relevant granularity: with per_fps off an
         # fps wiggle must not defeat the window and re-toast a duplicate.
         per_fps = self._settings.per_fps_offsets_enabled()
+        key = self._dedupe_key(string_id, ms, profile, per_fps)
         if self._last_raise is not None:
             last_key, last_at, _ = self._last_raise
-            if self._dedupe_key(string_id, ms, profile, per_fps) == last_key \
-                    and now - last_at < self.DEDUPE_SECONDS:
+            if key == last_key and now - last_at < self.DEDUPE_SECONDS:
                 return
 
-        delay = self._fade_guard_delay(now)
+        # Toast shape (E7 field fix, beta1 on Windows): the saved/applied
+        # line rides as the toast TITLE and the profile summary is the
+        # whole message — packing both into the message with a newline made
+        # Kodi's single-line label auto-scroll (perceived as flashing) and
+        # truncate the codec off the end. The rate is shown only when it is
+        # offset-relevant (per_fps ON): with the toggle off the value lives
+        # under the all-rates key, and "23.976 fps" would both mislead and
+        # crowd out the codec. Rendered HERE, at request time: a per_fps
+        # flip inside a deferral re-resolves and posts a fresh OffsetApplied
+        # that key-replaces the deferred toast, so the payload can stay the
+        # fact it described.
+        sign = '+' if ms > 0 else ''
+        heading = f"{self._gui.localized(string_id)}: {sign}{ms} ms"
+        summary = store_keys.profile_summary(
+            profile.hdr_type, profile.audio_format,
+            profile.video_fps if per_fps else None)
+        self._present(summary, self._settings.notification_duration_ms(),
+                      title=heading, dedupe_key=key, enabled=enabled)
+
+    def _present(self, message, duration_ms, *, title, dedupe_key, enabled):
+        # The single raise choke point: EVERY notifier toast flows through
+        # the fade guard here, so each raise is visible to the next one's
+        # band check whatever kind it is (the module docstring has the
+        # coverage doctrine).
+        delay = self._fade_guard_delay(self._clock())
         if delay > 0.0:
             self._dispatcher.schedule(
                 delay,
-                events.RaiseToast(string_id=string_id, ms=ms, profile=profile,
-                                  enabled=enabled),
+                events.RaiseToast(message=message, title=title,
+                                  duration_ms=duration_ms,
+                                  dedupe_key=dedupe_key, enabled=enabled),
                 key=self._FADE_KEY)
             self._log(f"AOMe_Notifier: deferring toast {delay * 1000:.0f}ms "
                       f"past the previous toast's fade-out")
             return
-        self._raise(string_id, ms, profile)
+        self._raise(message, duration_ms, title, dedupe_key)
 
     def _fade_guard_delay(self, now):
         """Seconds to wait so this toast misses the previous toast's fade.
@@ -276,38 +313,19 @@ class Notifier:
             return 0.0
         return shown_s + self.FADE_GUARD_SECONDS - elapsed
 
-    def _raise(self, string_id, ms, profile):
+    def _raise(self, message, duration_ms, title, dedupe_key):
         # This raise makes any pending deferred release stale by definition —
         # the fresher fact is taking the window. (No-op when we ARE the
         # deferred release: its timer was consumed before dispatch.)
         self._dispatcher.cancel(self._FADE_KEY)
-        duration_ms = self._settings.notification_duration_ms()
-        # per_fps is re-read at RAISE instant (a deferral may cross a toggle
-        # flip): the summary granularity and the dedupe key must agree with
-        # the offset system as it stands when the toast actually shows.
-        per_fps = self._settings.per_fps_offsets_enabled()
-        # Toast shape (E7 field fix, beta1 on Windows): the saved/applied
-        # line rides as the toast TITLE and the profile summary is the
-        # whole message — packing both into the message with a newline made
-        # Kodi's single-line label auto-scroll (perceived as flashing) and
-        # truncate the codec off the end. The rate is shown only when it is
-        # offset-relevant (per_fps ON): with the toggle off the value lives
-        # under the all-rates key, and "23.976 fps" would both mislead and
-        # crowd out the codec.
-        sign = '+' if ms > 0 else ''
-        heading = f"{self._gui.localized(string_id)}: {sign}{ms} ms"
-        summary = store_keys.profile_summary(
-            profile.hdr_type, profile.audio_format,
-            profile.video_fps if per_fps else None)
-
-        self._gui.notification(summary, duration_ms, title=heading)
-        self._log(f"AOMe_Notifier: {heading} — {summary}")
-        self._last_raise = (
-            self._dedupe_key(string_id, ms, profile, per_fps),
-            self._clock(), duration_ms)
+        self._gui.notification(message, duration_ms, title=title)
+        self._log(f"AOMe_Notifier: {title + ' — ' if title else ''}{message}")
+        self._last_raise = (dedupe_key, self._clock(), duration_ms)
 
     @staticmethod
     def _dedupe_key(string_id, ms, profile, per_fps):
-        # The caller reads the live per_fps toggle once and uses it for the
-        # key and the message alike, so the two can never disagree.
+        # Offset-toast dedupe identity. _toast's single per_fps read feeds
+        # this key AND the rendered summary, so the two can never disagree;
+        # the notices are outside dedupe by design (dedupe_key=None, which
+        # a real tuple key never equals).
         return (string_id, policies.stream_identity(profile, per_fps), ms)

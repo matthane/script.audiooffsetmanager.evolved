@@ -222,27 +222,21 @@ class ExecuteSeek:
 class RaiseToast:
     """Self-scheduled toast release delayed past a fading predecessor.
 
-    Kodi's toast window swallows a toast that pops from its queue during the
-    close animation — the fade-guard section of ``aom.app.notifier``'s module
-    docstring is the authoritative account of the mechanics. Scheduled under
-    a single key: the newest contender wins (across message kinds too — the
-    survivor is always the fresher fact), and an immediate raise cancels the
-    pending release outright.
+    The fade-guard section of ``aom.app.notifier``'s module docstring is the
+    authoritative account of the mechanics and the supersede semantics.
 
-    Deliberately NOT session-stamped: the payload describes an apply/store
-    that already happened and stays true (and worth announcing) even if the
-    session ends inside the deferral.
-
-    ``enabled`` is the bound per-kind gate accessor the requesting call site
-    passed into ``Notifier._toast`` (D10: each toast kind has its own toggle).
-    It rides on the event so the deferred release re-checks the RIGHT kind's
-    live setting at fire time — a release can never re-gate under another
-    kind's toggle, however the deferral was superseded.
+    Deliberately NOT session-stamped: the payload describes a fact that
+    already happened and stays true (and worth announcing) even if the
+    session ends inside the deferral. The surface is pre-rendered at request
+    time — kind-specific rendering happens before scheduling, so every toast
+    kind can ride this one event.
     """
-    string_id: int
-    ms: int
-    profile: object  # StreamProfile
-    enabled: object  # bound settings accessor, re-checked at fire time
+    message: str
+    title: object       # str, or None for the gui's addon-name default
+    duration_ms: int
+    dedupe_key: object  # Notifier dedupe identity; None for notices
+    enabled: object     # bound per-kind gate accessor re-checked at fire
+                        # time (live setting; D10), or None = ungated notice
 
 
 # --- Watcher events -----------------------------------------------------------

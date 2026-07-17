@@ -29,6 +29,7 @@ DURATION_MS = 3000
 DURATION_S = DURATION_MS / 1000.0
 GUARD = Notifier.FADE_GUARD_SECONDS
 KODI_MIN_S = Notifier.KODI_MIN_DISPLAY_MS / 1000.0
+CORRUPTION_S = CORRUPTION_NOTICE_MS / 1000.0
 
 
 def make_profile(hdr_type='dolbyvision', audio_format='truehd',
@@ -536,6 +537,112 @@ class TestFadeGuard:
 
         rig.advance(GUARD)
         assert len(rig.toasts) == 2
+
+
+class TestFadeGuardNotices:
+    """The discard and corruption notices ride the same fade guard as the
+    offset toasts (the choke-point doctrine): they defer, stamp the
+    bookkeeping, and contend for the fade window like any raise, so no
+    same-addon toast can be swallowed invisibly."""
+
+    def _discard(self, rig, session):
+        rig.post(events.UnsavedOffsetDiscarded(
+            session_id=session.session_id, profile=session.profile, ms=-50))
+
+    def test_discard_toast_defers_past_a_guarded_toasts_fade(self, rig):
+        # The one-shot "why did my offset vanish" explanation lands on
+        # stream changes — right where the previous stream's apply toast
+        # is fading out — and must not ride the dying window.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)               # inside the fade band
+        self._discard(rig, session)
+        assert len(rig.toasts) == 1                 # deferred, not swallowed
+
+        rig.advance(GUARD - 0.2)
+        assert rig.toasts[1] == ("#32133", DURATION_MS)
+        assert rig.gui.titles[1] == "#32132"
+
+    def test_saved_toast_defers_past_the_discard_toasts_fade(self, rig):
+        # The notices stamp _last_raise: a toast landing in the discard
+        # notice's fade band must defer, not fire blind off stale state.
+        profile = make_profile()
+        session = rig.start(profile)
+        self._discard(rig, session)
+        assert len(rig.toasts) == 1
+
+        rig.advance(DURATION_S + 0.2)
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=40))
+        assert len(rig.toasts) == 1                 # deferred
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 2
+        assert rig.gui.titles[1] == "#32093: +40 ms"
+
+    def test_corruption_notice_stamps_the_guard(self, rig):
+        # The 7s notice is the longest toast window in the addon; the
+        # first apply toast of the playback must not ride its fade-out.
+        rig.post(events.StoreCorrupted())
+        profile = make_profile()
+        session = rig.start(profile)
+
+        rig.advance(CORRUPTION_S + 0.2)             # inside [7.0, 8.25)
+        rig.applied(session, profile, -50)
+        assert len(rig.toasts) == 1                 # deferred
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 2
+
+    def test_discard_supersedes_a_deferred_toast(self, rig):
+        # Newest contender wins across message kinds: a discard landing
+        # while an apply toast sits deferred takes the fade window (it is
+        # the fresher fact) and the stale value never paints over it.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.1)
+        rig.applied(session, profile, -75)          # deferred
+        rig.advance(0.1)
+        self._discard(rig, session)                 # key-replaces the -75
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 2
+        assert rig.gui.titles[1] == "#32132"
+        assert not any("-75" in (title or '') for title in rig.gui.titles)
+
+    def test_deferred_discard_rechecks_the_learn_gate_at_fire_time(self, rig):
+        # The learn gate rides the deferral (D10) and is a live setting.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)
+        self._discard(rig, session)                 # deferred
+        rig.settings.learn_enabled = False
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 1                 # suppressed at fire time
+
+    def test_deferred_corruption_notice_stays_ungated(self, rig):
+        # enabled=None: the notice must never be muted, even when released
+        # from a deferral with both toast gates off.
+        profile = make_profile()
+        session = rig.start(profile)
+        rig.applied(session, profile, -50)
+
+        rig.advance(DURATION_S + 0.2)
+        rig.post(events.StoreCorrupted())           # deferred
+        rig.settings.apply_enabled = False
+        rig.settings.learn_enabled = False
+
+        rig.advance(GUARD)
+        assert len(rig.toasts) == 2
+        assert rig.toasts[1] == (f"#{STRING_STORE_CORRUPTED}",
+                                 CORRUPTION_NOTICE_MS)
 
 
 # ============================================================================
