@@ -137,6 +137,29 @@ AUDIO_DISPLAY = {
     UNKNOWN: 'Unknown Format',
 }
 
+# --- Toast short names (profile_summary only) --------------------------------
+# The offset toast is a single narrow line in Kodi's toast label: the full
+# commercial names ('Dolby Digital Plus Atmos') force Estuary's auto-scroll,
+# so the toast renders standard AV shorthand instead. OVERLAYS: a segment
+# missing here falls back to the full display table, then verbatim — the
+# management view keeps the full names (it has the width, and inspection
+# wants them). Only names with an established shorter form appear; nothing
+# is invented ('TrueHD Atmos' is the honest floor, never 'THD').
+
+HDR_DISPLAY_SHORT = {
+    'dolbyvision': 'DV',
+}
+
+AUDIO_DISPLAY_SHORT = {
+    'truehd': 'TrueHD',
+    'truehd_atmos': 'TrueHD Atmos',
+    'eac3': 'DD+',
+    'eac3_ddp_atmos': 'DD+ Atmos',
+    'ac3': 'DD',
+    'ac4': 'AC-4',
+    UNKNOWN: 'Unknown',
+}
+
 
 def normalize_segment(raw):
     """Case-fold + trim a raw segment, then neutralise any stray separator.
@@ -322,13 +345,18 @@ def sort_key(key):
 def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
     """Toast/log summary straight from profile facts (no key needed).
 
-    E.g. 'Dolby Vision | 23.976 fps | TrueHD'; without a rate,
-    'Dolby Vision | TrueHD'. The exact reported rate is shown (it is the
-    management-view metadata too); unrecognised segments render verbatim —
-    verbatim acceptance extends to display.
+    E.g. 'DV | 23.976 fps | TrueHD Atmos'; without a rate, 'DV | TrueHD'.
+    Uses the SHORT display overlays (this is the one single-line surface;
+    the management view keeps the full names), falling back to the full
+    table and then verbatim — verbatim acceptance extends to display. The
+    exact reported rate is shown (it is the management-view metadata too).
     """
-    parts = [HDR_DISPLAY.get(hdr_segment_value, hdr_segment_value)]
+    parts = [HDR_DISPLAY_SHORT.get(
+        hdr_segment_value,
+        HDR_DISPLAY.get(hdr_segment_value, hdr_segment_value))]
     if video_fps is not None:
         parts.append("{0:g} fps".format(video_fps))
-    parts.append(AUDIO_DISPLAY.get(audio_segment_value, audio_segment_value))
+    parts.append(AUDIO_DISPLAY_SHORT.get(
+        audio_segment_value,
+        AUDIO_DISPLAY.get(audio_segment_value, audio_segment_value)))
     return " | ".join(parts)

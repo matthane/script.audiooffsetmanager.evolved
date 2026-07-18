@@ -176,7 +176,7 @@ def test_hdr10plus_display_name_is_field_observed():
     assert keys.describe_key('hdr10plus|all|truehd') == \
         'HDR10+ | Dolby TrueHD'
     assert keys.profile_summary('hdr10plus', 'truehd') == \
-        'HDR10+ | Dolby TrueHD'
+        'HDR10+ | TrueHD'
 
 
 @pytest.mark.parametrize('segment, commercial', [
@@ -339,4 +339,23 @@ def test_truehd_atmos_display_name_is_field_observed():
     assert keys.audio_segment('truehd_atmos') == 'truehd_atmos'
     assert keys.AUDIO_DISPLAY['truehd_atmos'] == 'Dolby TrueHD Atmos'
     assert keys.profile_summary('dolbyvision', 'truehd_atmos') == \
-        'Dolby Vision | Dolby TrueHD Atmos'
+        'DV | TrueHD Atmos'
+
+
+def test_profile_summary_uses_short_names_with_full_table_fallback():
+    # The toast line is the one single-line surface: Dolby names render as
+    # standard AV shorthand there. The overlay is DISPLAY-only and toast-
+    # only — describe_key (the management view) keeps the full names.
+    assert keys.profile_summary('dolbyvision', 'eac3_ddp_atmos', 23.976) == \
+        'DV | 23.976 fps | DD+ Atmos'
+    assert keys.profile_summary('dolbyvision', 'ac3') == 'DV | DD'
+    assert keys.describe_key('dolbyvision|all|eac3_ddp_atmos') == \
+        'Dolby Vision | Dolby Digital Plus Atmos'
+    # A segment with no short form falls back to the FULL display name...
+    assert keys.profile_summary('hdr10', 'dtshd_ma') == 'HDR10 | DTS-HD MA'
+    # ...and an unlisted segment still renders verbatim (acceptance
+    # doctrine extends to display).
+    assert keys.profile_summary('x-future-hdr', 'x-future-codec') == \
+        'x-future-hdr | x-future-codec'
+    # Absence reads 'Unknown' on the short surface, not 'Unknown Format'.
+    assert keys.profile_summary('sdr', keys.UNKNOWN) == 'SDR | Unknown'
