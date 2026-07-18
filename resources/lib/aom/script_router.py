@@ -22,12 +22,17 @@ Routes:
 Every route ends in the settings dialog: the action buttons close it on
 press (``<close>true</close>``, the write-ordering doctrine), so reopening
 after the view exits returns the user to where they came from instead of
-dropping them back into Kodi.
+dropping them back into Kodi. The transfer routes reopen FOCUSED on the
+Advanced category (their buttons' home) — a plain ``openSettings()``
+always lands on the first category, which field-read as being teleported
+away from where you were.
 """
 
 import sys
 
+import xbmc
 import xbmcaddon
+import xbmcgui
 import xbmcvfs
 
 from resources.lib.aom.kodi.gateway import KodiGateway
@@ -52,12 +57,64 @@ def handle_script_call(argv=None):
     if route == 'manage_offsets':
         _manage_offsets()
         # ...then fall through: the button closed the settings dialog, so
-        # every exit from a view lands back in it (same for all routes).
+        # every exit from a view lands back in it. The manage button
+        # lives in the FIRST category, which is where a plain reopen
+        # lands anyway; the transfer routes reopen focused on Advanced.
     elif route == 'export_offsets':
         _transfer_view().run_export()
+        _reopen_settings_at_advanced()
+        return
     elif route == 'import_offsets':
         _transfer_view().run_import()
+        _reopen_settings_at_advanced()
+        return
     xbmcaddon.Addon(ADDON_ID).openSettings()
+
+
+# The settings dialog assigns its category buttons the control ids
+# CONTROL_SETTINGS_START_BUTTONS + category index — created by
+# CGUIDialogSettingsBase itself, so skin-independent. The base is -200
+# (verified in xbmc source for BOTH field versions: Kodi 21 Omega and
+# Kodi 22 master; focusing the button is what switches the displayed
+# category — the GUI_MSG_FOCUSED handler). Advanced is the THIRD
+# category in settings.xml (index 2) -> -198; the router test derives
+# this constant from the XML so a category reorder fails loudly.
+CONTROL_SETTINGS_START_BUTTONS = -200
+ADVANCED_CATEGORY_FOCUS = CONTROL_SETTINGS_START_BUTTONS + 2
+
+# WINDOW_DIALOG_ADDON_SETTINGS: the wait-for-dialog target below.
+SETTINGS_DIALOG_ID = 10140
+
+_FOCUS_WAIT_SECONDS = 2.0    # give the dialog this long to appear
+_FOCUS_POLL_SECONDS = 0.05
+_FOCUS_SETTLE_MS = 100       # one beat for the dialog's controls to build
+
+
+def _reopen_settings_at_advanced():
+    """Reopen the settings dialog landed on Advanced — the category the
+    export/import buttons live in, where the user last was.
+
+    The builtin form is used because ``openSettings()`` always lands on
+    the first category. ``Addon.OpenSettings`` only QUEUES the dialog
+    open: a ``SetFocus`` issued back-to-back fires while the previous
+    window is still active and is silently dropped (field-observed on
+    Kodi 22), so this waits until the addon-settings dialog is actually
+    the active dialog, lets its controls build for a beat, and only then
+    focuses the Advanced category button. Every bail-out path (dialog
+    never appears, Kodi shutting down) degrades to the dialog's default
+    first-category landing — the plain-reopen behavior, never an error.
+    """
+    xbmc.executebuiltin('Addon.OpenSettings({0})'.format(ADDON_ID))
+    monitor = xbmc.Monitor()
+    waited = 0.0
+    while xbmcgui.getCurrentWindowDialogId() != SETTINGS_DIALOG_ID:
+        if waited >= _FOCUS_WAIT_SECONDS:
+            return
+        if monitor.waitForAbort(_FOCUS_POLL_SECONDS):
+            return
+        waited += _FOCUS_POLL_SECONDS
+    xbmc.sleep(_FOCUS_SETTLE_MS)
+    xbmc.executebuiltin('SetFocus({0})'.format(ADVANCED_CATEGORY_FOCUS))
 
 
 def _script_graph():

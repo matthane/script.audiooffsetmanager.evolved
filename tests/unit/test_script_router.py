@@ -131,19 +131,91 @@ class RecordingTransfer:
         RecordingTransfer.ran.append('import')
 
 
+class _IdleMonitor:
+    """xbmc.Monitor stand-in: never aborting, never sleeping."""
+
+    def waitForAbort(self, _timeout=0):
+        return False
+
+
+def _wire_focus_reopen(monkeypatch, dialog_ids):
+    """Fake the Kodi surface of _reopen_settings_at_advanced.
+
+    ``dialog_ids`` is the sequence getCurrentWindowDialogId answers with
+    (the last value repeats), simulating the dialog appearing — or not.
+    Returns the recorded executebuiltin list.
+    """
+    import xbmc
+    import xbmcgui
+    builtins = []
+    remaining = list(dialog_ids)
+    monkeypatch.setattr(xbmc, 'executebuiltin', builtins.append)
+    monkeypatch.setattr(xbmc, 'sleep', lambda _ms: None)
+    monkeypatch.setattr(xbmc, 'Monitor', _IdleMonitor)
+    monkeypatch.setattr(
+        xbmcgui, 'getCurrentWindowDialogId',
+        lambda: remaining.pop(0) if len(remaining) > 1 else remaining[0])
+    return builtins
+
+
 @pytest.mark.parametrize("route,flow", [
     ('export_offsets', 'export'),
     ('import_offsets', 'import'),
 ])
-def test_transfer_routes_run_their_flow_then_return_to_settings(
+def test_transfer_routes_reopen_settings_focused_on_advanced(
         monkeypatch, route, flow):
+    # The transfer buttons live in Advanced: the reopen must land there —
+    # builtin open, WAIT for the dialog to actually be active (a focus
+    # issued into the previous window is silently dropped), then the
+    # category focus. Never the plain openSettings() call that always
+    # lands on the first category.
     RecordingTransfer.ran = []
     monkeypatch.setattr(script_router, '_transfer_view', RecordingTransfer)
+    # The dialog appears after a couple of polls, as on a real box.
+    builtins = _wire_focus_reopen(
+        monkeypatch, [0, 0, script_router.SETTINGS_DIALOG_ID])
 
     script_router.handle_script_call(['script.py', route])
 
     assert RecordingTransfer.ran == [flow]
-    assert sum(a.opened for a in RecordingAddon.instances) == 1
+    assert builtins == [
+        'Addon.OpenSettings(script.audiooffsetmanager.evolved)',
+        'SetFocus({0})'.format(script_router.ADVANCED_CATEGORY_FOCUS),
+    ]
+    assert sum(a.opened for a in RecordingAddon.instances) == 0
+
+
+def test_focus_reopen_gives_up_when_the_dialog_never_appears(monkeypatch):
+    # A dialog that never becomes active (whatever swallowed it) must
+    # degrade to the default landing — no SetFocus fired into some other
+    # window, and the wait is bounded so the script process still exits.
+    RecordingTransfer.ran = []
+    monkeypatch.setattr(script_router, '_transfer_view', RecordingTransfer)
+    builtins = _wire_focus_reopen(monkeypatch, [0])
+
+    script_router.handle_script_call(['script.py', 'export_offsets'])
+
+    assert builtins == [
+        'Addon.OpenSettings(script.audiooffsetmanager.evolved)',
+    ]
+
+
+def test_advanced_focus_id_matches_the_settings_xml_category_order():
+    # The dialog's category buttons get CONTROL_SETTINGS_START_BUTTONS
+    # (-200, verified in xbmc source for Kodi 21 AND 22) + index; the
+    # constant is only right while 'advanced' keeps its position in
+    # settings.xml — a reorder must fail HERE, not in the field as a
+    # focus landing on the wrong category.
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    settings_xml = (Path(script_router.__file__).resolve().parents[2]
+                    / 'settings.xml')
+    categories = [element.get('id')
+                  for element in ET.parse(str(settings_xml)).iter('category')]
+    assert script_router.ADVANCED_CATEGORY_FOCUS == \
+        script_router.CONTROL_SETTINGS_START_BUTTONS \
+        + categories.index('advanced')
 
 
 def test_transfer_view_composition(monkeypatch, tmp_path):
