@@ -6,7 +6,7 @@ Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers 
 
 **Why a separate addon?** Evolved is the addon the original Audio Offset Manager set out to be. Where the original was built around a fixed (and very limited) list of formats configured in its settings, Evolved learns offsets for whatever Kodi reports, so any format or codec works, including ones Kodi adds in the future. Rebuilding the original around this model would have wiped out every existing user's configuration, so it lives on as-is and Evolved is a separate addon.
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-6.png" width="100%" alt="Playback notification showing a saved offset for Dolby Vision with Dolby TrueHD Atmos">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-6.jpg" width="100%" alt="Playback notification showing a saved offset for Dolby Vision with Dolby TrueHD Atmos">
 
 ## How it works
 
