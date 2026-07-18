@@ -8,7 +8,7 @@
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager</source>
         <news>v1.0.0~beta11 (2026-07-17)
-- Stored offsets list shows a refresh rate only when Per-refresh-rate offsets is on; entries saved for a specific rate keep their rate and stay marked inactive while it is off
+- Stored offsets list shows a frame rate only when Per-frame-rate offsets is on; entries saved for a specific rate keep their rate and stay marked inactive while it is off
 - Inactive entries are dimmed, and HDR type names are bold in the group list
 - Simpler settings layout: the Offsets and Advanced categories no longer use group headers
 
@@ -23,7 +23,7 @@ v1.0.0~beta10 (2026-07-17)
              enforces it): keep only the last couple of versions here;
              earlier changelogs live in the git history. -->
         <summary lang="en_GB">Fix lipsync once and Evolved remembers it per stream profile</summary>
-        <description lang="en_GB">Adjust Kodi's audio offset during playback the way you always have. Audio Offset Manager: Evolved remembers the value for that stream's HDR type, audio format, and refresh rate, then re-applies it automatically on every matching playback. Includes seek-back after adjustments, playback notifications, and a management view of everything it has learned.</description>
+        <description lang="en_GB">Adjust Kodi's audio offset during playback the way you always have. Audio Offset Manager: Evolved remembers the value for that stream's HDR type, audio format, and frame rate, then re-applies it automatically on every matching playback. Includes seek-back after adjustments, playback notifications, and a management view of everything it has learned.</description>
         <platform>all</platform>
         <license>GPL-3.0-or-later</license>
         <assets>

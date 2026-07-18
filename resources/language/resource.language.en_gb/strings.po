@@ -74,7 +74,7 @@ msgid "When you adjust the audio offset during playback, the value is saved for 
 msgstr ""
 
 msgctxt "#32110"
-msgid "Per-refresh-rate offsets"
+msgid "Per-frame-rate offsets"
 msgstr ""
 
 msgctxt "#32111"
