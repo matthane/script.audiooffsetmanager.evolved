@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/icon.png" width="256" height="256" alt="Audio Offset Manager: Evolved">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/icon.png" width="256" height="256" alt="Audio Offset Manager: Evolved">
 
 # Audio Offset Manager: Evolved
 
@@ -6,7 +6,7 @@ Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers 
 
 **Why a separate addon?** Evolved is the addon the original Audio Offset Manager set out to be. Where the original was built around a fixed (and very limited) list of formats configured in its settings, Evolved learns offsets for whatever Kodi reports, so any format or codec works, including ones Kodi adds in the future. Rebuilding the original around this model would have wiped out every existing user's configuration, so it lives on as-is and Evolved is a separate addon.
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-6.png" width="100%" alt="Playback notification showing a saved offset for Dolby Vision with Dolby TrueHD Atmos">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-6.png" width="100%" alt="Playback notification showing a saved offset for Dolby Vision with Dolby TrueHD Atmos">
 
 ## How it works
 
@@ -18,7 +18,7 @@ There are no offset values to type in and no per-format settings pages. Everythi
 
 ## Settings
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-1.png" width="100%" alt="Offsets settings category with Learn, Apply, and Per-frame-rate toggles">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-1.png" width="100%" alt="Offsets settings category with Learn, Apply, and Per-frame-rate toggles">
 
 - **Learn audio offsets**: save adjustments you make during playback. Off stops new offsets from being saved.
 - **Apply audio offsets**: replay saved offsets on matching playback. Off leaves playback untouched.
@@ -28,20 +28,20 @@ There are no offset values to type in and no per-format settings pages. Everythi
 
 The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings (for example, frame-rate specific entries while per-frame-rate offsets is off) are shown dimmed.
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-2.png" width="100%" alt="Manage stored offsets view grouped by HDR type">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-2.png" width="100%" alt="Manage stored offsets view grouped by HDR type">
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-3.png" width="100%" alt="Stored offsets for Dolby Vision listed per audio format">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-3.png" width="100%" alt="Stored offsets for Dolby Vision listed per audio format">
 
 ## Playback behavior
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-4.png" width="100%" alt="Playback Behavior settings with seek back and notification options">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-4.png" width="100%" alt="Playback Behavior settings with seek back and notification options">
 
 - **Seek back after**: rewind a few seconds after events you select so audio and video pick up in sync. The four events are playback start, unpause, audio format change, and manual offset change. The seek distance is configurable.
 - **Notifications**: optional on-screen notifications when an offset is applied or saved, with a configurable duration.
 
 ## Backup
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-5.png" width="100%" alt="Advanced settings with export, import, and debug logging">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-5.png" width="100%" alt="Advanced settings with export, import, and debug logging">
 
 **Export stored offsets** writes a backup file of everything the addon has learned. **Import stored offsets** restores a backup, replacing the current data. Useful when moving to a new device or reinstalling Kodi.
 
@@ -59,4 +59,4 @@ Evolved is a separate addon from the original Audio Offset Manager (`script.audi
 
 ## Contributing and reporting issues
 
-Contributions are welcome. If you run into a problem or have a suggestion, please open an issue on the [GitHub repository](https://github.com/matthane/script.audiooffsetmanager).
+Contributions are welcome. If you run into a problem or have a suggestion, please open an issue on the [GitHub repository](https://github.com/matthane/script.audiooffsetmanager.evolved).

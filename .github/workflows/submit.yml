@@ -49,4 +49,4 @@ jobs:
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           EMAIL: ${{ secrets.EMAIL }}
-        run: submit-addon -r repo-scripts -b nexus --pull-request script.audiooffsetmanager
+        run: submit-addon -r repo-scripts -b nexus --pull-request script.audiooffsetmanager.evolved

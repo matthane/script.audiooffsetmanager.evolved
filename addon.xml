@@ -6,7 +6,7 @@
     <extension point="xbmc.service" library="service.py" />
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
-        <source>https://github.com/matthane/script.audiooffsetmanager</source>
+        <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
         <news>v1.0.0~beta11 (2026-07-17)
 - Stored offsets list shows a frame rate only when Per-frame-rate offsets is on; entries saved for a specific rate keep their rate and stay marked inactive while it is off
 - Inactive entries are dimmed, and HDR type names are bold in the group list

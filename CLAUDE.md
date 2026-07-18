@@ -1,33 +1,35 @@
 # CLAUDE.md
 
-Guidance for working on this branch. Dev-only: `export-ignore`'d in
+Guidance for working in this repo. Dev-only: `export-ignore`'d in
 `.gitattributes`, never packaged.
 
 ## What this is
 
-**Branch `evolved/1.0` builds a different addon than `main` does:**
-`script.audiooffsetmanager.evolved` ("AOM Evolved") — a from-the-2.0-core
-rework of Audio Offset Manager whose product is the learn loop: the user
-fixes lipsync once with Kodi's native audio-offset slider during playback,
-and Evolved remembers the value per stream profile (HDR type, audio format,
-refresh rate) and re-applies it automatically forever after.
+**This repo builds `script.audiooffsetmanager.evolved` ("AOM Evolved")** —
+a from-the-2.0-core rework of Audio Offset Manager whose product is the
+learn loop: the user fixes lipsync once with Kodi's native audio-offset
+slider during playback, and Evolved remembers the value per stream profile
+(HDR type, audio format, frame rate) and re-applies it automatically
+forever after. `main` is the only line; the addon moved here from branch
+`evolved/1.0` of the classic repo on 2026-07-18, full history preserved.
 
-The classic addon (`script.audiooffsetmanager`) lives on `main` /
-`redesign/2.0` and is maintenance-only; its hotfixes are cherry-picked onto
-this branch deliberately, never auto-merged. Do not edit classic branches
-from here.
+The classic addon (`script.audiooffsetmanager`) lives in its own repo
+(github.com/matthane/script.audiooffsetmanager — the `classic` remote in
+the primary working copy) and is maintenance-only; its hotfixes are
+cherry-picked into this repo deliberately, never auto-merged. Do not edit
+the classic repo from here.
 
 ## CONSTRUCTION IN PROGRESS (Phases E0–E8)
 
-This branch is being built per **EVOLVED.md** (design contract) and
-**EVOLVED-IMPLEMENTATION.md** (execution plan) — both at the repo root,
-**git-excluded via `.git/info/exclude`** (they exist only in the primary
-working copy and never materialize in agent worktrees; reference them by
-absolute path). Currently completing **Phase E0** (identity, triage,
-decisions). Until E2 lands, the runtime still runs classic's settings-backed
-`OffsetTable`; the sections below describe the TARGET state where they
-differ. Trust the `aom/` module docstrings and the two local docs over any
-stale statement here — this file gets its full rewrite in E8.
+This addon is being built per **EVOLVED.md** (design contract),
+**EVOLVED-IMPLEMENTATION.md** (execution plan), and **EVOLVED-UI.md** (UI
+design) — all at the repo root, **git-excluded via `.git/info/exclude`**
+(they exist only in the primary working copy and never materialize in
+agent worktrees; reference them by absolute path). Phases **E0–E4 are
+complete** (the runtime runs the sparse store); **E7** — the field beta
+cycle, currently at 1.0.0~beta11 — is underway. Trust the `aom/` module
+docstrings and the local docs over any stale statement here — this file
+gets its full rewrite in E8.
 
 ## Kodi packaging constraints
 
@@ -36,7 +38,7 @@ stale statement here — this file gets its full rewrite in E8.
   `.claude/`) is excluded. Verify anytime:
   `git archive --format=zip -o /tmp/pkg.zip HEAD` and inspect.
 - Requires `xbmc.python` **3.0.1** (Kodi Nexus, Python 3.8 syntax — D8).
-- **No GitHub releases are ever created from this branch** (publishing is
+- **No GitHub releases are ever created from this repo** (publishing is
   a separate future plan). Betas are local zips via `git archive`. The
   version always carries `~` or pre-1.0 form, so `submit.yml`'s stable-
   release trigger structurally cannot fire.
