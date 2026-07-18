@@ -60,7 +60,7 @@ PO_IDS = _po_ids()
 SETTINGS_IDS = sorted(_settings_label_help_ids(), key=int)
 PYTHON_IDS = sorted(_python_string_ids(), key=int)
 
-# Reverse direction: the durable form of the E3 prune. Every id DEFINED in
+# Reverse direction: every id DEFINED in
 # strings.po must be REFERENCED somewhere (settings.xml label/help or addon
 # Python source); an orphaned entry — a string nothing renders — fails here.
 REFERENCED_IDS = set(SETTINGS_IDS) | set(PYTHON_IDS)

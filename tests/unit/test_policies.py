@@ -1,9 +1,8 @@
 """Unit tests for aome.domain.policies — parsing, completeness, gating.
 
-parse_delay_ms started as a verbatim move of ActiveMonitor.convert_delay_to_ms
-(full locale/clamping matrix in tests/unit/test_delay_parsing.py); Phase 6
-fixed its two pinned limitations — the NNBSP-as-sole-separator parse failure
-and the int() ms truncation — and flipped the pins here and there.
+The full parse_delay_ms locale/clamping matrix lives in
+tests/unit/test_delay_parsing.py; this suite covers the gating and
+completeness policies plus a parsing sample.
 """
 
 import pytest
@@ -44,18 +43,18 @@ def test_parse_delay_ms_junk_returns_none(delay_str):
 
 
 def test_parse_delay_ms_nnbsp_sole_separator_parses():
-    # Phase 6 fix (flipped pin): NNBSP directly against the unit — the CLDR
+    # NNBSP directly against the unit — the CLDR
     # unit-separator convention — parses like any other separator.
     assert policies.parse_delay_ms("-0.075" + NNBSP + "s") == -75
 
 
 def test_parse_delay_ms_unicode_minus_sign():
-    # Phase 6 review fix: some CLDR locales render negatives with U+2212.
+    # Some CLDR locales render negatives with U+2212.
     assert policies.parse_delay_ms("−0.075 s") == -75
 
 
 def test_parse_delay_ms_rounds_instead_of_truncating():
-    # Phase 6 fix: float('-0.115') * 1000 is -114.999...; int() used to
+    # Float('-0.115') * 1000 is -114.999...; int() used to
     # truncate a -115 ms slider value to -114.
     assert policies.parse_delay_ms("-0.115 s") == -115
     assert policies.parse_delay_ms("0.115 s") == 115
@@ -125,7 +124,7 @@ def test_should_apply_ok():
 
 
 def test_should_apply_off_blocks_first():
-    # The apply toggle is checked before anything else (D9 amended): with
+    # The apply toggle is checked before anything else: with
     # applying off the addon skips regardless of profile state.
     assert policies.should_apply(None,
                                  apply_enabled=False) == (False, "apply_off")
@@ -145,8 +144,8 @@ def test_should_apply_unknown_format():
 
 
 def test_should_apply_has_no_new_install_gate():
-    # P1: the onboarding gate is deleted, not ported — an empty store
-    # already yields a lookup miss, so a fresh install needs no policy gate.
+    # An empty store already yields a lookup miss, so a fresh install
+    # needs no policy gate.
     import inspect
     signature = inspect.signature(policies.should_apply)
     assert 'new_install' not in signature.parameters

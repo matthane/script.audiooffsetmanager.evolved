@@ -1,8 +1,8 @@
 """Unit tests for aome.domain.profile — verbatim facts, identity, describe.
 
-The classic ``setting_id()`` (the settings-matrix key) is GONE: store keys
-are composed by ``aome.store`` at lookup/write instant. What the profile owns
-now: immutability, the truncated fps axis, the offset-relevant identity
+Store keys
+are composed by ``aome.store`` at lookup/write instant. What the profile owns:
+immutability, the truncated fps axis, the offset-relevant identity
 tuple, and the greppable ``describe()`` log form.
 """
 

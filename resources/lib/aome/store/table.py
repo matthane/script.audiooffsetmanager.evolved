@@ -1,21 +1,18 @@
 """OffsetTable: the sparse-store adapter — the seam the pipeline speaks to.
 
-Moved here from ``aome/kodi/settings.py`` (E2 review): the table stopped
-being a Kodi-settings concern the moment offsets moved into the store; its
-dependencies are the pure store plus one injected settings READ, so it
-belongs beside the store it adapts. It imports no Kodi module (the settings
+Its dependencies are the pure store plus one injected settings READ, so it
+lives beside the store it adapts. It imports no Kodi module (the settings
 adapter is injected), keeping the store package's purity contract intact.
 
 Keys are composed AT CALL TIME from the profile's verbatim facts plus the
 LIVE ``per_fps_offsets`` toggle (freshness doctrine: never a captured key,
-never conditional on lookup history — D4). Lookup routes through
-``resolve.resolve`` (exact -> all -> miss per D3); writes route through
-``resolve.write_key`` — the ONLY sanctioned write-key derivation
-(carry-forward rule from the E1 review).
+never conditional on lookup history). Lookup routes through
+``resolve.resolve`` (exact -> all -> miss); writes route through
+``resolve.write_key`` — the ONLY sanctioned write-key derivation.
 
 The store-entry dict shape stays INSIDE the store package: consumers read
 values via ``Resolution.ms`` and ``stored_ms_at`` rather than indexing
-``entry['delay_ms']`` themselves (E2 review).
+``entry['delay_ms']`` themselves.
 """
 
 from resources.lib.aome.store import resolve as store_resolve
@@ -50,7 +47,7 @@ class OffsetTable:
         return self._store.consume_reset(key)
 
     def write_key(self, profile):
-        """The D4 write key for the profile RIGHT NOW, or None if not
+        """The write key for the profile RIGHT NOW, or None if not
         composable (unparseable fps under per-fps — callers gate on
         completeness first, so this is a belt-and-braces None)."""
         try:

@@ -73,7 +73,8 @@ _TIMESTAMP_RE = re.compile(r'^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}')
 
 # An entry is the addon's when any line carries the log prefix or the
 # addon id — the id catches tracebacks and Kodi's lifecycle lines, and
-# cannot match classic AOM's lines (its id lacks the ``.evolved``).
+# cannot match the original Audio Offset Manager's lines (its id lacks
+# the ``.evolved``).
 _ADDON_TOKENS = ('AOMe_', 'script.audiooffsetmanager.evolved')
 
 # The startup entries every report wants (Kodi version, platform, OS),

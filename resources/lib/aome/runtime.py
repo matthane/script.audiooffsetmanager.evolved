@@ -16,8 +16,7 @@ Subscription order is load-bearing (dispatch follows it, per event type):
 1. tracker — the session exists (or is torn down) before any other handler
    of the same lifecycle event runs;
 2. detector — owns ``session.profile`` and the stream-state machine (its
-   ``StreamProbed`` platform facts are log-only now; the PlatformRecorder
-   dissolved with the stored capability flags — P3);
+   ``StreamProbed`` platform facts are log-only);
 3. applier — on ProfileChanged/StreamStabilized/SettingsChanged/
    StoreMutated the offset is applied (and ``session.applied`` recorded)
    before anything downstream reads it;
@@ -62,8 +61,8 @@ from resources.lib.aome.kodi.settings import (ADDON_ID, STORE_PATH, Settings,
 from resources.lib.aome.store.offset_store import OffsetStore
 from resources.lib.aome.store.table import OffsetTable
 
-# The classic addon this one supersedes: both enabled at once can apply
-# audio offsets twice, so the service warns ONCE per install (§3.6; the
+# The original addon this one supersedes: both enabled at once can apply
+# audio offsets twice, so the service warns ONCE per install (the
 # once-flag is behavior state in settings, never offset data).
 CLASSIC_ADDON_ID = 'script.audiooffsetmanager'
 STRING_COEXISTENCE_HEADING = 32129
@@ -97,7 +96,7 @@ class ServiceRuntime:
 
         # Debug-flag refresh subscribes FIRST (before any component), so the
         # applier/watcher passes for the very save that toggles debug
-        # logging already run at the fresh escalation level (E7 review).
+        # logging already run at the fresh escalation level.
         self.dispatcher.subscribe(events.SettingsChanged,
                                   self._on_settings_changed)
 
@@ -125,7 +124,7 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, self.offsets, log_debug=self.logger.debug,
             log_warning=self.logger.warning)
-        # The cross-process mutation channel's executor (D5): requests
+        # The cross-process mutation channel's executor: requests
         # arrive via the monitor bridge as typed events, mutate the store
         # on this dispatcher (single-writer doctrine), and ack back over
         # NotifyAll so the script process can tell "done" from "no service".
@@ -152,11 +151,12 @@ class ServiceRuntime:
         self.dispatcher.log_runtimes = debug
 
     def _maybe_warn_coexistence(self):
-        """One-time classic-AOM coexistence warning (§3.6, the folded E5).
+        """One-time warning when the original addon is enabled alongside.
 
         Probes only while the once-flag is unset, and writes the flag ONLY
         after the dialog actually showed — a transient probe failure (or
-        classic being installed later) still warns on a future start. Runs
+        the original addon being installed later) still warns on a future
+        start. Runs
         from run() after the dispatcher starts: the modal ok blocks only
         this service thread, never the dispatcher, and the settings dialog
         cannot be open this early (write-ordering doctrine holds).
@@ -176,7 +176,7 @@ class ServiceRuntime:
             "Consider disabling the classic addon.")
         if not self.gui.ok(heading, body):
             # The dialog never rendered: leave the flag unset so the
-            # warning retries on a future start (E4 review — the flag
+            # warning retries on a future start (the flag
             # means "the user has SEEN this", not "we tried").
             return
         if self.gateway.settings_dialog_open():
@@ -184,7 +184,7 @@ class ServiceRuntime:
             # open (its save-on-close clobbers the write). A service
             # restart CAN land under an open dialog — addon update/re-
             # enable — so skip the write; the warning re-fires and writes
-            # on a later start (E4 review).
+            # on a later start.
             self.logger.debug("AOMe_Runtime: deferring coexistence flag "
                               "(settings dialog open)")
             return

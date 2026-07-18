@@ -5,14 +5,14 @@ layered subpackages, and composes the Kodi pieces for its own process: the
 service and the script run as SEPARATE processes whose only shared state is
 the on-disk store — the script READS ``offsets.json`` through the read-only
 reader and mutates it ONLY over the NotifyAll channel (single-writer
-doctrine; D5 report-only when the service is absent). The import route
+doctrine; report-only when the service is absent). The import route
 additionally writes the ``.import`` STAGING file — a sibling the service
 consumes, never the store file itself.
 
 Routes:
 
 - ``manage_offsets`` — the stored-offsets management view (inspection +
-  delete/clear, P6), reached from the settings dialog's action button.
+  delete/clear only), reached from the settings dialog's action button.
 - ``export_offsets`` / ``import_offsets`` — the backup surface (the
   TransferView): verbatim file export to a picked folder, and the staged
   restore over the mutation channel's ``import`` op.
@@ -20,7 +20,7 @@ Routes:
   addon's entries from both Kodi log files, filtered and redacted, to a
   picked folder. Read-only everywhere: it never touches the store or the
   channel.
-- anything else / no argument — open the addon settings (D13: launching
+- anything else / no argument — open the addon settings (launching
   the addon opens the full settings dialog, the natural hub).
 
 Every route ends in the settings dialog: the action buttons close it on
@@ -231,8 +231,8 @@ def _write_text(destination, text):
 def _path_redactions():
     """``(resolved_prefix, folded_form)`` pairs for the export's path
     redaction: the profile root and the Kodi home fold to their
-    ``special://`` forms, and the OS user profile folds to ``~/`` — the
-    field-caught leak (2026-07-18): a user-picked export destination
+    ``special://`` forms, and the OS user profile folds to ``~/``:
+    a user-picked export destination
     (Desktop, Downloads) sits under the OS profile but OUTSIDE Kodi's
     home, and the addon logs such destinations in its own AOMe lines, so
     without this pair the username rides into the next export. Every

@@ -61,7 +61,7 @@ def rig(monkeypatch):
     runtime.seek_coordinator._gateway = gateway
     runtime.adjustment_watcher._gateway = gateway
 
-    # Applies captured in legacy (player_id, ms) shape at the RPC boundary.
+    # Applies captured as (player_id, ms) at the RPC boundary.
     applied = []
     gateway.set_audio_delay = (
         lambda player_id, seconds: applied.append(
@@ -136,9 +136,8 @@ def test_startup_apply_is_provisional_then_released_on_stable(rig):
 
 
 def test_late_codec_is_chased_by_the_probe_chain(rig):
-    # Legacy blocked inside rpc retries while the codec negotiated; the
-    # detector chases it with scheduled probes instead — same patience, no
-    # blocking. Jittered spacing is <= 0.6s, so advancing 0.6s per pump fires
+    # The detector chases a late codec with scheduled probes — patience
+    # without blocking. Jittered spacing is <= 0.6s, so advancing 0.6s per pump fires
     # exactly one probe per step.
     runtime, clock, gateway, applied, _notified = rig
     gateway.codec = 'none'
@@ -195,9 +194,7 @@ def test_in_place_reopen_supersedes_and_drops_pending(rig):
 
 
 def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
-    # Intentional Phase 4 strengthening (documented in stream_detector):
-    # the new offset is applied the moment the change is observed —
-    # ~1s earlier than legacy's post-debounce apply — while the
+    # The new offset is applied the moment the change is observed, while the
     # notification still waits for the stream to re-stabilize.
     runtime, clock, gateway, applied, notified = rig
 
@@ -225,8 +222,7 @@ def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
 
 def test_resume_seek_waits_for_stable_and_quiet_window_from_start(rig, monkeypatch):
     # Worked-trace parity: session start counts as seek activity, so the
-    # resume seek executes QUIET_WINDOW (2.0s) after start — reproducing the
-    # legacy mandatory 2s settle without a bespoke constant — and only once
+    # resume seek executes QUIET_WINDOW (2.0s) after start — the post-start settle without a bespoke constant — and only once
     # the stream is STABLE. The reciprocity property is set around the seek
     # and cleared afterwards.
     runtime, clock, gateway, applied, _notified = rig
@@ -256,8 +252,7 @@ def test_resume_seek_waits_for_stable_and_quiet_window_from_start(rig, monkeypat
 
 def test_blip_and_revert_announces_no_change(rig):
     # A codec blip that reverts (no net change) re-earns STABLE but announces
-    # nothing: no re-apply, no toast, and no 'adjust' seek request (legacy's
-    # duplicate-codec filter never fired an event for a reverting blip).
+    # nothing: no re-apply, no toast, and no 'adjust' seek request.
     runtime, clock, gateway, applied, notified = rig
 
     runtime.dispatcher.post(events.PlaybackStarted())
@@ -353,7 +348,7 @@ def test_applied_is_recorded_before_the_rpc_executes(rig):
     # The AdjustmentWatcher's self-echo suppression depends on this exact
     # ordering contract: at the instant Kodi's delay can reflect our write,
     # session.applied must already equal it. Pinned AT the RPC boundary so a
-    # future applier change cannot silently flip back to the legacy
+    # future applier change cannot silently flip to a
     # record-after-success order.
     runtime, _clock, gateway, _applied, _notified = rig
 
@@ -472,9 +467,8 @@ def test_settings_save_reapply_reads_as_self_echo_not_adjustment(
 def test_user_offset_saved_notifies_live_session_only(rig):
     # The manual-offset toast consumes the watcher's typed event: it
     # describes the payload captured at store time, and a stamp from a
-    # superseded session is dropped. (The legacy USER_ADJUSTMENT wire carried
-    # no payload and no stamp, so a reopen between store and dispatch made
-    # the notification describe the NEW stream's profile.)
+    # superseded session is dropped — a reopen between store and dispatch must never make
+    # the notification describe the NEW stream's profile.
     runtime, _clock, _gateway, _applied, notified = rig
 
     runtime.dispatcher.post(events.PlaybackStarted())

@@ -6,14 +6,14 @@ store file (single-writer doctrine): its mutations travel as
 ``StoreMutationRequested`` events, and THIS component executes them on the
 dispatcher thread — the same thread that owns every other store write.
 
-The op whitelist is the security boundary of the channel (P6): only
+The op whitelist is the security boundary of the channel: only
 ``delete``, ``clear``, and ``import`` exist. There is no value field on the
 event and no ``set`` op, so the channel STRUCTURALLY cannot carry a value
 write; an unknown op (or a malformed payload the bridge posted verbatim) is
 rejected loudly — one warning line plus a failed ack — never silently
 dropped.
 
-``import`` is the backup-restore op (2026-07-17 user call) and keeps P6
+``import`` is the backup-restore op and keeps the no-value-entry rule
 intact: it transports values that were LEARNED during playback (on this box
 or another), it never lets anyone type one. The wire carries no path and no
 payload — the script process stages the user's chosen backup file at the
@@ -32,13 +32,13 @@ staged file is refused HERE regardless (never a disguised clear-all).
 Every request is acknowledged through the injected ``ack`` callable (the
 runtime wires it to ``KodiGateway.notify_all`` under ``ACK_MESSAGE``),
 echoing ``request_id`` so the script process can match the reply; no ack
-within the script's timeout is its "service not running" signal (D5:
-report-only — there is no direct-write fallback).
+within the script's timeout is its "service not running" signal
+(report-only — there is no direct-write fallback).
 
 After a STORE-CHANGING mutation the handler runs ``_store_changed``:
 synchronous session-state invalidation (miss dedupe + watcher
 observation) plus a typed ``StoreMutated`` the applier consumes as a
-resolve moment for the live session (E7, user call 2026-07-16) — deleting
+resolve moment for the live session — deleting
 the PLAYING profile's offset takes effect immediately, the marked miss
 forcing its promised 0 at the deletion itself. "Store-changing" means the
 IN-MEMORY store the live session resolves against: a delete that removed
@@ -70,8 +70,8 @@ def _noop(_message):
 MUTATION_MESSAGE = 'store_mutation'
 ACK_MESSAGE = 'store_mutation_ack'
 
-# The complete op vocabulary of the channel (P6: inspection, removal, and
-# the backup restore — never value entry).
+# The complete op vocabulary of the channel: removal and the backup
+# restore — never value entry.
 ALLOWED_OPS = ('delete', 'clear', 'import')
 
 # The import staging file: the store path plus this suffix, derived
@@ -112,7 +112,7 @@ class StoreMutationHandler:
         elif event.op == 'import':
             reply = self._import()
         else:
-            # The loud rejection (P6): anything outside the whitelist —
+            # The loud rejection: anything outside the whitelist —
             # including a would-be value write or a malformed payload —
             # is named in the log, refused, and acked as failed.
             self._warn(f"AOMe_StoreMutations: rejected op {event.op!r} "
@@ -229,7 +229,7 @@ class StoreMutationHandler:
         Three consequences, the first two SYNCHRONOUS on purpose:
 
         - ``miss_announced`` is cleared (same rule as the watcher's store
-          path — E2 review finding, ledgered for these ops: it dedupes the
+          path: it dedupes the
           applier's "no stored offset" line per consulted chain, and a
           mutation makes any remembered chain stale).
         - The watcher's observation state is cleared (the supersede
@@ -240,12 +240,12 @@ class StoreMutationHandler:
           handler and any event it posts and store the stale candidate
           under the just-deleted key (resurrecting it, marker discarded
           by set()); and the applier's already-0/failed-RPC reset
-          branches deliberately post no DelayReset at all (E7 review,
-          cross-file finding). Synchronous assignment on the dispatcher
+          branches deliberately post no DelayReset at all.
+          Synchronous assignment on the dispatcher
           thread is race-free by construction.
         - A typed ``StoreMutated`` is posted so the applier re-runs its
           decision for the live session — the deletion acts NOW when its
-          profile is playing (E7, user call).
+          profile is playing.
         """
         session = self._sessions.current
         if session is not None:

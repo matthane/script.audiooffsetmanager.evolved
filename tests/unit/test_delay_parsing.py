@@ -1,11 +1,8 @@
 """Behavior matrix for aome.domain.policies.parse_delay_ms.
 
-Began in Phase 0 as characterization tests for ActiveMonitor.convert_delay_to_ms
-(relocated to the domain in Phase 1). Phase 6 gave the parser to the
-AdjustmentWatcher and fixed its two pinned limitations — the
-NNBSP-as-sole-separator parse failure and the int() ms truncation — so this
-matrix now pins the FIXED semantics, targeting the domain function directly
-(the legacy delegating wrapper died with ActiveMonitor).
+The full locale matrix for Kodi's localized delay strings: decimal commas,
+Unicode minus, narrow no-break spaces, NNBSP separators, clamping, and
+rounding. Targets the domain function directly.
 """
 
 import pytest
@@ -32,7 +29,7 @@ def test_valid_conversions(delay_str, expected):
     # NNBSP preceding the regular " s" unit.
     ("-0.075" + NNBSP + " s", -75),
     ("-0,075" + NNBSP + " s", -75),
-    # Phase 6 fix (flipped pin): NNBSP as the SOLE unit separator — the
+    # NNBSP as the SOLE unit separator — the
     # modern CLDR convention ("-0.075<NNBSP>s") — used to return None.
     ("-0.075" + NNBSP + "s", -75),
     ("-0,075" + NNBSP + "s", -75),
@@ -69,7 +66,7 @@ def test_clamping_to_plus_minus_10_seconds(delay_str, expected):
 
 
 @pytest.mark.parametrize("delay_str, expected", [
-    # Phase 6 fix (flipped pin): values whose float round-trip lands just
+    # Values whose float round-trip lands just
     # below the integer ("0.115" * 1000 == 114.999...) round instead of
     # truncating toward zero.
     ("0.115 s", 115),
@@ -82,7 +79,7 @@ def test_ms_conversion_rounds(delay_str, expected):
 
 
 @pytest.mark.parametrize("delay_str, expected", [
-    # Phase 6 review fix: a Unicode minus sign (CLDR negative-number
+    # A Unicode minus sign (CLDR negative-number
     # convention in some locales) is normalized to ASCII '-'; combined
     # locale styling (comma decimal + NNBSP unit separator) parses too.
     (UMINUS + "0.075 s", -75),

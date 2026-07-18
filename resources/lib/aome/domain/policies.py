@@ -15,17 +15,15 @@ def parse_delay_ms(delay_str):
     (U+2212, used by some CLDR locales), and narrow no-break spaces anywhere
     around the unit. Clamps to +/-10 s. Returns None on unparseable input.
 
-    Two Phase 6 fixes over the verbatim legacy parser (their Phase 0/1
-    behavior pins in test_delay_parsing.py / test_policies.py were flipped
-    alongside):
+    Parsing details that matter:
 
     - A narrow no-break space as the SOLE separator before the unit
-      ('-0.075<U+202F>s', the CLDR unit-separator convention) parses now:
+      ('-0.075<U+202F>s', the CLDR unit-separator convention) parses:
       NNBSP is normalized to a regular space BEFORE the unit is stripped,
-      instead of being deleted (which used to leave '-0.075s' for float()).
+      never deleted (deleting it would leave '-0.075s' for float()).
     - The ms conversion rounds instead of truncating: float('-0.115') * 1000
-      is -114.999...; the legacy int() returned -114 for a slider value of
-      -115 ms.
+      is -114.999..., and truncation would report -114 for a slider value
+      of -115 ms.
     """
     try:
         normalized = (delay_str.replace('\u202f', ' ')  # narrow no-break space
@@ -52,10 +50,10 @@ def is_complete(profile):
     Under the open vocabulary the HDR axis always resolves (the detector
     defaults an absent reading to 'sdr'), so completeness is: an audio
     format was reported, and the fps rate parsed. Requiring fps keeps
-    discovery patient during startup renegotiation exactly as the classic
-    detector was (it kept probing until the fps axis settled), and
-    guarantees the per-fps write key is always composable for a complete
-    profile.
+    discovery patient during startup renegotiation (probing continues
+    until the fps axis settles — a stream whose rate is still unreadable
+    is not ready to act on) and guarantees the per-fps write key is
+    always composable for a complete profile.
     """
     if profile is None:
         return False
@@ -69,9 +67,8 @@ def stream_identity(profile, per_fps):
 
     With the per-fps toggle OFF the fps axis does not exist for offsets, so
     it is excluded — a VFR rate wiggle between gathers must not read as a
-    stream change (the classic fps-collapse had the same effect). With the
-    toggle ON the truncated rate is part of the identity, exactly like the
-    lookup key.
+    stream change. With the toggle ON the truncated rate is part of the
+    identity, exactly like the lookup key.
     """
     if per_fps:
         return (profile.hdr_type, profile.fps_int(), profile.audio_format)
@@ -80,7 +77,7 @@ def stream_identity(profile, per_fps):
 
 def seek_decision(now, requested_at, last_activity, last_own_seek,
                   quiet_window, deadline):
-    """The seek quiet-window policy — six legacy guards stated as one rule.
+    """The seek quiet-window policy: one rule for every seek-back request.
 
     Do not seek until there has been no seek activity — ours, another
     addon's, or the user's — for ``quiet_window`` seconds; defer otherwise;
@@ -88,15 +85,15 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     of our own seeks has already served (executed AT or AFTER the moment
     this request was made — same-instant counts as served, the safe side
     against a double rewind) is abandoned: its purpose — replaying the
-    glitched seconds — is done (the legacy cross-type cooldown's job).
+    glitched seconds — is done.
 
     Args (all timestamps monotonic; the caller resolves them):
         now: current time.
         requested_at: when this seek was requested.
         last_activity: most recent seek-like activity — any SeekOccurred,
             vendor busy signal, our own executed seek, or session start
-            (session start counting as activity is what reproduces the
-            legacy 2s post-start settle without a bespoke constant).
+            (session start counting as activity gives playback a settle
+            window after start without a bespoke constant).
         last_own_seek: when WE last executed a seek this session, or None.
         quiet_window: required quiet seconds before seeking.
         deadline: max seconds after requested_at before giving up.
@@ -104,8 +101,8 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     Returns:
         'seek' | 'defer' | 'abandon'. Deadline is checked before quietness:
         a request that aged past the deadline is abandoned even if the
-        window happens to be quiet now (legacy parity: the PM4K idle wait
-        skipped after its timeout regardless).
+        window happens to be quiet now — a very late replay would itself
+        be the disruption it was meant to repair.
     """
     if last_own_seek is not None and last_own_seek >= requested_at:
         return 'abandon'
@@ -119,11 +116,10 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
 def should_apply(profile, apply_enabled):
     """Decide whether an offset may be applied for this profile.
 
-    The classic gates are gone with their features: no ``new_install``
-    (an empty store already yields a lookup miss — P1), no per-HDR enables
-    (replaced by the ONE 'Apply audio offsets' toggle — D9 as amended;
-    it gates applying only, never learning). What remains: applying
-    is on, and the profile is complete enough to key the store.
+    Applying requires the 'Apply audio offsets' toggle (it gates applying
+    only, never learning) and a profile complete enough to key the store.
+    An empty store needs no gate of its own: a lookup miss is already a
+    no-op.
 
     Args:
         profile: StreamProfile or None.

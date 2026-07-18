@@ -54,7 +54,7 @@ _ABSENT = ('', 'none', UNKNOWN)
 # The one proven, shipped HDR alias. Never grow this speculatively.
 _HDR_ALIASES = {'hlghdr': 'hlg'}
 
-# --- Display names (used by the future management view) ---------------------
+# --- Display names (used by the management view) ----------------------------
 # The fallback for an unrecognised segment is ALWAYS the raw segment itself,
 # never a rejection — verbatim acceptance extends to how keys are shown.
 
@@ -63,8 +63,7 @@ HDR_DISPLAY = {
     'hdr10': 'HDR10',
     # Both spellings of HDR10+ display the same, and NEITHER aliases to
     # the other: 'hdr10plus' is what Kodi 22's native HDR10+ detection
-    # reports (E7 beta9 field observation, Windows/Kodi 22 beta1) and
-    # 'hdr10+' is the older spelling this table already carried. A key
+    # reports and 'hdr10+' is the older spelling. A key
     # alias would rewrite future composition and strand offsets already
     # stored under the other spelling — display entries are free, key
     # rewrites are not.
@@ -84,8 +83,7 @@ HDR_DISPLAY = {
 # touching stored data.
 AUDIO_DISPLAY = {
     # Dolby family, consistently branded ('truehd_atmos' and
-    # 'eac3_ddp_atmos' are Kodi's verbatim profile reports; the former
-    # field-observed on Kodi 22 beta1 in E7 beta1).
+    # 'eac3_ddp_atmos' are Kodi's verbatim profile reports).
     'truehd': 'Dolby TrueHD',
     'truehd_atmos': 'Dolby TrueHD Atmos',
     'eac3': 'Dolby Digital Plus',

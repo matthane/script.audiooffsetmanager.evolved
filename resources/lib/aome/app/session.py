@@ -36,33 +36,29 @@ def _noop(_message):
 @dataclass
 class PlaybackSession:
     session_id: int
-    # Monotonic session birth time. No consumer during Phase 3; becomes the
-    # seek quiet-window's "session start counts as seek activity" input when
-    # the seek scheduler lands (DESIGN: ExternalSeekCoordinator).
+    # Monotonic session birth time: the seek quiet-window's "session start
+    # counts as seek activity" input (ExternalSeekCoordinator).
     started_at: float
     stream_state: StreamState = StreamState.STARTING
     # The session's profile. Written ONLY by the StreamDetector (its sole
-    # writer), on the dispatcher thread — where every reader now lives too
-    # (the last cross-thread reader, ActiveMonitor via the StreamInfo shim,
-    # was replaced by the dispatcher-driven AdjustmentWatcher in Phase 6).
+    # writer), on the dispatcher thread — where every reader lives too.
     profile: object = None
     # True while a profile (re)adoption has happened since the last
     # StreamStabilized post. The detector consumes it to stamp
     # StreamStabilized.profile_changed, which downstream consumers (the seek
     # scheduler's 'adjust' replay) use to ignore pure re-confirmations (a
-    # codec blip that reverted) — legacy's duplicate-codec filter never
-    # fired for those either.
+    # codec blip that reverted).
     profile_changed_since_stabilized: bool = False
     # (store_key, delay_ms) — what we believe Kodi's audio delay is set to.
-    # The key is None after a baseline zero-reset (D3 amendment: the 0 in
+    # The key is None after a baseline zero-reset (the 0 in
     # force belongs to no stored profile). Writers, all on the dispatcher
     # thread: the OffsetApplier records it BEFORE each apply/reset RPC
     # (restoring on failure), and the AdjustmentWatcher updates it when it
     # stores a user's manual value (the user's value IS the applied value;
     # skipping this would make the next same-profile AV event re-apply and
     # re-notify). It is the applier's dedupe guard, the watcher's self-echo
-    # reference, AND the miss policy's "has AOM acted on this session" flag
-    # (None = untouched, so a miss must leave Kodi's delay alone — P1).
+    # reference, AND the miss policy's "has the addon acted on this session"
+    # flag (None = untouched, so a miss must leave Kodi's delay alone).
     applied: tuple = None
     pending_notification: tuple = None      # (held profile, delay_ms) awaiting STABLE
     # The applier's miss-dedupe: the last consulted-key chain announced as a

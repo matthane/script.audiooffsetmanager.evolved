@@ -1,7 +1,6 @@
-"""End-to-end learn/store/replay tests against the REAL sparse store (E2).
+"""End-to-end learn/store/replay tests against the REAL sparse store.
 
-The design contract's E2 acceptance (EVOLVED §3.2 decision table + the learn
-checklist): drive the whole runtime graph through a lifecycle and assert what
+Drive the whole runtime graph through a lifecycle and assert what
 lands on DISK, not just what a fake recorded. This is the sibling of
 test_session_flow, with one deliberate rig difference: where that suite patches
 ``runtime.offsets.resolve/store`` to a scripted resolver, THIS suite keeps the
@@ -23,7 +22,7 @@ retuned constant moves the tests with the code, never against a hardcoded copy.
 User adjustments are driven exactly as production sees them: the gateway's
 ``Player.AudioDelay`` infolabel is set to a localized delay string and the
 clock is walked through the watcher's tick cadence, so a foreign value that
-holds for ``QUIESCENCE_SECONDS`` is stored under the D4 write key derived at
+holds for ``QUIESCENCE_SECONDS`` is stored under the write key derived at
 store instant. The watcher only stores a CHANGE observed while watching, so
 each learn flow first lets a baseline reading settle, THEN dials the new value.
 """
@@ -93,7 +92,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     runtime.seek_coordinator._gateway = gateway
     runtime.adjustment_watcher._gateway = gateway
 
-    # Applies captured in the legacy (player_id, ms) shape at the RPC boundary.
+    # Applies captured as (player_id, ms) at the RPC boundary.
     applied = []
     gateway.set_audio_delay = (
         lambda player_id, seconds: applied.append(
@@ -101,7 +100,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
 
     # --- settings seams (the single Settings adapter, shared by all) ----------
     settings = runtime.settings
-    # A mutable holder so a test can flip per_fps live (D3: OFF = the `all`
+    # A mutable holder so a test can flip per_fps live (OFF = the `all`
     # key world; ON = exact -> all -> miss).
     per_fps_holder = {'on': per_fps}
     monkeypatch.setattr(settings, 'apply_enabled', lambda: True)
@@ -263,7 +262,7 @@ def test_replay_applies_seeded_offset_on_playback(build, tmp_path):
 
 def test_fallback_then_specialize_per_fps(build, tmp_path):
     # per_fps ON, only an `all`-key entry seeded: a 60 fps stream falls back to
-    # it (-125). The user then dials -100; the D4 write key is the fps-specific
+    # it (-125). The user then dials -100; the write key is the fps-specific
     # key, so the exact entry is CREATED while the `all` fallback is untouched.
     # A replay at 60 fps then hits the exact entry (-100).
     _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -125})
@@ -294,13 +293,13 @@ def test_fallback_then_specialize_per_fps(build, tmp_path):
 # --- Scenario 5: delete during playback --------------------------------------
 
 def test_delete_mid_session_resets_to_baseline(build, tmp_path):
-    # A seeded offset applies; the entry is then deleted mid-session (the E4
+    # A seeded offset applies; the entry is then deleted mid-session (the
     # mutation channel's move). The next stabilization re-resolves to a MISS
-    # — and because the addon HAS acted on this session, the D3 amendment
+    # — and because the addon HAS acted on this session, the miss policy
     # resets the delay to Kodi's 0 baseline (deleting an entry means its
     # effect goes away). The discarded value equals our own apply, so the
     # reset is SILENT (no UnsavedOffsetDiscarded). A fresh runtime against
-    # the now-empty file then applies nothing at all (P1: no action yet, so
+    # the now-empty file then applies nothing at all (no action yet, so
     # the miss leaves Kodi's delay untouched).
     _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
     rig = build()                                    # loads the seed
@@ -343,7 +342,7 @@ def test_delete_mid_session_resets_to_baseline(build, tmp_path):
 
 
 def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
-    # E7 user call (2026-07-16): deleting the PLAYING profile's offset in
+    # Deleting the PLAYING profile's offset in
     # the management view takes effect at the deletion itself. The REAL
     # channel end to end — StoreMutationRequested -> handler executes the
     # delete (leaving its reset marker) -> StoreMutated -> applier forces
@@ -374,7 +373,7 @@ def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
 
 
 def test_dial_then_delete_does_not_resurrect_the_entry(build, tmp_path):
-    # E7 review convergence (3 finders): the user dials a value and,
+    # The user dials a value and,
     # inside the 2s quiescence window, deletes the playing profile's
     # entry. The mutation drops the in-flight candidate SYNCHRONOUSLY at
     # the handler — otherwise it quiesces against the deleted key and
@@ -431,7 +430,7 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
 
     # The corruption flag is posted as a typed StoreCorrupted event during
     # construction and the Notifier raises the notice on the first pump
-    # (E4: the composition root no longer touches the GUI). Capture at the
+    # (the composition root never touches the GUI). Capture at the
     # Gui class before building the runtime.
     notifications = []
     monkeypatch.setattr(
@@ -446,7 +445,7 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
     # ...and told SOMETHING: localized() degrades to '' (the kodistubs
     # Addon does exactly that), and this notice is the only signal the
     # offsets were reset — the English fallback must fill a blank body
-    # (E3 review pin).
+    #.
     assert 'offsets.json.bad' in notifications[0][0]
     assert (tmp_path / 'offsets.json.bad').exists()  # junk quarantined
     assert len(rig.runtime.store) == 0              # started empty

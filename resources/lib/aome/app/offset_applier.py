@@ -1,7 +1,6 @@
 """Offset application: gate via policy, resolve via the store, apply, announce.
 
-The apply half of the legacy OffsetManager (its notification half became the
-Notifier). One decision path, four triggers:
+One decision path, four triggers:
 
 - ``ProfileChanged`` — the detector adopted a (new) complete profile: the
   apply trigger. NOT ``PlaybackStarted``: the profile is always None at AV
@@ -9,7 +8,7 @@ Notifier). One decision path, four triggers:
 - ``StreamStabilized`` — the retry edge: a failed apply RPC is retried on
   the next stabilization, and the ``session.applied`` dedupe makes the
   common already-applied case a no-op.
-- ``SettingsChanged`` — the immediate-effect edge (E7): every input to the
+- ``SettingsChanged`` — the immediate-effect edge: every input to the
   decision is already read fresh at decision instant (the ``per_fps``
   toggle inside the OffsetTable's resolve, the apply toggle in the
   policy), so re-running the decision when the user saves the settings
@@ -32,8 +31,8 @@ Notifier). One decision path, four triggers:
   by design (an unsettled dial is not yet an adjustment, and preserving
   it would store a value the re-apply just pushed off screen). No live
   session, no work.
-- ``StoreMutated`` — the management-view edge (E7, user call
-  2026-07-16): a delete/clear that actually changed the store is a
+- ``StoreMutated`` — the management-view edge: a delete/clear that
+  actually changed the store is a
   resolve moment too, so deleting the PLAYING profile's offset takes
   effect immediately — the marked miss forces its promised 0 at the
   deletion itself, not at the next playback ("next playback" was only
@@ -50,7 +49,7 @@ supersede corollary — without this, a candidate dialed just before a
 marker-forced reset could quiesce against a lagging infolabel and
 re-store the value the user had just deleted).
 
-Contracts (both reviewed and pinned by tests):
+Contracts (both pinned by tests):
 
 - **applied-before-RPC**: ``session.applied`` is recorded BEFORE the
   ``set_audio_delay`` call and restored on failure. The AdjustmentWatcher's
@@ -70,10 +69,10 @@ Notifier hold the toast until stabilization. This component never toasts.
 Offsets come from the injected ``OffsetTable`` (the sparse-store adapter):
 ``resolve(profile)`` returns a ``Resolution`` whose ``hit_kind`` is
 exact/fallback/miss. **A miss is a no-op until the addon has acted on the
-session, then a zero-reset** (D3 as amended at E7): before the first AOM
+session, then a zero-reset**: before the addon's first
 apply/store, a miss leaves Kodi's delay completely untouched (a fresh
 install must never clobber the user's/Kodi's own per-file delay). After
-that, the delay in force is AOM-owned or belongs to the PREVIOUS profile,
+that, the delay in force is ours or belongs to the PREVIOUS profile,
 so an unlearned profile resets it to Kodi's 0 baseline — silently when the
 discarded value is our own residue, with a typed
 ``UnsavedOffsetDiscarded`` (the "Offset not saved" toast) when it diverged
@@ -82,15 +81,15 @@ the store. Either way, one debug line per distinct consulted chain — never
 a spam stream (``session.miss_announced`` dedupes repeats within an
 episode), and the reset is idempotent (a delay already at 0 is left alone).
 
-**Deleted profiles override the wait-until-acted gate** (D3 second
-amendment, E7 field decision): a miss whose consulted chain carries reset
+**Deleted profiles override the wait-until-acted gate**: a miss whose
+consulted chain carries reset
 markers (``Resolution.reset_keys`` — the user deleted those keys in the
 management view) forces the delay to 0 IMMEDIATELY, first action or not.
-The user's deletion is the authorization the P1 guard otherwise waits for;
+The user's deletion is the authorization the gate otherwise waits for;
 without this, Kodi's per-file memory keeps replaying the deleted offset.
 The forced 0 consumes the markers (one-shot) and is completely SILENT —
 zero is the implicit, expected outcome of the deletion, so a toast would
-be noise (user call, same day as the amendment); the debug line is the
+be noise; the debug line is the
 only trace. A marker on a key consulted BEFORE a hit (deleted exact
 entry, kept ``all`` fallback) is consumed silently after the hit applies
 — the fallback the user kept overwrites the residue anyway.
@@ -172,10 +171,10 @@ class OffsetApplier:
 
         resolution = self._offsets.resolve(profile)
         if resolution.entry is None:
-            # D3 (amended): one debug line per distinct consulted chain,
-            # then the miss policy — untouched before the addon's first
-            # action of the session, zero-reset after; a chain carrying
-            # reset markers forces the 0 regardless (second amendment).
+            # One debug line per distinct consulted chain, then the miss
+            # policy — untouched before the addon's first action of the
+            # session, zero-reset after; a chain carrying reset markers
+            # forces the 0 regardless.
             if session.miss_announced != resolution.tried:
                 session.miss_announced = resolution.tried
                 self._log(f"AOMe_OffsetApplier: no stored offset for "
@@ -226,16 +225,16 @@ class OffsetApplier:
             provisional=provisional))
 
     def _reset_deleted(self, session, profile, reset_keys):
-        """Force the 0 a deletion promised (D3 second amendment).
+        """Force the 0 a deletion promised.
 
         Runs on a miss whose consulted chain carries reset markers,
         BYPASSING the ``session.applied`` gate: the user's delete in the
-        management view is the authorization P1 otherwise waits for. The
+        management view is the authorization the gate otherwise waits
+        for. The
         forced 0 is one-shot — markers are consumed on success and on the
         CONFIRMED already-0 case; a failed RPC keeps them so the next
         stabilization retries naturally. Silent by design: 0 is the
-        implicit, expected outcome of the deletion, so no toast fires
-        (user call, E7).
+        implicit, expected outcome of the deletion, so no toast fires.
         """
         raw = self._gateway.infolabel(AdjustmentWatcher.INFOLABEL_AUDIO_DELAY)
         current_ms = policies.parse_delay_ms(raw)
@@ -245,7 +244,7 @@ class OffsetApplier:
             # bookkeeping. Nothing visible to do; the marker is spent all
             # the same. A 0 reading that CONTRADICTS a nonzero
             # session.applied is a stale label (the infolabel can lag our
-            # apply RPC by a beat — E7 review finding) and falls through
+            # apply RPC by a beat) and falls through
             # to the idempotent reset RPC instead: consuming the marker on
             # a stale 0 would cancel the deletion permanently for this
             # file once Kodi's per-file memory replays the old value.
@@ -274,12 +273,12 @@ class OffsetApplier:
             self._offsets.consume_reset(key)
 
     def _reset_if_owned(self, session, profile, *, profile_unchanged=False):
-        """The miss policy's second half (D3 amendment, E7 field call).
+        """The miss policy's second half: reset our own stale residue.
 
         ``session.applied is None`` means the addon has not touched this
         session: whatever delay exists belongs to the user or to Kodi's
         per-file memory, and a fresh/untaught profile must never clobber
-        it (P1). Once we HAVE acted, the delay in force was set for the
+        it. Once we HAVE acted, the delay in force was set for the
         PREVIOUS profile — stale residue under the per-profile model — so
         an unlearned profile returns to Kodi's 0 baseline. The reset is
         idempotent: a delay already reading 0 is left alone, which also
@@ -291,7 +290,7 @@ class OffsetApplier:
         (the user's in-flight dial, or a deliberate session-local value
         with remember off) still targets the stream in force — wiping it
         because an unrelated knob was saved or an unrelated entry deleted
-        would clobber the user's hand (P1's spirit). Only our own
+        would clobber the user's hand. Only our own
         residue, orphaned by the trigger itself (a per-fps flip stranding
         the value WE applied), is reset. An unreadable delay is also left
         alone on this path — never act on a hiccup when nothing changed

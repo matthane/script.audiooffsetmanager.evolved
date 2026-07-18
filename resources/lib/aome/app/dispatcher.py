@@ -14,7 +14,7 @@ wall-clock time).
 
 Handlers are isolated: an exception in one handler is logged and does not
 prevent later handlers or later events. With log_runtimes enabled, per-handler
-elapsed time is logged (the legacy EventBus feature, carried over); the flag
+elapsed time is logged; the flag
 is a plain attribute so the runtime can refresh it on SettingsChanged.
 
 Pure Python — no Kodi imports. The error-log sink is a REQUIRED constructor

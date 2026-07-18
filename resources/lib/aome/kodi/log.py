@@ -1,10 +1,8 @@
 """Kodi logging adapter: a callable ``(message, level)`` sink.
 
-Replacement for the legacy ``resources.lib.logger.log`` (deleted with the
-Phase 7 splits). The legacy
-module imported the settings machinery and re-checked the debug toggle on EVERY
-log call — a logger<->settings import knot that this layer unties. The adapter
-instead holds a plain cached ``debug_escalation`` flag: the runtime seeds it
+Rather than importing the settings machinery and re-checking the debug
+toggle on every log call (a logger<->settings import knot), the adapter
+holds a plain cached ``debug_escalation`` flag: the runtime seeds it
 once at construction (from a value the caller reads out of settings) and
 refreshes it on Kodi's ``SettingsChanged`` callback. No settings import here, so
 the logger stays a leaf.
@@ -14,8 +12,8 @@ runtime's ``SettingsChanged`` handler (Kodi's callback thread) and its only
 reader is the dispatcher thread; a stale read costs at most one log line's
 level (LOGDEBUG vs LOGINFO) and nothing else, so it carries no lock.
 
-The escalation and prefix behavior are ported verbatim from the legacy
-``log()``: a LOGDEBUG line escalates to LOGINFO when the addon debug toggle is
+Escalation and prefix behavior:
+a LOGDEBUG line escalates to LOGINFO when the addon debug toggle is
 on (so users can capture addon debug lines without turning on Kodi-wide debug),
 and a message already prefixed ``AOMe_`` or ``[AOM]`` is not double-tagged.
 
@@ -26,7 +24,7 @@ import xbmc
 
 
 class KodiLogger:
-    """Callable ``(message, level)`` log sink — drop-in for the legacy ``log()``."""
+    """Callable ``(message, level)`` log sink."""
 
     def __init__(self, debug_escalation=False):
         # Refreshed by the runtime's SettingsChanged handler; plain attribute
@@ -38,7 +36,7 @@ class KodiLogger:
     def __call__(self, message, level=xbmc.LOGDEBUG):
         # LOGDEBUG escalates to LOGINFO when the addon debug toggle is on
         # (so users can capture addon debug lines without Kodi-wide debug).
-        # Prefix rule ported verbatim from the legacy logger: messages already
+        # Prefix rule: messages already
         # prefixed 'AOMe_' or '[AOM]' are not double-tagged.
         effective_level = (
             xbmc.LOGINFO

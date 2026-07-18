@@ -8,7 +8,7 @@ next re-read), and plain callables/exceptions cover the reader edge cases.
 
 The load-bearing doctrines pinned here: verbatim signed millisecond values
 (no rounding, no step snapping), deterministic sort order, the empty state as
-first-run education, D5 report-only on a missing service, and the P6 boundary
+first-run education, report-only on a missing service, and the no-value-entry boundary
 that the only ops this view can ever emit are ``delete`` and ``clear``.
 """
 
@@ -141,7 +141,7 @@ def test_index_rows_sorted_by_hdr_label_with_clear_all_last():
 
 
 def test_per_fps_rows_show_the_exact_reported_rate():
-    # E7 beta4 field feedback: a per-fps row must show the rate the user
+    # A per-fps row must show the rate the user
     # recognises (23.976), not the truncated key identity (23). The exact
     # rate is the entry's video_fps metadata; entries without it (hand-
     # edited) degrade to the segment.
@@ -267,7 +267,7 @@ def test_delete_flow_sends_exact_key_and_re_reads():
 
 
 def test_delete_confirmation_shows_the_stored_value():
-    # Field feedback (beta4): the confirmation must show WHAT is being
+    # The confirmation must show WHAT is being
     # deleted — the full row label with the value, not just the profile.
     entries = {DV: _entry(-115)}
     gui = FakeGui()
@@ -317,7 +317,7 @@ def test_clear_flow_sends_clear_none_and_exits_quietly():
     view.run()
 
     assert service.calls == [("clear", None)]
-    # E4 review: a deliberate clear exits WITHOUT the first-run education
+    # A deliberate clear exits WITHOUT the first-run education
     # empty state ("nothing stored yet" right after the user emptied the
     # store reads as data loss, not success).
     assert gui.oks == []
@@ -368,7 +368,7 @@ def test_ack_failure_reports_detail():
     assert "read_only" in message
 
 
-# -- P6 boundary -------------------------------------------------------------
+# -- the no-value-entry boundary ----------------------------------------------
 
 def test_constructor_exposes_no_store_writer_seam():
     params = list(inspect.signature(ManageView.__init__).parameters)
@@ -397,7 +397,7 @@ def test_only_delete_and_clear_ops_are_ever_emitted():
     assert "set" not in ops
 
 
-# -- E4 review pins ------------------------------------------------------------
+# -- edge-case pins ------------------------------------------------------------
 
 def test_future_schema_store_shows_preserved_wording_not_quarantine():
     # A newer-schema file is PRESERVED by the service (read-only), never
@@ -442,14 +442,12 @@ def test_blank_localization_falls_back_to_english():
     assert "Nothing is stored yet" in message
 
 
-# -- U0 grouped drill-down ----------------------------------------------------
+# -- grouped drill-down --------------------------------------------------------
 #
 # When the store spans 2+ HDR groups the top level is a group index; a group
 # opens into its entries with the redundant HDR name dropped from the row
-# copy (DU-2), Back returns to the index, and clear-all lives only at the
-# top level. A single-group store renders the flat list (DU-1 re-ruled after
-# the beta9 field pass: mode comes from the GROUP count, never the entry
-# count, so a delete can never silently dissolve the categories). These
+# copy, Back returns to the index, and clear-all lives only at the
+# top level. A single-group store renders the flat list. These
 # tests give the count templates and the 'Other' label real translations so
 # the labels read as they would on screen.
 
@@ -502,7 +500,7 @@ def test_multi_group_store_renders_group_index_with_counts():
 
 
 def test_single_group_renders_flat_and_second_group_flips_to_index():
-    # DU-1 (re-ruled): flat vs grouped is a function of the GROUP count
+    # Flat vs grouped is a function of the GROUP count
     # only. A single-group store — however large — stays flat (its index
     # would be one row of pure overhead)...
     single = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 10)}
@@ -529,7 +527,7 @@ def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
 
     assert len(gui.selects) == 3
     # The drill-down is headed by the group name and lists ONLY its
-    # entries — HDR name dropped, codec leading (DU-2) — plus the scoped
+    # entries — HDR name dropped, codec leading — plus the scoped
     # group-clear row; the whole-store clear-all row stays at the top
     # level only.
     heading, options = gui.selects[1]
@@ -675,7 +673,7 @@ def test_clear_from_group_index_exits_quietly():
 
 
 def test_deletes_never_flip_the_mode_until_a_group_empties():
-    # The beta9 field find, pinned as the DU-1 re-ruling: deleting entries
+    # Field-found regression: deleting entries
     # NEVER dissolves the category level while 2+ groups remain; the flat
     # list appears only when the store is down to a single group — a
     # transition the user just caused (they emptied a category) and can
@@ -706,7 +704,7 @@ def test_deletes_never_flip_the_mode_until_a_group_empties():
                for option in gui.selects[5][1][:-1])
 
 
-# -- U0 review pins ------------------------------------------------------------
+# -- drill-down edge pins ------------------------------------------------------
 
 def test_group_declined_delete_sends_nothing_and_stays_in_group():
     # The flat path's declined-loops pin, re-pinned for the drill-down:
@@ -786,7 +784,7 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
 # -- per-group clear -----------------------------------------------------------
 #
 # The scoped clear row inside an open group: looped single deletes over the
-# existing channel — no batch op exists on the wire, the P6 whitelist stays
+# existing channel — no batch op exists on the wire, the channel whitelist stays
 # delete/clear. Confirmation restates the scope as the index row shows it.
 
 def test_group_clear_confirmation_shows_scope_and_decline_sends_nothing():
@@ -816,7 +814,7 @@ def test_group_clear_deletes_every_group_key_and_lands_on_index():
     view.run()
 
     # One delete per group entry, exact keys, display order — and nothing
-    # but deletes on the wire (P6: no batch op exists).
+    # but deletes on the wire (no batch op exists).
     assert service.calls == [
         ("delete", "dolbyvision|all|eac3"),
         ("delete", "dolbyvision|all|truehd"),
@@ -897,7 +895,7 @@ def test_group_clear_timeout_reports_service_missing_and_stops():
                                 per_fps=True)
     view.run()
 
-    assert len(service.calls) == 1       # D5 report-only: stop immediately
+    assert len(service.calls) == 1       # report-only: stop immediately
     assert ("#32115", "#32125") in gui.oks
     # Nothing was deleted: the group re-renders with all 3 rows.
     assert len(gui.selects[2][1]) == 4

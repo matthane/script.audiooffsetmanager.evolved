@@ -166,7 +166,7 @@ def test_display_known_names():
 
 
 def test_hdr10plus_display_name_is_field_observed():
-    # E7 beta9 (Kodi 22 beta1/Windows): Kodi's native HDR10+ detection
+    # Kodi 22's native HDR10+ detection
     # reports 'hdr10plus', which rendered verbatim until this display
     # entry. DISPLAY-only, deliberately NOT an alias: the segment stays
     # verbatim in keys ('hdr10plus' composes and matches as itself), so
@@ -230,7 +230,7 @@ def test_describe_key_unknown_segments_render_verbatim():
 
 
 def test_describe_key_shows_exact_rate_from_video_fps_metadata():
-    # E7 beta4 field feedback: '23 fps' is key identity, not a rate a user
+    # '23 fps' is key identity, not a rate a user
     # recognises — the entry's video_fps metadata renders the EXACT rate.
     assert keys.describe_key('dolbyvision|23|eac3', video_fps=23.976) == \
         'Dolby Vision | 23.976 fps | Dolby Digital Plus'
@@ -333,7 +333,7 @@ def test_sort_key_is_total_over_hand_edited_keys():
 
 
 def test_truehd_atmos_display_name_is_field_observed():
-    # E7 beta1 (Kodi 22 beta1/Windows): Atmos-flagged TrueHD reports
+    # Field-observed on Kodi 22: Atmos-flagged TrueHD reports
     # 'truehd_atmos' verbatim. The alias is DISPLAY-only — the key segment
     # stays verbatim, so stored data is untouched by the friendly name.
     assert keys.audio_segment('truehd_atmos') == 'truehd_atmos'

@@ -8,11 +8,11 @@ OffsetApplied posts are collected off the bus.
 The applied-before-RPC ordering contract also has cross-component pins in
 test_session_flow.py; here it is asserted directly at the gateway boundary.
 
-E2: the applier resolves through the sparse-store adapter — hit/fallback
-apply, MISS IS A NO-OP (D3: Kodi's delay untouched, one debug line per
-distinct consulted chain), and the classic new_install/per-HDR gates are
-replaced by the single "Apply audio offsets" toggle (D9 as amended: it
-gates applying only; learning is the watcher's own toggle).
+The applier resolves through the sparse-store adapter — hit/fallback
+apply, MISS IS A NO-OP (Kodi's delay untouched, one debug line per
+distinct consulted chain), and applying is gated by the single "Apply
+audio offsets" toggle (it gates applying only; learning is the watcher's
+own toggle).
 """
 
 import pytest
@@ -221,7 +221,7 @@ class TestApplyPath:
 class TestMissIsNoOp:
 
     def test_miss_applies_nothing_and_logs_once(self, rig):
-        # D3: empty store -> no RPC, Kodi's delay untouched, ONE debug line.
+        # Empty store -> no RPC, Kodi's delay untouched, ONE debug line.
         session = rig.start(make_profile(), offset_ms=None)
 
         rig.profile_changed()
@@ -283,7 +283,7 @@ class TestGating:
 
 
 class TestZeroReset:
-    """D3 amendment (E7): miss = no-op until AOM acts, then zero-reset."""
+    """Miss = no-op until the addon acts, then zero-reset."""
 
     def _switch_to_unlearned(self, rig, session):
         """Learned profile applied, then the stream becomes an unlearned one."""
@@ -293,7 +293,7 @@ class TestZeroReset:
         rig.profile_changed()                        # resolves to a miss
 
     def test_first_miss_of_a_session_touches_nothing(self, rig):
-        # P1: no prior AOM action -> the miss leaves Kodi's delay (and any
+        # No prior action of ours -> the miss leaves Kodi's delay (and any
         # per-file memory the user relies on) completely alone.
         profile = make_profile()
         rig.start(profile, offset_ms=None)           # empty store
@@ -427,12 +427,11 @@ class TestZeroReset:
 
 
 class TestSettingsChangedReapply:
-    """Immediate-effect edge (E7): a settings save re-runs the decision.
+    """Immediate-effect edge: a settings save re-runs the decision.
 
     Every decision input is already read at decision instant (the per_fps
     toggle inside resolve, the apply toggle in the policy), so the trigger
-    itself is most of the feature. The one trigger-specific divergence
-    (E7 review): a save changes no profile, so a foreign delay — the
+    itself is most of the feature. The one trigger-specific divergence: a save changes no profile, so a foreign delay — the
     user's hand — survives the miss path's baseline reset; only our own
     orphaned residue is reset by a save.
     """
@@ -506,7 +505,7 @@ class TestSettingsChangedReapply:
         assert discarded == []                              # silent reset
 
     def test_settings_save_preserves_foreign_delay_on_miss(self, rig):
-        # E7 review finding (the wipe): a save changes no profile, so a
+        # A save changes no profile, so a
         # delay that DIVERGED from our last apply is the user's hand (an
         # in-flight dial, or a deliberate session value with remember off)
         # and still targets the stream in force. A stream change would
@@ -543,7 +542,7 @@ class TestSettingsChangedReapply:
         assert session.applied == (EXACT_KEY, -25)
 
     def test_miss_resolution_drops_a_held_provisional_toast(self, rig):
-        # E7 review finding (the stale toast): a held provisional "applied
+        # A held provisional "applied
         # X" cannot survive a miss resolution — without this, a settings-
         # save reset during stabilization leaves the hold intact and the
         # notifier releases a toast for a value no longer in force (the
@@ -561,7 +560,7 @@ class TestSettingsChangedReapply:
         assert session.pending_notification is None         # hold dropped
 
     def test_miss_with_no_prior_action_stays_untouched(self, rig):
-        # P1 holds under the new trigger: unlearned profile, no AOM action
+        # The wait-until-acted gate holds: unlearned profile, no action of ours
         # this session — a settings save must not disturb Kodi's delay.
         rig.start(make_profile(), offset_ms=None)           # empty store
         rig.profile_changed()
@@ -614,7 +613,7 @@ class TestSettingsChangedReapply:
 
 
 class TestStoreMutatedReapply:
-    """Management-view edge (E7 user call, 2026-07-16): a store-changing
+    """Management-view edge: a store-changing
     mutation is a resolve moment — deleting the PLAYING profile's offset
     acts immediately. Same profile_unchanged semantics as a settings save
     (the mutation changes no profile either)."""
@@ -693,7 +692,7 @@ class TestStoreMutatedReapply:
 
 
 class TestDeletedReset:
-    """D3 second amendment (E7): a marked miss forces the promised 0.
+    """A marked miss forces the promised 0.
 
     SILENT by design (user call, same day): 0 is the implicit, expected
     outcome of the deletion, so NO event and NO toast exist for it — the
@@ -702,7 +701,7 @@ class TestDeletedReset:
 
     def test_marked_miss_forces_zero_before_any_aom_action(self, rig):
         # The whole point: the user's delete authorizes the reset, so the
-        # P1 "wait until we've acted" gate does NOT apply.
+        # The "wait until we've acted" gate does NOT apply.
         profile = make_profile()
         session = rig.start(profile, offset_ms=None)     # empty store
         rig.offsets.resets = {ALL_KEY}                   # deleted in the view
@@ -758,7 +757,7 @@ class TestDeletedReset:
         # stale label (the infolabel can lag our apply RPC by a beat):
         # the fast path must not consume the marker without the RPC —
         # that would cancel the deletion permanently for this file once
-        # Kodi's per-file memory replays the old value (E7 review).
+        # Kodi's per-file memory replays the old value.
         profile = make_profile()
         session = rig.start(profile, offset_ms=-115)
         rig.profile_changed()                            # applies -115

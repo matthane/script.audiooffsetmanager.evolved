@@ -4,11 +4,9 @@ Single-shot BY DESIGN, matching the gateway convention: each method performs
 exactly one Kodi GUI call and returns, guarded so a transient GUI-layer
 failure degrades to a log line rather than unwinding the caller mid-handler.
 
-String resolution goes through ``getLocalizedString`` rather than the legacy
-``$ADDON[<addon-id> <id>]`` label macros the NotificationHandler
-used — a Phase 7 work item: the app-layer Notifier now owns message assembly
-and hands this surface a fully-resolved string, so the macro indirection is
-gone.
+String resolution goes through ``getLocalizedString``: the app-layer
+Notifier owns message assembly
+and hands this surface a fully-resolved string.
 
 This is an ``aome.kodi`` adapter: the only aome layer permitted to import
 ``xbmcgui``/``xbmcaddon``.
@@ -53,7 +51,7 @@ class Gui:
     def select(self, heading, options):
         """Show a selection list; return the chosen index, -1 on cancel/error.
 
-        The management view's list surface (D6: plain dialogs). Each option
+        The management view's list surface. Each option
         is either a plain string (single-line row) or a ``(label, detail)``
         tuple — any tuple upgrades the whole dialog to Kodi's two-line
         detail rows (``useDetails``), with strings rendering as
@@ -94,7 +92,7 @@ class Gui:
         """Show a modal OK dialog; True when it actually rendered.
 
         The bool matters to callers that gate a side effect on the user
-        having SEEN the dialog (the coexistence once-flag, E4 review): a
+        having SEEN the dialog (the coexistence once-flag): a
         swallowed GUI failure returns False so the caller can retry later
         instead of marking an unshown warning as shown.
         """

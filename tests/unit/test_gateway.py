@@ -4,8 +4,8 @@ The gateway is the redesign's single-shot boundary to Kodi: exactly one
 JSON-RPC round-trip per call, zero retries, zero sleeps — patience now lives in
 the app-layer scheduler, not here. These tests pin that contract by asserting
 the executeJSONRPC call count is 1 in every case (success, empty, and failure
-alike) and by capturing the request payload to prove the JSON-RPC methods and
-params are ported verbatim from the legacy ``rpc_client``.
+alike) and by capturing the request payload to pin the JSON-RPC methods and
+params.
 
 Kodi is faked via Kodistubs: ``xbmc.executeJSONRPC`` is monkeypatched with a
 recorder that returns canned JSON and counts calls; ``xbmc.getInfoLabel`` and
@@ -136,8 +136,8 @@ class TestAudioInfo:
         assert rec.call_count == 1
 
     def test_codec_none_passes_through_unchanged(self, monkeypatch):
-        # Single-shot contract: legacy retried while codec == 'none'; the
-        # gateway reports it as-is and lets the caller own the patience.
+        # Single-shot contract: the gateway reports codec == 'none' as-is
+        # and lets the caller own the patience.
         gw, rec = _make_gateway(monkeypatch, response={
             "result": {"currentaudiostream": {"codec": "none", "channels": 2}}})
         assert gw.audio_info(1) == ("none", 2)
@@ -263,7 +263,7 @@ class TestInfolabel:
 
 class TestWindowProperties:
     def test_home_window_lazy_then_cached(self, monkeypatch):
-        # No GUI I/O at construction (legacy shim imports build a gateway);
+        # No GUI I/O at construction;
         # the handle is created on first property use and then reused.
         monkeypatch.setattr(xbmcgui, "Window", _FakeWindow)
         gw = KodiGateway(log=_noop_log)

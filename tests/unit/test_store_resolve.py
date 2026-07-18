@@ -1,8 +1,8 @@
-"""The key-schema decision table, row by row (EVOLVED design §3.2).
+"""The key-schema decision table, row by row.
 
 Every behavior here is a decided rule, not an implementation detail:
 lookup order per toggle state, dormancy in both directions, miss = None,
-and the D4 write rule (store-instant derivation, never lookup-dependent).
+and the write rule (store-instant derivation, never lookup-dependent).
 """
 
 import pytest
@@ -121,7 +121,7 @@ def test_flip_on_then_off_leaves_specific_dormant_but_stored(tmp_path):
     assert store.get(key)["delay_ms"] == 175
 
 
-# --- the D4 write rule ---------------------------------------------------------
+# --- the write rule ---------------------------------------------------------
 
 def test_write_key_off_targets_the_all_key(tmp_path):
     assert resolve.write_key("DolbyVision", 23.976, "TrueHD",
@@ -189,8 +189,8 @@ def test_write_key_stays_strict_on_unparseable_fps(tmp_path):
 
 
 def test_resolution_ms_accessor_keeps_entry_shape_internal(tmp_path):
-    # Consumers read .ms instead of indexing entry['delay_ms'] (E2 review:
-    # the entry dict shape stays inside the store package).
+    # Consumers read .ms instead of indexing entry['delay_ms'] (the entry
+    # dict shape stays inside the store package).
     store = make_store(tmp_path)
     store.set("sdr|all|aac", -115)
     hit = resolve.resolve(store, "sdr", None, "aac", per_fps=False)
@@ -200,7 +200,7 @@ def test_resolution_ms_accessor_keeps_entry_shape_internal(tmp_path):
 
 
 
-# --- reset markers on the consulted chain (D3 second amendment, E7) -----------
+# --- reset markers on the consulted chain -----------
 
 def test_marked_miss_carries_the_reset_key(tmp_path):
     store = make_store(tmp_path)

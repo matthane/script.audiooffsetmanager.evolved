@@ -33,8 +33,8 @@ from resources.lib.aome.domain import policies
     # Aged past the deadline with recent activity -> abandon (gave up).
     ("aged_past_deadline_abandons", 20.0, 10.0, 19.0, None, 'abandon'),
     # DOCUMENTED ORDERING: past the deadline but the window is quiet NOW ->
-    # still abandon. Deadline is checked before quietness (legacy parity:
-    # the PM4K idle wait was skipped after its timeout regardless of calm).
+    # still abandon. Deadline is checked before quietness — a very late replay
+    # would itself be the disruption it was meant to repair.
     ("quiet_now_but_past_deadline_abandons", 20.0, 10.0, 1.0, None, 'abandon'),
 
     # -- served (our own later seek already replayed the glitch) -------------
@@ -48,7 +48,7 @@ from resources.lib.aome.domain import policies
     ("own_seek_before_request_not_served", 10.0, 5.0, 3.0, 4.0, 'seek'),
     # Equal timestamps are NOT "after" (strict >): not served -> seek.
     # Same-instant execution counts as served (>= boundary): the safe
-    # side against a double rewind, matching the legacy cooldown's drop.
+    # side against a double rewind.
     ("own_seek_equal_to_request_is_served", 10.0, 8.0, 1.0, 8.0, 'abandon'),
     # last_own_seek None (we have never seeked this session) is handled.
     ("no_prior_own_seek_handled", 10.0, 5.0, 3.0, None, 'seek'),

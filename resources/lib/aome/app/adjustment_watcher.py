@@ -1,36 +1,28 @@
 """Adjustment watching: poll the audio-delay infolabel, store user changes.
 
-Replaces the legacy ``ActiveMonitor`` — a dedicated thread that watched the
-Kodi audio-settings/OSD-slider dialog IDs (10124/10145) and, on dialog close,
-read the slider value and stored it. That dialog-ID coupling had two costs:
-it needed its own thread (and the cross-thread profile read that came with
-it), and it saw ONLY adjustments made through the OSD. A change made with a
-keymap, a remote app, or a JSON-RPC ``Player.SetAudioDelay`` never opened a
-dialog, so the legacy monitor's ``audio_settings_open`` / ``slider_was_open``
-state machine never fired and the change was silently lost.
-
-The new design polls ``Player.AudioDelay`` on the dispatcher thread via
+The watcher polls ``Player.AudioDelay`` on the dispatcher thread via
 self-scheduled ``WatchTick`` events. No threads, no dialog IDs, no
-open/close state machine — every source of an adjustment is caught because
-we watch the VALUE, not the GUI that (sometimes) sets it.
+open/close state machine — watching the VALUE rather than the OSD slider
+dialog catches every source of an adjustment: a keymap, a remote app, or a
+JSON-RPC ``Player.SetAudioDelay`` all change the delay without ever
+opening a dialog.
 
-WATCHING and STORING are separately gated (beta9 field pass). Watchability
+WATCHING and STORING are separately gated. Watchability
 (``_watchable``) is just "a profile exists": the watcher observes and
 settles adjustments whenever something plays, because the settle is a
 USER-ACTION fact with its own consumers — every quiesced foreign value
 posts ``UserOffsetSettled`` (the seek scheduler's 'change' replay rides
 it), independent of the learn loop. STORING is the separately-gated learn
-half (``_store_eligible``: "Learn audio offsets" on — the promoted core
-of the product, P2 — and the store writable): only then does the settle
+half (``_store_eligible``: "Learn audio offsets" on — the core of the
+product — and the store writable): only then does the settle
 also store and post ``UserOffsetSaved``. A settle that cannot store still
-advances the baseline (this covers the E2 unwritable-store finding
-structurally: no re-detect/re-fail loop, because the settled value is
+advances the baseline (no re-detect/re-fail loop: the settled value is
 accounted for without a store attempt), and the ``watch_settled_ms``
 marker keeps the EVENT at one per adjustment even on the store-failure
 retry path, which deliberately keeps the baseline so the store retries.
-The apply toggle is consulted by NEITHER half (D9 amended: with applying
+The apply toggle is consulted by NEITHER half: with applying
 off the addon stops setting the offset, but dials still settle and — with
-learning on — still store; the re-teach mode). No axis-gating happens here
+learning on — still store (the re-teach mode). No axis-gating happens here
 — the store path (``_store``) re-validates the WHOLE profile
 (``policies.is_complete``) before writing, so an incomplete stream is
 watched, settles, but never stores.
@@ -43,12 +35,12 @@ never stored — this is the failed-RPC-leftover guard: a delay left behind by
 an apply RPC that failed, or pre-existing player state, must not be written
 over the user's configured offset.
 
-Quiescence replaces the legacy "slider closed" moment: a foreign value must
+Quiescence stands in for a "user is done" signal: a foreign value must
 hold unchanged for ``QUIESCENCE_SECONDS`` before it is stored (the tick
 cadence tightens to ``ACTIVE_TICK_SECONDS`` while a candidate is pending).
-Two teardown-phantom defenses back this up (Phase 8 field bug, 2026-07-15):
-during a slow stop — PM4K flows and natural end-of-media on CoreELEC
-measured 0.3-1.15s — Kodi's delay infolabel reads a parseable 0 while the
+Two teardown-phantom defenses back this up:
+during a slow stop — field-measured at 0.3-1.15s across external-player
+flows and natural end-of-media — Kodi's delay infolabel reads a parseable 0 while the
 session is still alive, which is indistinguishable from a user dialing to
 0. ``QUIESCENCE_SECONDS`` is sized to outrun that window, and the store
 path re-checks ``gateway.active_player_id()`` at store time, discarding
@@ -64,17 +56,16 @@ own applied value shows up in the infolabel just like a user's would. The
 applier records ``session.applied = (store_key, delay_ms)`` BEFORE issuing
 the RPC precisely so ``observed == session.applied[1]`` here is always
 current; a match is our own value — baseline-refresh, never store. A
-corollary (reviewed, accepted): an automatic apply landing INSIDE a pending
+corollary: an automatic apply landing INSIDE a pending
 quiescence window supersedes the candidate — the pending value was dialed
 against the resolution that just changed, so its target is ambiguous and
-dropping beats storing it under the wrong key (the legacy monitor did the
-latter — the adopt-vs-store interleaving this design closes). The
+dropping beats storing it under the wrong key. The
 corollary is enforced STRUCTURALLY, not just implied by the echo
 comparison — the infolabel can lag our RPC by a beat, and a stale reading
 crossing quiescence right then would store the pre-change value and then
-chase our own value as a fresh adjustment (E7 review findings). Three
+chase our own value as a fresh adjustment. Three
 enforcement points: ``OffsetApplied`` (every apply trigger — adoption,
-retry, the E7 settings-save/mutation re-applies) and ``DelayReset``
+retry, the settings-save/mutation re-applies) and ``DelayReset``
 (every successful silent reset) both clear the observation here; and the
 StoreMutationHandler clears it SYNCHRONOUSLY at the mutation itself,
 because queued events leave timer-interleave windows and the
@@ -82,24 +73,20 @@ already-0/failed-RPC reset branches post no event at all — without that,
 a candidate dialed just before a delete could quiesce and re-store the
 very entry the user deleted.
 
-The classic settings-dialog store deferral is DELETED, not ported: offsets
-live in the sparse store file now, not in settings.xml, so the dialog's
-save-on-close cannot clobber a store write — that hazard class is gone with
-the medium (P4).
+No settings-dialog deferral exists: offsets
+live in the sparse store file, never in settings.xml, so the dialog's
+save-on-close cannot clobber a store write.
 
-Store-time profile derivation on the dispatcher thread closes the legacy
-adjust-vs-adopt interleaving: the old monitor thread stored under the live
-profile while the detector could re-adopt a different one concurrently. Now
-adoption (StreamDetector) and store (here) are serialized on ONE thread and
+Adoption (StreamDetector) and store (here) are serialized on ONE thread and
 the write key is derived from ``session.profile`` + the live ``per_fps``
-toggle at the store instant (D4: one rule, never conditional on lookup
-history — the OffsetTable routes through ``resolve.write_key``).
+toggle at the store instant (one rule, never conditional on lookup
+history — the OffsetTable routes through ``resolve.write_key``), so a
+store can never interleave with a concurrent profile re-adoption.
 
 Every settle posts a session-stamped ``UserOffsetSettled`` (the
 user-action fact — the seek scheduler's 'change' replay rides it); a
 successful store additionally posts ``UserOffsetSaved`` (profile + ms +
-resolved key captured at store time), the typed replacement for the
-legacy unstamped ``USER_ADJUSTMENT`` signal.
+resolved key captured at store time).
 
 Pure app layer: Kodi I/O via the injected gateway, eligibility reads via the
 injected settings adapter, offset reads/writes via the injected OffsetTable
@@ -118,11 +105,11 @@ class AdjustmentWatcher:
 
     IDLE_TICK_SECONDS = 1.0     # poll cadence when nothing is happening
     ACTIVE_TICK_SECONDS = 0.25  # tightened cadence while observing a change
-    # Foreign value must hold this long to be stored. 2.0s (raised from 1.0)
-    # outruns the teardown phantom: field-measured stop windows where the
-    # delay infolabel reads a parseable 0 while the session is still alive
-    # ran 0.3-1.15s (Phase 8, CoreELEC/PM4K 2026-07-15; a 1.15s window beat
-    # the old 1.0s quiescence and stored 0 over the user's offset).
+    # Foreign value must hold this long to be stored. 2.0s outruns the
+    # teardown phantom: field-measured stop windows where the delay
+    # infolabel reads a parseable 0 while the session is still alive ran
+    # 0.3-1.15s, and a shorter quiescence let that phantom 0 quiesce and
+    # store over the user's offset.
     QUIESCENCE_SECONDS = 2.0
     INFOLABEL_AUDIO_DELAY = 'Player.AudioDelay'
     _TICK_KEY = 'aome.watcher.tick'
@@ -152,9 +139,8 @@ class AdjustmentWatcher:
         """Watch whenever a profile exists — settling is a user-action
         fact with its own consumers, so neither the learn toggle nor the
         store's writability gates the watch (module docstring; the
-        settle-time ``_store_eligible`` check owns those). The classic
-        per-HDR enable and hdr/fps unknown-checks are gone with their
-        features; completeness is the STORE path's concern.
+        settle-time ``_store_eligible`` check owns those). Profile
+        completeness is the STORE path's concern.
         """
         return profile is not None
 
@@ -163,7 +149,7 @@ class AdjustmentWatcher:
 
         Learning on, and the store writable — a permanently unwritable
         store (newer-schema file after a downgrade) must never reach a
-        store attempt (E2 review finding; the settle path's baseline
+        store attempt (the settle path's baseline
         advance is what prevents the re-detect loop).
         """
         return (self._settings.remember_adjustments_enabled()
@@ -285,7 +271,7 @@ class AdjustmentWatcher:
         if now - pending[1] < self.QUIESCENCE_SECONDS:
             return self.ACTIVE_TICK_SECONDS
         if self._gateway.active_player_id() == -1:
-            # Teardown phantom guard (Phase 8 field bug): during a slow stop
+            # Teardown phantom guard: during a slow stop
             # the delay infolabel can read a parseable 0 while PlaybackStopped
             # hasn't landed yet, so the quiesced "adjustment" belongs to a
             # dying player. Never store an adjustment for a player that no
@@ -308,7 +294,7 @@ class AdjustmentWatcher:
         loop — but at most ONCE per adjustment: the store-failure branch
         deliberately keeps the baseline so the store retries, and without
         the ``watch_settled_ms`` marker every ~2s retry cycle would
-        re-post the event and rewind playback in a loop (review finding).
+        re-post the event and rewind playback in a loop.
         The marker is episode state: ``_clear_observation`` resets it, so
         a re-dial of the same value after a gap/supersede posts fresh.
         The store step is the separately-gated learn half; when it is
@@ -374,7 +360,7 @@ class AdjustmentWatcher:
         session.applied = (stored_key, observed_ms)
         # The store just changed: any remembered miss-chain is stale (a
         # delete->re-teach->delete cycle must re-log its miss, not be
-        # swallowed by session-lifetime dedupe — E2 review finding).
+        # swallowed by session-lifetime dedupe).
         session.miss_announced = None
         self._log(f"AOMe_AdjustmentWatcher: Stored audio offset "
                   f"{observed_ms}ms for {stored_key}")
@@ -388,7 +374,7 @@ class AdjustmentWatcher:
         """The settled value is ACCOUNTED FOR: it can never re-detect.
 
         One helper for the invariant's two halves (candidate dropped AND
-        baseline advanced) — the E2 re-detect loop is exactly what one
+        baseline advanced) — a re-detect loop is exactly what one
         half without the other reintroduces. The store-failure branch is
         the deliberate exception: it keeps the baseline so the store
         retries (the settled marker keeps the EVENT from repeating).
@@ -403,8 +389,8 @@ class AdjustmentWatcher:
         while monitoring was disabled would otherwise compare against the
         stale baseline on re-enable and be stored as a fresh adjustment —
         but only a change observed WHILE watching is an adjustment. Clearing
-        makes the first post-gap observation re-adopt silently (exactly the
-        fresh state a restarted legacy monitor had). The settled marker is
+        makes the first post-gap observation re-adopt silently, as a fresh
+        start would. The settled marker is
         episode state and falls with the rest.
         """
         session.watch_pending = None

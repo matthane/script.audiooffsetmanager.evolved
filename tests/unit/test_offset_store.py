@@ -164,8 +164,8 @@ def test_clear_returns_count_and_persists_empty(tmp_path):
     reopened, _p, _d, _w = make_store(tmp_path)
     reopened.load()
     assert len(reopened) == 0
-    # Clear-all leaves a reset marker per removed key (D3 second
-    # amendment): the "expect 0 next time" contract holds for clear too.
+    # Clear-all leaves a reset marker per removed key: the "expect 0
+    # next time" contract holds for clear too.
     on_disk = json.loads(open(path, "r", encoding="utf-8").read())
     assert on_disk == {"version": 1, "profiles": {},
                        "resets": sorted([KEY, "other|24|ac3"])}
@@ -308,7 +308,7 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
     import resources.lib.aome.store.offset_store as module
 
     def broken_replace(src, dst):
-        # PERSISTENT failure: every attempt (including the E4 sharing-
+        # PERSISTENT failure: every attempt (including the sharing-
         # violation retries) fails, so the persist genuinely misses.
         raise OSError("simulated replace failure")
 
@@ -327,7 +327,7 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
 
 def test_transient_replace_failure_is_retried_and_recovers(tmp_path,
                                                            monkeypatch):
-    # E4 review: on Windows a concurrent reader (the management view's
+    # On Windows a concurrent reader (the management view's
     # read_profiles in the script process) holding offsets.json open makes
     # os.replace fail with a sharing violation for a sub-millisecond
     # window. One transient failure must not lose the write.
@@ -357,7 +357,7 @@ def test_transient_replace_failure_is_retried_and_recovers(tmp_path,
 
 
 def test_read_profiles_names_dropped_entries_through_log_debug(tmp_path):
-    # E4 review: load() names every dropped entry; the reader must too, or
+    # load() names every dropped entry; the reader must too, or
     # a hand-edited entry vanishes from the management view untraceably.
     path = tmp_path / "offsets.json"
     path.write_text(json.dumps({"version": 1, "profiles": {
@@ -436,7 +436,7 @@ def test_read_only_property_reflects_future_version(tmp_path):
 def test_delete_reports_persist_failure(tmp_path, monkeypatch):
     # A delete whose persist fails must return False: the entry would
     # resurrect from disk on the next load, and the mutation-channel ack
-    # (E4) must not claim durability the file does not have.
+    # must not claim durability the file does not have.
     store, path, _debug, _warning = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
@@ -538,7 +538,7 @@ def test_read_profiles_refuses_future_schema_untouched(tmp_path):
     with pytest.raises(StoreUnreadable) as excinfo:
         _read_profiles(str(path))
     # future=True: the view words this as "preserved, not shown" — NEVER
-    # as the corrupt case's quarantine-and-reset promise (E4 review).
+    # as the corrupt case's quarantine-and-reset promise.
     assert excinfo.value.future is True
     assert path.read_text(encoding="utf-8") == blob   # byte-identical
 
@@ -556,7 +556,7 @@ def test_read_profiles_filters_malformed_entries_like_load(tmp_path):
     assert set(entries) == {KEY}
 
 
-# --- reset markers (D3 second amendment, E7) ----------------------------------
+# --- reset markers ----------------------------------
 
 def test_delete_leaves_a_persisted_reset_marker(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)

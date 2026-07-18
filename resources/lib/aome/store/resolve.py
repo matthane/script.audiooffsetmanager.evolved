@@ -1,9 +1,9 @@
-"""Lookup and write-key semantics for the sparse store (the D3/D4 core).
+"""Lookup and write-key semantics for the sparse store.
 
 This module IS the key-schema decision table, executable. Both rules are
 deliberately trivial — the design work was making them so:
 
-LOOKUP (D3) — both levels are single keys; no scan exists, so no tie-break
+LOOKUP — both levels are single keys; no scan exists, so no tie-break
 can exist:
 
     per_fps OFF (default):  <hdr>|all|<audio>            -> exact | miss
@@ -12,8 +12,8 @@ can exist:
                             else                         -> miss
 
 A miss means the caller applies NOTHING (Kodi's delay stays untouched) —
-UNLESS a consulted key carries a reset marker (the user deleted it; D3
-second amendment, E7): ``reset_keys`` names every consulted key with a
+UNLESS a consulted key carries a reset marker (the user deleted it):
+``reset_keys`` names every consulted key with a
 pending reset so the applier can force the 0 the deletion promised. A key
 consulted BEFORE a hit can carry a marker too (deleted exact entry over a
 kept ``all`` fallback); the hit wins — the fallback was kept deliberately
@@ -22,7 +22,7 @@ marker silently. Specific-fps entries are dormant while the toggle is
 OFF; `all` entries remain reachable while it is ON (as the fallback
 level) — flipping the toggle is non-destructive in both directions.
 
-WRITE (D4) — one rule, zero history-dependence: the write key is derived
+WRITE — one rule, zero history-dependence: the write key is derived
 at store instant from the CURRENT profile facts plus the CURRENT toggle
 value, and is never conditional on what any lookup hit. ``hit_kind``
 travels for logging/notification wording only. This is the sparse-store
@@ -115,7 +115,7 @@ def _pending(consulted, store):
 
 
 def write_key(hdr_raw, fps, audio_raw, *, per_fps):
-    """The single key a manual adjustment is stored under (D4).
+    """The single key a manual adjustment is stored under.
 
     Derived from the CURRENT profile facts + CURRENT toggle at the moment
     of storing — never from lookup history. With the toggle off this is

@@ -1,23 +1,23 @@
 """Shared test fakes for the Audio Offset Manager suite.
 
-``FakeClock`` (Phase 2) is the deterministic clock every phase reuses: the
+``FakeClock`` is the deterministic clock every suite reuses: the
 dispatcher — and every component that measures intervals — takes an injected
 ``clock`` callable that defaults to ``time.monotonic``. Tests pass a
 ``FakeClock`` instead so time only moves when the test says so, and
 timer-driven behaviour is driven with ``Dispatcher.run_pending()`` rather
 than real sleeps.
 
-``FakeGateway`` (Phase 4) is the scriptable stand-in for
+``FakeGateway`` is the scriptable stand-in for
 ``aome.kodi.gateway.KodiGateway``: tests mutate its attributes between pumps
 to script what the "platform" reports, mirroring how the real single-shot
 gateway reads live Kodi state on every call.
 
-``FakeFacade`` (Phase 5) is the shared settings-facade double covering the
+``FakeFacade`` is the shared settings-facade double covering the
 methods app components read (detector: fps_override_enabled; scheduler:
 seek_back_config) — one fake, so the facade contract cannot drift between
 suites.
 
-``FakeGui`` (Phase 7) is the stand-in for ``aome.kodi.gui.Gui``: it records
+``FakeGui`` is the stand-in for ``aome.kodi.gui.Gui``: it records
 toasts and returns a deterministic ``localized()`` marker so the Notifier's
 message assembly is asserted without a real string table.
 
@@ -125,10 +125,10 @@ class FakeFacade:
     table's key composition; ``seek_configs`` maps a seek reason to its
     (enabled, seconds) pair, defaulting every reason to (True, 4);
     ``remember_adjustments`` gates the adjustment watcher and
-    ``apply_offsets`` the applier (orthogonal — D9 amended);
+    ``apply_offsets`` the applier (orthogonal);
     ``notify_apply`` / ``notify_learn`` /
     ``notification_ms`` cover the Notifier's per-kind toast gates and
-    duration (D10 defaults: both gates ON). Offset reads/writes live on
+    duration (defaults: both gates ON). Offset reads/writes live on
     ``FakeOffsetTable`` (matching the real split:
     ``aome.kodi.settings.Settings`` + ``OffsetTable``).
     """
@@ -249,7 +249,7 @@ class FakeOffsetTable:
 class FakeGui:
     """Records toasts/dialogs; localized() returns a deterministic marker.
 
-    The dialog surfaces mirror the real ``Gui`` (D6 plain dialogs) and are
+    The dialog surfaces mirror the real ``Gui`` (plain dialogs) and are
     scripted by queueing answers: ``select_answers`` (int per call; -1 =
     cancel, and an exhausted queue answers -1 so a view loop always
     terminates) and ``yesno_answers`` (bool per call; exhausted -> False,

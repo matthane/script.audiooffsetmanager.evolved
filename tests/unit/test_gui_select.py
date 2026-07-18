@@ -2,7 +2,7 @@
 
 The manage view sends plain strings and/or ``(label, detail)`` tuples; the
 adapter must convert a mixed list to ListItems and upgrade the dialog to
-``useDetails``, while an all-strings list stays on the classic plain call.
+``useDetails``, while an all-strings list stays on the plain call.
 Kodistubs' ``xbmcgui`` classes are monkeypatched with recorders because the
 stubs do not retain constructor arguments.
 """

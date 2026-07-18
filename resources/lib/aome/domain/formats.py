@@ -1,15 +1,12 @@
 """The stream-classification absence sentinel.
 
-Classic AOM enumerated its whole format vocabulary here (HDR types, audio
-formats, fps buckets, display names, settings-id tables) because the offset
-matrix in settings.xml needed a closed, ordered list to generate against.
-Evolved accepts formats verbatim (D11): the reported string IS the store-key
-segment, so there is no vocabulary to enumerate — the tables died with the
-matrix and the generator in E3. Display names live with the key codec in
-``aome.store.keys`` (the ONE surviving table).
+Formats are accepted verbatim — the reported string IS the store-key
+segment — so there is no format vocabulary to enumerate here. Display
+names live with the key codec in ``aome.store.keys`` (the one display
+table in the addon).
 
-What remains is the single cross-layer sentinel for "this axis could not be
-detected". ``aome.store.keys`` imports it (absence normalization), the
+This module holds the single cross-layer sentinel for "this axis could not
+be detected". ``aome.store.keys`` imports it (absence normalization), the
 detector stamps it, and ``policies.is_complete`` gates on it.
 
 Pure Python: no Kodi imports.

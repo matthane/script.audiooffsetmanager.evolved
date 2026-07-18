@@ -2,8 +2,7 @@
 
 Events are dispatched by ``type`` and parked on a queue / timer heap, so each
 must be an immutable value object: a frozen dataclass with equality by payload.
-This suite pins that for the whole catalog and asserts the player/monitor group
-Phase 2 posts and consumes exists by name.
+This suite pins that for the whole catalog and asserts the player/monitor group exists by name.
 """
 
 from dataclasses import FrozenInstanceError, is_dataclass
@@ -13,7 +12,7 @@ import pytest
 from resources.lib.aome.app import events
 
 
-# The player/monitor group Phase 2 wires up (posted by the Kodi bridges).
+# The player/monitor group (posted by the Kodi bridges).
 PHASE2_GROUP = [
     "PlaybackStarted", "AvChanged", "PlaybackStopped", "PlaybackEnded",
     "Paused", "Resumed", "SeekOccurred", "SeekChapter", "SpeedChanged",
@@ -80,5 +79,5 @@ def test_distinct_types_are_not_equal():
 @pytest.mark.parametrize("name", PHASE2_GROUP)
 def test_phase2_player_monitor_group_exists(name):
     cls = getattr(events, name, None)
-    assert cls is not None, "missing Phase 2 event: {}".format(name)
+    assert cls is not None, "missing event: {}".format(name)
     assert is_dataclass(cls) and cls.__dataclass_params__.frozen is True

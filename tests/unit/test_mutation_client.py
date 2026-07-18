@@ -1,7 +1,7 @@
 """Unit tests for the script-process mutation channel client.
 
-The broadcast leg goes through an injected recording gateway (the E4-review
-consolidation: the RPC envelope lives only in ``KodiGateway.notify_all``);
+The broadcast leg goes through an injected recording gateway (the RPC
+envelope lives only in ``KodiGateway.notify_all``);
 acks are synthesized by calling ``onNotification`` directly — the same
 delivery path Kodi's announce thread uses. ``waitForAbort`` is patched to
 advance without real sleeping so the timeout path runs instantly.
@@ -98,7 +98,7 @@ def test_stale_ack_from_an_earlier_request_is_ignored(monkeypatch):
 
 
 def test_ack_while_idle_is_ignored_even_with_null_request_id(monkeypatch):
-    # E4 review: the idle _pending_id is None, and a malformed/foreign ack
+    # The idle _pending_id is None, and a malformed/foreign ack
     # can carry request_id None — the idle guard must reject it rather
     # than letting None == None pre-seed a reply.
     client = make_client(monkeypatch, RecordingGateway())

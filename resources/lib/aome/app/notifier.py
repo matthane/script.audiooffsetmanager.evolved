@@ -1,9 +1,7 @@
 """User-facing offset notifications — the app-layer toast owner.
 
-Replaces the legacy NotificationHandler AND the pending-notification dance
-OffsetManager used to run inline (``_maybe_send_pending_notification`` plus the
-provisional-suppression block in ``apply_audio_offset``). Everything about
-"should a toast fire, and which message" now lives here, driven by typed
+Everything about
+"should a toast fire, and which message" lives here, driven by typed
 events on the dispatcher thread:
 
 * ``OffsetApplied`` — an automatic apply. A provisional apply (the stream is
@@ -17,22 +15,20 @@ events on the dispatcher thread:
   stale stream). Identity uses ``policies.stream_identity`` with the LIVE
   ``per_fps_offsets`` toggle — the SAME notion the detector's same-stream
   refresh uses — so an fps wiggle the offset system deliberately ignores
-  (toggle off) can never drop a toast for an apply that really happened
-  (E2 review finding: ``profile.identity()`` here disagreed with the
-  detector exactly when the toggle was off). The held profile rides on the
+  (toggle off) can never drop a toast for an apply that really happened.
+  The held profile rides on the
   hold whole, and both sides of the comparison are derived fresh at
   release time.
 * ``UserOffsetSaved`` — a manual adjustment the AdjustmentWatcher stored.
   Toasts from the event's own profile/ms (captured at store time on the
   dispatcher thread); session/settings are deliberately NOT re-read.
 
-Deferral-until-stable and the 1s duplicate-suppression window are both ported
-from the legacy path. The dedupe clock is the injected ``time.monotonic`` — a
-deliberate upgrade from the legacy ``time.time``, which mis-measured the
+The dedupe clock is the injected ``time.monotonic`` — never
+``time.time``, which would mis-measure the
 window across wall-clock adjustments.
 
-The fade guard (classic 2.0.0~beta3 field fix, cherry-picked) covers a Kodi
-GUI hazard the legacy path never noticed: GUIDialogKaiToast swaps a queued
+The fade guard covers a Kodi
+GUI hazard: GUIDialogKaiToast swaps a queued
 toast's content into the window in place while it is showing (restarting the
 display timer, window stays open — fine) and opens fresh when fully closed
 (fine), but a toast popping from Kodi's queue during the window's CLOSE
@@ -52,7 +48,7 @@ before. Best-effort by design: toasts raised by Kodi itself or OTHER addons
 share the same GUI window but are invisible to this bookkeeping.
 
 Settings are read through the injected facade: the per-kind toast gates
-``notify_apply_enabled`` / ``notify_learn_enabled`` (D10: each toast kind has
+``notify_apply_enabled`` / ``notify_learn_enabled`` (each toast kind has
 its own toggle, both default ON) plus ``notification_duration_ms``. Toasts go
 through the injected gui. Pure app layer: stdlib + ``resources.lib.aome`` only.
 """
@@ -67,13 +63,13 @@ from resources.lib.aome.store import keys as store_keys
 STRING_OFFSET_APPLIED = 32092
 STRING_OFFSET_SAVED = 32093
 # "Stored offsets were unreadable and were reset (backup kept as
-# offsets.json.bad)" — the startup corruption notice (moved here from the
-# runtime with the typed StoreCorrupted event, per the E4 ledger).
+# offsets.json.bad)" — the startup corruption notice (raised via the
+# typed StoreCorrupted event).
 STRING_STORE_CORRUPTED = 32121
 CORRUPTION_NOTICE_MS = 7000
 # "Offset not saved" / "Reset to 0 ms. Nothing is stored for this stream":
 # the zero-reset discarded a manual adjustment that never reached the
-# store (D3 amendment, E7).
+# store.
 STRING_OFFSET_NOT_SAVED = 32132
 STRING_RESET_BASELINE = 32133
 
@@ -142,8 +138,7 @@ class Notifier:
         session = self._sessions.current
         if session.pending_notification is None:
             return
-        # Defensive parity with the legacy release check: only release once the
-        # session is genuinely STABLE.
+        # Only release once the session is genuinely STABLE.
         if session.stream_state is not StreamState.STABLE:
             return
         pending_profile, pending_ms = session.pending_notification
@@ -167,8 +162,7 @@ class Notifier:
         # A manual save supersedes any held provisional toast: the user's
         # value is the fact on the ground, and releasing the old held ms on
         # the next stabilization would announce a value that no longer
-        # applies. (Legacy parity: its non-suppressed apply path cleared the
-        # pending toast before the equivalent sequence could surface it.)
+        # applies.
         self._sessions.current.pending_notification = None
         # The payload is the profile/ms captured at store time by the watcher;
         # do NOT re-read session/settings for the message.
@@ -178,8 +172,8 @@ class Notifier:
     def _on_unsaved_discarded(self, event):
         if not self._sessions.is_alive(event.session_id):
             return
-        # Save-related feedback, so it lives under the LEARN gate (D3
-        # amendment): the user's manual adjustment was discarded by the
+        # Save-related feedback, so it lives under the LEARN gate:
+        # the user's manual adjustment was discarded by the
         # zero-reset because it never reached the store — the toast is the
         # "why did my offset vanish" answer. Deliberately outside the
         # dedupe window (dedupe_key=None; it fires once per reset by
@@ -222,8 +216,8 @@ class Notifier:
         # request time and cannot have gone stale (an immediate raise cancels
         # this timer; a contender key-replaces it), but the per-kind gate is
         # a live setting and must be re-checked at fire time — it rides on
-        # the event, so the release re-gates under its OWN kind's toggle
-        # (D10), never another's. None = an ungated notice.
+        # the event, so the release re-gates under its OWN kind's toggle,
+        # never another's. None = an ungated notice.
         if event.enabled is not None and not event.enabled():
             return
         self._raise(event.message, event.duration_ms, event.title,
@@ -238,12 +232,12 @@ class Notifier:
                 == policies.stream_identity(current, per_fps))
 
     def _toast(self, string_id, ms, profile, *, enabled):
-        # D10: each toast kind is gated by its own toggle, so muting the
+        # Each toast kind is gated by its own toggle, so muting the
         # routine apply announcements never silences the learn feedback
         # (or vice versa). ``enabled`` is the gate READ (the bound settings
         # accessor, evaluated here at fire time), passed by the call site —
         # which knows its kind statically — so a future toast kind can never
-        # silently inherit another kind's toggle (E3 review).
+        # silently inherit another kind's toggle.
         if not enabled():
             return
 
@@ -257,7 +251,7 @@ class Notifier:
             if key == last_key and now - last_at < self.DEDUPE_SECONDS:
                 return
 
-        # Toast shape (E7 field fix, beta1 on Windows): the saved/applied
+        # Toast shape: the saved/applied
         # line rides as the toast TITLE and the profile summary is the
         # whole message — packing both into the message with a newline made
         # Kodi's single-line label auto-scroll (perceived as flashing) and

@@ -1,6 +1,6 @@
 """OffsetStore: the sparse JSON offset database (addon_data/offsets.json).
 
-Evolved keeps learned audio offsets here, keyed by stream profile, instead of
+The addon keeps learned audio offsets here, keyed by stream profile, instead of
 in settings.xml. This module is the whole persistence surface for that file.
 
 Design decisions worth stating up front:
@@ -25,10 +25,10 @@ Design decisions worth stating up front:
   either the old file or the new one, never a half-written one.
 * **Deletion leaves a reset marker.** ``delete``/``clear`` — and an import
   (``replace_all``) that drops keys — record the removed key(s) in a
-  ``resets`` section (E7 field decision): the user who deletes a
+  ``resets`` section: the user who deletes a
   profile expects 0 the NEXT time that format plays, but Kodi's own per-file
   memory still holds the old applied value — the marker lets the applier
-  force the 0 once, bypassing the P1 "never act first" guard for exactly the
+  force the 0 once, bypassing the "never act first" guard for exactly the
   keys the user removed. Markers are consumed by the applier, superseded by
   a new ``set`` for the key, and invisible to the management view (they are
   not offsets). The section is additive: absent in old files, ignored (and
@@ -101,8 +101,8 @@ class StoreUnreadable(Exception):
 
     ``future`` is True for the newer-schema case, which the view must word
     DIFFERENTLY from corruption: the service preserves such a file
-    untouched (read-only, "the future is sacred"), it never quarantines it
-    (E4 review — the corruption wording falsely promised a reset).
+    untouched (read-only, "the future is sacred") and never quarantines
+    it, so corruption wording would falsely promise a reset.
     """
 
     def __init__(self, message, *, future=False):
@@ -520,8 +520,8 @@ class OffsetStore:
         On Windows a concurrent reader holding the target open (the script
         process's ``read_profiles`` while the management view renders)
         makes ``os.replace`` fail with a sharing violation. That read
-        window is sub-millisecond, so a brief retry closes the race (E4
-        review); a persistent failure re-raises into _persist's handler.
+        window is sub-millisecond, so a brief retry closes the race;
+        a persistent failure re-raises into _persist's handler.
         """
         for _attempt in range(2):
             try:

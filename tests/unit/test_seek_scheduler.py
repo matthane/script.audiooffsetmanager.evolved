@@ -13,7 +13,7 @@ Timing facts the tests rely on (from the module):
   later, key-replaced so only one attempt per reason is ever live.
 * The session's ``started_at`` counts as seek activity, so a fresh seek must
   wait QUIET_WINDOW (2.0s) from playback start before it can execute — this
-  is how the legacy mandatory 2s post-start settle is reproduced.
+  is the post-start settle.
 * Per-reason DEBOUNCE (2.0s) is measured from that reason's last EXECUTED
   seek; DEADLINE (8.0s) is measured from the request.
 * Seeks execute only when ``session.stream_state is STABLE``; tests reach
@@ -158,8 +158,7 @@ class TestTriggersAndDebounce:
         # A second trigger for the same reason within DEBOUNCE of its EXECUTED
         # seek is dropped ("too soon"); after DEBOUNCE it goes through again.
         # (Triggers land strictly AFTER the prior execution instant — a
-        # same-instant trigger is served-abandoned by the policy, like the
-        # legacy cooldown.)
+        # same-instant trigger is served-abandoned by the policy.)
         rig.start()
         rig.make_stable()
         rig.advance(QUIET)                # resume seek at t=2.0
@@ -213,8 +212,7 @@ class TestTriggersAndDebounce:
     def test_initial_stabilization_skipped_then_adjust(self, rig):
         # A change-announcing StreamStabilized stamped ``initial`` is the
         # startup settle: it requests nothing (the detector derives the stamp
-        # from the state machine's stabilization count — the Phase 6
-        # replacement for the consumed-latch semantics). A non-initial one
+        # from the state machine's stabilization count). A non-initial one
         # requests 'adjust'; profile_changed=False never requests.
         rig.start()
         rig.make_stable()
@@ -238,7 +236,7 @@ class TestTriggersAndDebounce:
 
     def test_user_offset_settled_requests_change_and_stale_stamp_is_inert(self, rig):
         # The 'change' replay rides the SETTLE (user-action) fact, not the
-        # store, so it fires with learning off too (beta9 field pass).
+        # store, so it fires with learning off too.
         # No session yet -> a UserOffsetSettled is a no-op.
         rig.post(events.UserOffsetSettled(session_id=1, ms=-50))
         assert rig.pending == set()
@@ -258,7 +256,7 @@ class TestTriggersAndDebounce:
 
 
 # ============================================================================
-# Execution guards (each pins one legacy guard's replacement)
+# Execution guards
 # ============================================================================
 
 class TestExecutionGuards:
@@ -280,8 +278,7 @@ class TestExecutionGuards:
     def test_never_stabilizes_seeks_after_stability_grace(self, rig):
         # A session that never reaches STABLE does NOT lose its replay: the
         # stability preference only holds for STABILITY_GRACE, after which
-        # the quiet window alone decides (legacy sought blind after 2s on
-        # every stream; abandoning would regress undetectable streams).
+        # the quiet window alone decides (abandoning would punish undetectable streams).
         rig.start()                       # resume requested at t=0.0, never stable
         rig.advance(QUIET)                # t=2.0: quiet, but within the grace
         assert rig.seeks == []
@@ -311,7 +308,7 @@ class TestExecutionGuards:
 
     def test_disabled_config_drops_at_trigger_time(self):
         # seek_back_config disabled -> the trigger never schedules anything
-        # (legacy 'change' parity: enabled was checked at trigger time).
+        # (enabled is checked at trigger time).
         rig = Rig()
         rig.facade.seek_configs['resume'] = (False, 0)
         rig.start()
@@ -321,7 +318,7 @@ class TestExecutionGuards:
 
     def test_zero_seconds_config_warns_at_trigger_time(self):
         # Enabled-but-zero-length is a user misconfiguration and must surface
-        # at WARNING in normal field logs (legacy parity), not just debug.
+        # at WARNING in normal field logs, not just debug.
         rig = Rig()
         rig.facade.seek_configs['resume'] = (True, 0)
         rig.start()
@@ -427,7 +424,7 @@ class TestExecutionGuards:
     def test_same_instant_trigger_is_served_by_that_instants_seek(self, rig):
         # The >= boundary: a trigger requested at the exact instant one of our
         # seeks executes is treated as served (the safe side against a double
-        # rewind — legacy's cooldown dropped it too).
+        # rewind).
         rig.start()
         rig.make_stable()
         rig.advance(QUIET)                # resume executes at t=2.0

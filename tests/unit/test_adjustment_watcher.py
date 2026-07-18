@@ -7,13 +7,13 @@ delay is set via ``gateway.infolabels['Player.AudioDelay']``), the shared
 FakeFacade (eligibility reads) + FakeOffsetTable (the store adapter fake),
 and a real AdjustmentWatcher. UserOffsetSaved posts are collected off the bus.
 
-E2: stores land in the sparse store under the D4 write key (derived at store
+Stores land in the sparse store under the write key (derived at store
 instant from the live profile + per_fps toggle). Watching and storing are
-separately gated (beta9 field pass): the watcher runs whenever a profile
+separately gated: the watcher runs whenever a profile
 exists and posts UserOffsetSettled for EVERY quiesced adjustment (the
 user-action fact the 'change' seek rides); the learn toggle + store
 writability gate only the store step (UserOffsetSaved, the storage fact).
-Neither half consults the apply toggle (D9 amended). The settings-dialog
+Neither half consults the apply toggle. The settings-dialog
 store deferral is DELETED — offsets are not settings, so the dialog cannot
 clobber them.
 
@@ -52,7 +52,7 @@ AUDIO_DELAY = AdjustmentWatcher.INFOLABEL_AUDIO_DELAY
 # the tick that crosses the quiescence threshold).
 QUIESCENCE_STEPS = int(round(QUIET / ACTIVE))
 
-# The D4 write keys for the default rig (per_fps False -> the all level).
+# The write keys for the default rig (per_fps False -> the all level).
 KEY_A = 'dolbyvision|all|truehd'
 KEY_B = 'hdr10|all|eac3'
 
@@ -218,7 +218,7 @@ class TestQuiescence:
         assert saved.session_id == rig.session.session_id
         assert saved.profile == profile
         assert saved.ms == -50
-        assert saved.key == KEY_A                      # the resolved D4 key
+        assert saved.key == KEY_A                      # the resolved write key
         assert rig.session.applied == (KEY_A, -50)
         assert rig.session.watch_baseline_ms == -50
         assert rig.session.watch_pending is None
@@ -270,7 +270,7 @@ class TestQuiescence:
         # Pending opens under profile A; profile is replaced with B before
         # quiescence completes. The store and event carry B's key/profile —
         # the write key is derived FRESH at store time on the dispatcher
-        # thread (closing the legacy adopt-vs-store interleaving).
+        # thread (no adopt-vs-store interleaving).
         profile_a = make_profile(hdr_type='dolbyvision', audio_format='truehd')
         profile_b = make_profile(hdr_type='hdr10', audio_format='eac3')
 
@@ -287,7 +287,7 @@ class TestQuiescence:
         assert rig.saved[0].key == KEY_B
 
     def test_write_key_follows_the_live_per_fps_toggle(self, rig):
-        # D4: the key is derived at STORE INSTANT from profile + toggle. A
+        # The key is derived at STORE INSTANT from profile + toggle. A
         # toggle flipped mid-observation writes the specific key, not the
         # all key that was in force when the pending opened.
         profile = make_profile(video_fps=23.976)
@@ -318,7 +318,7 @@ class TestQuiescence:
         assert rig.session.watch_baseline_ms == -50
 
     def test_offset_applied_supersedes_the_observation_chain(self, rig):
-        # The supersede corollary enforced structurally (E7 review): ANY
+        # The supersede corollary enforced structurally: ANY
         # automatic apply drops an in-flight observation — relying on the
         # next tick's echo comparison alone leaves the stale-infolabel
         # hole where a pre-apply reading crosses quiescence, stores, and
@@ -389,7 +389,7 @@ class TestQuiescence:
 
     def test_fallback_valued_nudge_writes_the_specific_key(self, rig):
         # per_fps ON, only the all-level taught: the user dials to a NEW value
-        # while playing 60fps — the write lands on the SPECIFIC key (D4),
+        # while playing 60fps — the write lands on the SPECIFIC key,
         # leaving the all entry untouched (the §3.2 worked flow).
         rig.offset_table.per_fps = True
         rig.offset_table.offsets['dolbyvision|all|truehd'] = -125
@@ -439,9 +439,9 @@ class TestStorePathGuards:
         assert rig.session.watch_baseline_ms == -50
 
     def test_store_proceeds_with_settings_dialog_open(self, rig):
-        # DELIBERATE behavior change from classic: offsets live in the store
+        # DELIBERATE: offsets live in the store
         # file, not settings.xml, so the settings dialog's save-on-close
-        # cannot clobber them — there is nothing to defer for (P4: the
+        # cannot clobber them — there is nothing to defer for (the
         # hazard class is deleted, not managed).
         profile = make_profile()
         rig.begin(profile, baseline_delay='0.000 s')
@@ -454,7 +454,7 @@ class TestStorePathGuards:
         assert len(rig.saved) == 1
 
     def test_player_gone_at_store_time_discards_the_observation(self, rig):
-        # Regression pin for the 2.0.0~beta1 teardown-phantom field bug
+        # Regression pin for the teardown-phantom field bug
         # (CoreELEC/PM4K, 2026-07-15): during a slow stop the delay infolabel
         # reads a parseable 0 while the session is still alive; quiescence
         # elapsed 99ms before PlaybackStopped and 0 was stored over the
@@ -503,8 +503,7 @@ class TestStorePathGuards:
 
         assert rig.offset_table.stored == [(KEY_A, -50)]
         assert len(rig.saved) == 1
-        # ONE settle event for the whole retry episode (review finding:
-        # without the watch_settled_ms marker every ~2s retry cycle would
+        # ONE settle event for the whole retry episode (without the watch_settled_ms marker every ~2s retry cycle would
         # re-post Settled and fire another 'change' seek — a rewind loop).
         assert [event.ms for event in rig.settled] == [-50]
 
@@ -534,7 +533,7 @@ class TestStorePathGuards:
 class TestEligibilityAndChain:
 
     def test_learning_off_keeps_watching_and_settles_without_storing(self, rig):
-        # Watchability is profile-only (beta9 field pass): the learn
+        # Watchability is profile-only: the learn
         # toggle gates the STORE step, not the watch. A settle with
         # learning off posts the user-action fact and stores nothing.
         profile = make_profile()
@@ -580,7 +579,7 @@ class TestEligibilityAndChain:
         assert rig.watching
 
     def test_read_only_store_settles_but_never_stores(self, rig):
-        # E2 review finding, restated structurally: a permanently
+        # Restated structurally: a permanently
         # unwritable store must never produce a re-detect/re-fail loop.
         # The watch continues (settles are user-action facts the seek
         # replay needs), the store step is skipped entirely, and the
@@ -601,7 +600,7 @@ class TestEligibilityAndChain:
         assert len(rig.settled) == 1                   # no loop
 
     def test_successful_store_clears_the_miss_dedupe(self, rig):
-        # E2 review finding: the applier's once-per-chain miss log dedupes
+        # The applier's once-per-chain miss log dedupes
         # on session.miss_announced; a store WRITE invalidates that chain
         # (delete -> re-teach -> delete must re-log its miss).
         profile = make_profile()
@@ -615,7 +614,7 @@ class TestEligibilityAndChain:
         assert rig.session.miss_announced is None      # chain invalidated
 
     def test_apply_off_is_still_watched(self, rig):
-        # D9 amended (beta9 field pass): learning and applying are
+        # Learning and applying are
         # orthogonal. With applying off the addon leaves playback alone,
         # but adjustments still watch and store — the re-teach mode. The
         # toggle is explicit about recording, so this is not the old
@@ -631,7 +630,7 @@ class TestEligibilityAndChain:
         # The full learn-only loop: with applying off the applier never
         # touched the delay, so the session baseline is whatever Kodi
         # holds (adopted silently); a foreign change away from it still
-        # quiesces into the store under the D4 write key.
+        # quiesces into the store under the write key.
         rig.facade.apply_offsets = False
         rig.begin(make_profile())              # baseline 0 adopted
         rig.observe_foreign('-0.050 s')
@@ -640,7 +639,7 @@ class TestEligibilityAndChain:
 
     def test_incomplete_profile_is_still_watched(self, rig):
         # Eligibility no longer axis-gates: an audio-unknown stream is
-        # watched (classic parity) — the STORE path refuses persistence.
+        # watched — the STORE path refuses persistence.
         rig.start(make_profile(audio_format='unknown'))
         rig.set_delay('-0.050 s')
         rig.arm()
@@ -675,7 +674,7 @@ class TestEligibilityAndChain:
         # Only a change observed WHILE watching is an adjustment: a delay
         # changed during a not-watching gap must be re-adopted as the
         # baseline on resume, never stored against the stale baseline
-        # (fresh-state parity with a restarted legacy monitor). The gap
+        # (fresh state, as after a restart). The gap
         # here is a profile-less stretch — the one thing that still stops
         # the watch now that the learn toggle only gates the store step.
         profile = make_profile()

@@ -3,12 +3,11 @@
 Two surfaces, tested at their real seams:
 
 * ``StoreMutationHandler`` on a REAL dispatcher + tracker + ``OffsetStore``
-  (tmp_path-backed): the whitelist boundary (P6 — delete/clear/import ONLY,
+  (tmp_path-backed): the whitelist boundary (delete/clear/import ONLY,
   loud rejection of everything else), honest acks for every outcome
   (deleted/missing/read_only/persist_failed/cleared/imported/invalid/
   future), the staged-backup import consuming its staging file whatever
-  the outcome, and the ``miss_announced`` dedupe clearing the ledgered
-  E2-review rule demands.
+  the outcome, and the ``miss_announced`` dedupe clearing.
 * ``MonitorBridge.onNotification``: the sender/message filter and the
   verbatim payload -> typed event decode, including the malformed-JSON
   path that must still surface as a loudly-rejected event.
@@ -56,7 +55,7 @@ class Rig:
             self.dispatcher, self.tracker, self.store, self.acks.append,
             import_path=self.import_path,
             log_debug=self.debug.append, log_warning=self.warnings.append)
-        # The immediate-reconcile signal (E7): posted only by ops that
+        # The immediate-reconcile signal: posted only by ops that
         # actually changed the store.
         self.mutated = []
         self.dispatcher.subscribe(events.StoreMutated, self.mutated.append)
@@ -135,7 +134,7 @@ def test_clear_on_empty_store_is_success_with_zero_count(rig):
     assert rig.acks[0]['count'] == 0
 
 
-# --- the whitelist boundary (P6) ----------------------------------------------
+# --- the whitelist boundary ----------------------------------------------
 
 @pytest.mark.parametrize("bad_op", [
     'set', 'write', 'update', 'DELETE', None, 7, {'op': 'delete'},
@@ -151,7 +150,7 @@ def test_non_whitelisted_ops_are_rejected_loudly(rig, bad_op):
 
 
 def test_the_channel_has_no_value_write_op(rig):
-    # P6 structural pin: the event carries no value field and the whitelist
+    # Structural pin: the event carries no value field and the whitelist
     # is exactly delete/clear/import — a value write cannot even be
     # EXPRESSED on the wire (import reads values only from the staged
     # backup file the user placed).
@@ -194,7 +193,7 @@ def test_persist_failure_still_reconciles_the_live_store(rig, monkeypatch):
     # disk write fails, and the live session resolves against memory — so
     # a persist-failed delete/clear IS store-changing for the live session
     # and must fire the reconcile signal; the ack alone reports the
-    # durability failure (E7 review finding).
+    # durability failure.
     monkeypatch.setattr(rig.store, '_persist', lambda: False)
 
     rig.request('delete', key=KEY_A)
@@ -204,7 +203,7 @@ def test_persist_failure_still_reconciles_the_live_store(rig, monkeypatch):
         ('delete', KEY_A), ('clear', None)]
 
 
-# --- miss_announced clearing (E2-review rule, ledgered for these ops) -----------
+# --- miss_announced clearing ---------------------------------------------------
 
 def test_successful_delete_clears_miss_dedupe_of_live_session(rig):
     rig.post(events.PlaybackStarted())
@@ -217,8 +216,8 @@ def test_successful_delete_clears_miss_dedupe_of_live_session(rig):
 
 
 def test_store_changing_ops_clear_watch_state_synchronously(rig):
-    # The supersede corollary at its root (E7 review, 3-finder
-    # convergence): an in-flight observation was dialed against the store
+    # The supersede corollary at its root: an in-flight observation was
+    # dialed against the store
     # that no longer exists. The clear cannot ride a queued event — the
     # dispatcher fires due timers between queue items, and the applier's
     # already-0 reset branch posts no event at all — so the handler
@@ -273,7 +272,7 @@ def test_mutation_without_a_session_does_not_crash(rig):
     assert rig.acks[0]['ok'] is True
 
 
-# --- StoreMutated (the immediate-reconcile signal, E7) --------------------------
+# --- StoreMutated (the immediate-reconcile signal) -----------------------------
 
 def test_store_changing_ops_post_store_mutated(rig):
     # A delete that removed an entry and a clear with entries both changed
@@ -499,7 +498,7 @@ def test_channel_end_to_end_across_both_processes(tmp_path, monkeypatch):
 
     Pins the FIELD CONTRACT (op/key/request_id out; ok/detail/op/request_id
     back) across BOTH endpoints at once, so a one-sided rename cannot pass
-    while each side's own tests stay green (E4 review: the payload shape is
+    while each side's own tests stay green (the payload shape is
     convention, this test is its oracle). The two legs are delivered exactly
     as Kodi would: method 'Other.<message>', data re-serialized as JSON.
     """

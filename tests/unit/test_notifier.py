@@ -131,8 +131,7 @@ def rig():
 def test_manual_save_supersedes_a_held_provisional_toast(rig):
     # A user adjustment landing INSIDE the provisional window makes the held
     # ms stale: releasing it on stabilization would announce a value that no
-    # longer applies (legacy cleared the pending toast on its non-suppressed
-    # apply path before the equivalent sequence could surface it). The manual
+    # longer applies. The manual
     # save clears the hold; stabilization then releases nothing.
     profile = make_profile()
     session = rig.start(profile)
@@ -146,7 +145,7 @@ def test_manual_save_supersedes_a_held_provisional_toast(rig):
                                     profile=profile, ms=50))
     assert session.pending_notification is None       # hold superseded
     # per_fps is OFF in the rig: the rate is omitted from the summary and
-    # the saved line rides as the toast TITLE (E7 beta1 field fix).
+    # the saved line rides as the toast TITLE.
     assert rig.toasts == [("DV | TrueHD", DURATION_MS)]
     assert rig.gui.titles == ["#32093: +50 ms"]
 
@@ -162,7 +161,7 @@ def test_manual_save_supersedes_a_held_provisional_toast(rig):
 
 class TestImmediateApply:
 
-    def test_non_provisional_toasts_immediately_with_legacy_message(self, rig):
+    def test_non_provisional_toasts_immediately(self, rig):
         profile = make_profile()
         session = rig.start(profile)
 
@@ -386,7 +385,7 @@ class TestFadeGuard:
     toast's fade-out, and no others (Kodi mechanics: notifier module doc)."""
 
     def test_toast_inside_fade_window_is_deferred_past_it(self, rig):
-        # The field repro (2.0.0~beta2, CoreELEC): an "applied" toast landing
+        # The field repro: an "applied" toast landing
         # ~200ms after the previous toast's display time expired rode its
         # fade-out and flashed for ~100ms. It must defer past the fade and
         # then show for its full duration.
@@ -442,7 +441,7 @@ class TestFadeGuard:
         assert rig.gui.titles[1] == "#32092: -60 ms"
 
     def test_immediate_raise_cancels_a_pending_deferred_toast(self, rig):
-        # The boundary race (review finding, confirmed against the real
+        # The boundary race (confirmed against the real
         # dispatcher): an event dequeued just before the deferred release
         # deadline whose handler's clock read lands past it raises
         # immediately — the pending deferred toast is stale at that instant
@@ -488,7 +487,7 @@ class TestFadeGuard:
         assert len(rig.toasts) == 1
 
     def test_deferred_toast_rechecks_its_own_gate_not_the_other(self, rig):
-        # The gate rides on the RaiseToast event (D10: per-kind toggles), so
+        # The gate rides on the RaiseToast event (per-kind toggles), so
         # a deferred APPLY toast re-checks notify_apply at fire time and is
         # untouched by the learn toggle flipping off inside the deferral.
         profile = make_profile()
@@ -615,7 +614,7 @@ class TestFadeGuardNotices:
         assert not any("-75" in (title or '') for title in rig.gui.titles)
 
     def test_deferred_discard_rechecks_the_learn_gate_at_fire_time(self, rig):
-        # The learn gate rides the deferral (D10) and is a live setting.
+        # The learn gate rides the deferral and is a live setting.
         profile = make_profile()
         session = rig.start(profile)
         rig.applied(session, profile, -50)
@@ -670,7 +669,7 @@ class TestSettingsGate:
         assert rig.toasts == []
 
     def test_apply_gate_off_still_toasts_learn(self, rig):
-        # D10: the gates are independent — muting the routine apply toasts
+        # The gates are independent — muting the routine apply toasts
         # must never silence the learn feedback (the teaching surface).
         rig.settings.apply_enabled = False
         profile = make_profile()
@@ -706,7 +705,7 @@ class TestSettingsGate:
 
 
 class TestUnsavedOffsetDiscarded:
-    # D3 amendment (E7): the zero-reset discarded a manual adjustment
+    # The zero-reset discarded a manual adjustment
     # that never reached the store — save-related feedback, so it lives
     # under the LEARN gate.
 
@@ -798,7 +797,7 @@ class TestSignRendering:
 
 
 class TestToastShape:
-    # E7 beta1 field fix (Kodi 22 beta1 / Windows): the saved/applied line
+    # Toast shape: the saved/applied line
     # rides as the toast TITLE and the message is ONLY the profile summary
     # — a newline-packed single message made Kodi's label auto-scroll
     # (perceived as flashing) and truncated the codec off the end.
@@ -833,7 +832,7 @@ class TestToastShape:
 class TestIdentityGranularity:
 
     def test_held_toast_survives_fps_wiggle_when_per_fps_off(self, rig):
-        # E2 review finding: with per_fps OFF the detector treats an fps
+        # With per_fps OFF the detector treats an fps
         # re-read as the SAME stream (silent profile refresh) — the held
         # toast must use the same identity notion and still release.
         session = rig.start(make_profile(video_fps=23.976))

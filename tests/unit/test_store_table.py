@@ -1,6 +1,6 @@
 """Behavioral tests for aome.store.table (the OffsetTable adapter).
 
-Moved here from test_kodi_settings.py with the class itself (E2 review):
+Moved here from test_kodi_settings.py with the class itself:
 the table adapts the pure store + one injected settings read, so it lives
 in the store package. Uses a REAL OffsetStore on tmp_path — only the
 settings toggle is faked.

@@ -1,7 +1,6 @@
 """Composition-root tests: graph wiring and the load-bearing dispatch order.
 
-Constructs the REAL ServiceRuntime under Kodistubs (replacing the deleted
-legacy-router suite's wiring pins). Dispatch follows subscription order per
+Constructs the REAL ServiceRuntime under Kodistubs. Dispatch follows subscription order per
 event type, so the order pins here are behavioral guarantees, not style.
 """
 
@@ -44,7 +43,7 @@ def test_service_runtime_graph_wiring(runtime):
                       runtime.adjustment_watcher):
         assert component._sessions is runtime.session_tracker
 
-    # The settle/save split (beta9): the seek scheduler's 'change' replay
+    # The settle/save split: the seek scheduler's 'change' replay
     # rides the SETTLE (user-action) fact; the notifier's saved toast
     # rides the STORE fact — both typed, both session-stamped.
     settled_handlers = runtime.dispatcher._subscribers[events.UserOffsetSettled]
@@ -136,7 +135,7 @@ def test_settings_changed_refreshes_cached_debug_flags(runtime, monkeypatch):
     assert runtime.dispatcher.log_runtimes is False
 
 
-# --- coexistence warning (section 3.6, folded E5) ------------------------------
+# --- coexistence warning --------------------------------------------------------
 
 class TestCoexistenceWarning:
 
@@ -202,7 +201,7 @@ class TestCoexistenceWarning:
         assert writes == []
 
     def test_unrendered_dialog_leaves_flag_unset(self, runtime, monkeypatch):
-        # E4 review: gui.ok answers False when the modal never rendered —
+        # gui.ok answers False when the modal never rendered —
         # the flag means "the user has SEEN this", so it must not be set.
         probes, oks, writes = self._rig(runtime, monkeypatch,
                                         warned=False, classic_enabled=True,
@@ -215,7 +214,7 @@ class TestCoexistenceWarning:
 
     def test_open_settings_dialog_defers_the_flag_write(self, runtime,
                                                         monkeypatch):
-        # E4 review (doctrine): a service restart can land under an open
+        # A service restart can land under an open
         # settings dialog (addon update/re-enable); writing then would be
         # clobbered by the dialog's save-on-close. Skip — the warning
         # re-fires and writes on a later start.

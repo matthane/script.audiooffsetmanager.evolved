@@ -1,13 +1,13 @@
-"""Script-process client for the store mutation channel (D5).
+"""Script-process client for the store mutation channel.
 
 The management view's ONLY write path: one ``JSONRPC.NotifyAll`` request to
 the service (broadcast through the injected gateway's ``notify_all`` — the
-one home of the RPC envelope, E4 review), then a bounded poll for the
+one home of the RPC envelope), then a bounded poll for the
 matching ack. The service's dispatcher executes the mutation
 (single-writer doctrine — see ``aome.app.store_mutations``) and acks back
 over NotifyAll; ``send`` returns that ack dict, or ``None`` when no ack
 arrives inside the timeout — the view's "service not running" signal.
-There is deliberately NO fallback write path here (D5: report-only).
+There is deliberately NO fallback write path here (report-only).
 
 Request/ack matching uses a per-request ``request_id`` echoed by the
 service; acks are ignored outright while no request is in flight, so a
@@ -54,7 +54,7 @@ class MutationClient(xbmc.Monitor):
             return
         if self._pending_id is None:
             # No request in flight: nothing on the bus is ours (guards the
-            # idle state against an id-less ack matching None — E4 review).
+            # idle state against an id-less ack matching None).
             return
         payload = decode_payload(data)
         if payload is None:
@@ -70,7 +70,7 @@ class MutationClient(xbmc.Monitor):
 
         ``None`` means the broadcast failed or no ack arrived within
         ``TIMEOUT_SECONDS`` — the caller treats both as "service not
-        running" (D5 report-only). The poll uses ``waitForAbort`` slices so
+        running" (report-only). The poll uses ``waitForAbort`` slices so
         a Kodi shutdown mid-wait aborts cleanly.
         """
         request_id = uuid.uuid4().hex

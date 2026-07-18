@@ -10,7 +10,7 @@ at the well-known path while a dialog waits (pre-flight stage → read →
 discard in a finally, re-stage only after the confirmation, milliseconds
 before the send); the view never sweeps behind a SENT request (an ack
 timeout may be a merely-slow service); the confirmation states
-replace-all; the only op ever sent is ``import``; and D5 report-only on
+replace-all; the only op ever sent is ``import``; and report-only on
 a missing service.
 """
 
@@ -366,14 +366,14 @@ def test_import_refused_ack_maps_known_details_to_their_wordings(
     assert gui.oks == [("#32151", message)]
 
 
-# -- the P6 boundary ----------------------------------------------------------
+# -- the no-value-entry boundary ----------------------------------------------
 
 def test_the_view_never_sends_anything_but_import():
     import inspect
     from resources.lib.aome.view import transfer
 
     source = inspect.getsource(transfer)
-    # The only channel op this module can express is 'import' (P6 sibling
+    # The only channel op this module can express is 'import' (the sibling
     # pin to the manage view's delete/clear-only rule).
     assert "_send_mutation('import')" in source
     assert "'delete'" not in source

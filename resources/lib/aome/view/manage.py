@@ -2,7 +2,7 @@
 
 This is the user-facing half of the store mutation channel whose service
 half is :mod:`resources.lib.aome.app.store_mutations`. It runs in the SCRIPT
-process and honours the same P6 boundary from the other side: inspection
+process and honours the same boundary from the other side: inspection
 plus delete/clear ONLY. There is no value entry anywhere in this module —
 offsets are learned during playback (the watcher), never typed here — and
 it NEVER writes the store file. It READS the file directly through the
@@ -18,7 +18,7 @@ The seam is three injected callables, wired by the script router:
   ``(label, detail)`` tuples (two-line detail rows) and returns the chosen
   index, -1 on cancel.
 * ``send_mutation(op, key=None)`` posts a delete/clear over the channel and
-  returns the service's ack dict, or ``None`` on timeout — the D5
+  returns the service's ack dict, or ``None`` on timeout — the
   report-only signal that the service is not running. There is deliberately
   NO fallback write path: a missing service is reported, never worked around.
 
@@ -30,19 +30,19 @@ are shown exactly, never rounded or step-snapped. The empty state is the
 first-run education: nothing is stored until the user fixes lipsync once.
 
 When the store spans MORE THAN ONE HDR group, the top level renders as a
-group index instead of one flat list (U0 drill-down): one single-line
-row per HDR type present — display name plus entry count — with
+group index instead of one flat list: one single-line row per HDR type
+present — display name plus entry count — with
 hand-edited keys that cannot claim an HDR name (unsplittable, or a blank
 hdr segment) bucketed under 'Other', sorted last (verbatim acceptance
 extends to grouping: a scribbled key still lists and still deletes, and
 it never gets to render a nameless group row or a blank dialog heading).
 A single-group store renders the flat list — its index would be one row
 of pure overhead, and the flat list IS that group's contents. The mode
-derives from the GROUP count, never the entry count (DU-1 re-ruled after
-the beta9 field pass: the original 8-entry threshold meant one delete
-could silently dissolve the categories into a flat list whose visible
-rows all shared one HDR name — field-read as being trapped inside a
-category with no way back). A delete can therefore never flip the mode;
+derives from the GROUP count, never the entry count (an entry-count
+threshold would let one delete silently dissolve the categories into a
+flat list whose visible rows all share one HDR name — reading as being
+trapped inside a category with no way back). A delete can never flip the
+mode;
 it flips only when a whole group appears or empties — a transition the
 user just caused and can see.
 Selecting a group lists only its entries, headed by the group name, with
@@ -51,7 +51,7 @@ the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
 top level exits. The whole-store clear-all lives ONLY at the top level,
 where the whole store it deletes is represented; each open group carries
 its own scoped clear row instead, implemented as LOOPED SINGLE DELETES
-over the channel — the P6 whitelist stays delete/clear, no batch op
+over the channel — the channel whitelist stays delete/clear, no batch op
 exists on the wire — with a confirmation that restates the scope exactly
 as the index row did ('Dolby Vision — 6 entries'). Counts include dormant rows — the index
 inherits never-under-represent: every stored entry is countable there and
@@ -107,7 +107,7 @@ _MSG_CONFIRM_CLEAR_GROUP = 32139
 # English fallbacks for the strings that must never render blank:
 # localized() degrades to '' on a transient failure, and a blank
 # information dialog teaches nothing (same doctrine as the corruption and
-# coexistence notices — E4 review). Confirmations keep the raw localized
+# coexistence notices). Confirmations keep the raw localized
 # text: they carry the entry description alongside it. The group-index
 # strings are here too — 'Other' is a row's ENTIRE label (blank would
 # render a nameless group), and the count templates are the only content
@@ -153,7 +153,7 @@ def _noop(_message):
 
 
 class ManageView:
-    """Inspect + delete/clear stored offsets from the script process (P6)."""
+    """Inspect + delete/clear stored offsets from the script process."""
 
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
                  log_debug=None):
@@ -188,7 +188,7 @@ class ManageView:
                 self._log("AOMe_ManageView: store unreadable ({0})".format(error))
                 # A newer-schema file is PRESERVED by the service (read-
                 # only), never quarantined — its wording must not promise
-                # the reset the corrupt case gets (E4 review).
+                # the reset the corrupt case gets.
                 message = _MSG_FUTURE if getattr(error, 'future', False) \
                     else _MSG_UNREADABLE
                 self._gui.ok(heading, self._text(message))
@@ -207,7 +207,7 @@ class ManageView:
                 outcome = self._group_pass(heading, rows)
             else:
                 # The mode question is "how many groups", never "how many
-                # entries" (DU-1): a delete can empty a group, but it can
+                # entries": a delete can empty a group, but it can
                 # never silently dissolve the whole category level.
                 groups = self._group_index(rows)
                 if len(groups) > 1:
@@ -297,7 +297,7 @@ class ManageView:
         """Batch-delete every entry of the open group.
 
         LOOPED SINGLE DELETES over the existing channel — there is no
-        batch op on the wire, so the P6 whitelist (delete/clear) is
+        batch op on the wire, so the channel whitelist (delete/clear) is
         untouched and the service side needs no change. The confirmation
         restates the scope exactly as the index row did (group name —
         count). Per-delete semantics mirror the single-delete flow: a
@@ -306,7 +306,7 @@ class ManageView:
         — the re-rendered list is the truth about what remains. Clearing
         a group that was the ENTIRE store at render exits quietly like
         clear-all (looping would land on the first-run education dialog
-        right after a deliberate wipe — E4 review doctrine).
+        right after a deliberate wipe).
         """
         message = (self._text(_MSG_CONFIRM_CLEAR_GROUP) + "\n"
                    + self._group_row(self._group, len(group_rows)))
@@ -331,8 +331,7 @@ class ManageView:
         A declined confirmation just loops; a real ack is reported, and a
         deliberate clear closes the view — looping would land on the
         first-run education empty state, which reads as "nothing was ever
-        stored" right after the user emptied the store on purpose (E4
-        review).
+        stored" right after the user emptied the store on purpose.
         """
         if ack is _DECLINED:
             return None
@@ -396,7 +395,7 @@ class ManageView:
 
     def _describe_short(self, key, entry):
         """The in-group row label: the HDR group name is redundant there,
-        so the codec leads and the rate follows (DU-2)."""
+        so the codec leads and the rate follows."""
         return self._render_key(describe_key_in_group, key, entry)
 
     def _render_key(self, describe_fn, key, entry):
@@ -442,8 +441,7 @@ class ManageView:
         segment ('|all|truehd' — hand-edited; the store's writers map an
         absent HDR to the 'unknown' sentinel, never '') joins the same
         bucket: its display name would be empty, and a nameless group row
-        with a blank drill-down heading represents nothing (E-review U0
-        finding).
+        with a blank drill-down heading represents nothing.
         """
         try:
             hdr = split_key(key)[0]
@@ -511,7 +509,7 @@ class ManageView:
 
     def _confirm_delete(self, heading, row):
         # Both row lines, not just the profile: the confirmation must show
-        # WHAT value is being deleted (field feedback on beta4). Always the
+        # WHAT value is being deleted. Always the
         # FULL describe line — never the shortened in-group copy.
         message = (self._gui.localized(_MSG_CONFIRM_DELETE)
                    + "\n" + row.describe + "\n" + row.detail)
@@ -538,7 +536,7 @@ class ManageView:
                 # The entry was already gone (raced away by playback
                 # learning or another session): the user's intent is
                 # satisfied — the refreshed list is the feedback, not an
-                # error dialog for a no-op (E4 review).
+                # error dialog for a no-op.
                 self._log("AOMe_ManageView: delete target already gone")
                 return
             self._log("AOMe_ManageView: mutation refused ({0})".format(detail))

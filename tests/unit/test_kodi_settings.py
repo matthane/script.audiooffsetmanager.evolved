@@ -52,7 +52,7 @@ def test_addon_id_constant():
 
 
 def test_settings_keeps_parent_addon_alive():
-    """Regression pin for the 2.0.0~beta1 field bug (Kodi 21.2/Windows).
+    """Regression pin for the detached-proxy field bug.
 
     ``xbmcaddon.Addon(...).getSettings()`` as a one-liner leaves the Addon a
     garbage-collected temporary, which orphans the Settings proxy: writes
@@ -168,7 +168,7 @@ class TestStoreBooleanIfChanged:
     def test_pre_read_raising_falls_through_to_write(self):
         settings, logs = _make_settings()
         # get_bool swallows the read error -> default False; value True differs,
-        # so the store falls through to the write attempt (like legacy).
+        # so the store falls through to the write attempt.
         settings._settings.getBool = _Spy(raises=RuntimeError("read down"))
         set_spy = _Spy()
         settings._settings.setBool = set_spy
@@ -254,7 +254,7 @@ class TestIntentReads:
         # unreadable setting NEVER silently disables the learn loop.
         assert spy.calls == [('remember_adjustments', True)]
 
-    def test_classic_gate_reads_are_gone(self):
+    def test_removed_gate_reads_are_gone(self):
         settings, _ = _make_settings()
         for dead in ('is_hdr_enabled', 'fps_override_enabled',
                      'active_monitoring_enabled', 'is_new_install'):
@@ -265,7 +265,7 @@ class TestIntentReads:
         spy = _Spy(result=False)
         settings.get_bool = spy
         assert settings.notify_apply_enabled() is False
-        # D10: the toasts are the teaching surface — the read passes
+        # The toasts are the teaching surface — the read passes
         # default=True so an unreadable setting never silently mutes them.
         assert spy.calls == [('notify_apply', True)]
 
@@ -277,7 +277,7 @@ class TestIntentReads:
         assert spy.calls == [('notify_learn', True)]
 
     def test_single_notifications_gate_is_gone(self):
-        # D10 split the classic all-or-nothing gate into per-kind toggles.
+        # Notifications are per-kind toggles, never one all-or-nothing gate.
         settings, _ = _make_settings()
         assert not hasattr(settings, 'notifications_enabled')
 

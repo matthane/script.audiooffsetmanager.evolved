@@ -4,8 +4,8 @@ Kodi surfaces a custom ``JSONRPC.NotifyAll`` message to monitors as
 ``Other.<message>`` with the payload re-serialized as a JSON string. Both
 channel endpoints — the service's ``MonitorBridge`` and the script's
 ``MutationClient`` — must agree on that envelope exactly, so the
-method-name composition and the payload decode live HERE, once (E4 review:
-the two hand-rolled copies were one hardening fix away from drifting).
+method-name composition and the payload decode live HERE, once — two
+hand-rolled copies would always be one hardening fix away from drifting.
 
 The PROTOCOL (message names, op vocabulary, ack fields) is app-layer and
 lives in ``aome.app.store_mutations``; this module owns only the Kodi

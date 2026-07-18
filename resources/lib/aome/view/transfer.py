@@ -1,7 +1,7 @@
 """TransferView: the script-process offsets backup surface (export/import).
 
 The manage view's sibling: it runs in the SCRIPT process, honours the same
-P6 boundary (no value entry anywhere — a backup transports values that were
+no-value-entry boundary (a backup transports values that were
 LEARNED during playback, nobody types one), and NEVER writes the store
 file. Export is pure read: the store file is validated through the
 read-only reader and then copied VERBATIM to a folder the user picks —
@@ -12,7 +12,7 @@ store file, so the single-writer doctrine holds), pre-validated with the
 same reader the service will use, confirmed ("replaces all"), and then
 requested over the mutation channel as the ``import`` op; the SERVICE
 re-validates the staged file, replaces the whole store (restore semantics,
-never merge — 2026-07-17 user call; the backup's reset markers are
+never merge; the backup's reset markers are
 restored too, so the verbatim export round-trips WHOLE), and discards the
 staging file. No path and no values ever travel on the wire.
 
@@ -40,7 +40,7 @@ The seams are injected callables, wired by the script router:
   import into a refused one. A stale staging file is inert (overwritten
   before every request), so leaving one behind costs nothing.
 * ``send_mutation(op)`` — the channel client's send; ``None`` (no ack) is
-  the D5 report-only "service not running" signal, exactly as in the
+  the report-only "service not running" signal, exactly as in the
   manage view.
 
 Import deliberately refuses an EMPTY (but valid) backup before
@@ -137,7 +137,7 @@ def _join(folder, name):
 
 
 class TransferView:
-    """Export/import the stored offsets from the script process (P6)."""
+    """Export/import the stored offsets from the script process."""
 
     def __init__(self, gui, send_mutation, *, read_entries, read_staged,
                  export_file, stage_file, discard_staged, clock=time.time,

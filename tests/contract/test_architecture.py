@@ -1,9 +1,8 @@
 """Contract test: aome layering rules (import purity).
 
-DESIGN layering: `aome.domain` is pure Python (no Kodi, no legacy modules);
-`aome.app` imports only stdlib + aome — with the Phase 7 removal of the
-legacy_router MIGRATION shim, the exemption set is EMPTY and construction is
-complete; `aome.kodi` is the only package allowed to import xbmc*.
+Layering: `aome.domain` is pure Python (no Kodi imports);
+`aome.app` imports only stdlib + aome;
+`aome.kodi` is the only package allowed to import xbmc*.
 `aome/runtime.py` and `aome/script_router.py` are composition roots
 (per-process entry glue) and exempt by design (they sit outside the
 checked subpackages).
@@ -15,8 +14,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AOME = REPO_ROOT / "resources" / "lib" / "aome"
 
-# The ONLY aome.app modules allowed to import xbmc*/legacy resources.lib code.
-# Empty since Phase 7: every app module is pure.
+# The ONLY aome.app modules allowed to import xbmc* or non-aome
+# resources.lib code. Empty: every app module is pure.
 APP_IMPURITY_EXEMPTIONS = set()
 
 
@@ -56,7 +55,7 @@ def test_app_is_pure_except_explicit_exemptions():
                 "{0} imports Kodi module {1}".format(path.name, name)
             if name.startswith("resources.lib."):
                 assert name.startswith("resources.lib.aome."), \
-                    "{0} imports legacy module {1}".format(path.name, name)
+                    "{0} imports non-aome module {1}".format(path.name, name)
 
 
 def test_app_exemption_list_is_exact():
@@ -111,4 +110,4 @@ def test_kodi_adapters_import_only_aom_and_kodi():
         for name in _imports(path):
             if name.startswith("resources.lib."):
                 assert name.startswith("resources.lib.aome."), \
-                    "{0} imports legacy module {1}".format(path.name, name)
+                    "{0} imports non-aome module {1}".format(path.name, name)

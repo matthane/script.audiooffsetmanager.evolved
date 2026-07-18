@@ -3,9 +3,8 @@
 Two surfaces are exercised:
 
 * ``derive_stream_facts`` — the pure HDR/FPS/audio derivation (no dispatcher
-  needed): echo guards, HLG normalization, the HLG-via-gamut sniff, FPS
-  bucketing and the override collapse. These pin the "ported verbatim from
-  legacy StreamInfo" contract the module docstring claims.
+  needed): echo guards, HLG normalization, the HLG-via-gamut sniff, and fps
+  validation.
 * ``StreamDetector`` — the probe/verify orchestration. Driven exactly like
   test_session_flow / test_dispatcher: a FakeClock plus run_pending() pumping,
   with recorders subscribed to the detector's OUTPUT events (ProfileChanged,
@@ -195,7 +194,7 @@ class TestDeriveStreamFacts:
         assert derive(raw_fps='48').profile.fps_int() == 48
 
         # Unparseable -> None (blocks completeness downstream). Degenerate
-        # rates count as undetected too (E2 review): 'nan'/'inf' parse as
+        # rates count as undetected too: 'nan'/'inf' parse as
         # floats but would blow up key composition, and 0 is the decoder's
         # not-locked-yet placeholder — storing under <hdr>|0|<audio> would
         # strand the offset on a bucket that never recurs.
@@ -240,7 +239,7 @@ class TestDiscovery:
         assert rig.errors == []
 
     def test_late_codec_is_adopted_when_it_resolves(self, rig):
-        # The legacy blocking retry loop, expressed as scheduled probes: the
+        # Discovery as scheduled probes: the
         # chain keeps gathering until the codec negotiates in.
         rig.gateway.codec = 'none'
         rig.start()
@@ -469,7 +468,7 @@ class TestVerificationRecovery:
         assert len(rig.profiles) == 1        # never re-adopted -> no stranding
         assert len(rig.stabilized) == 2
         # The re-confirmation announces NO change (no adoption in between):
-        # the router suppresses the legacy ON_AV_CHANGE for it, so a pure
+        # no change event fires for it, so a pure
         # blip can never fire a spurious 'adjust' seek-back.
         assert rig.stabilized[0].profile_changed is True    # startup settle
         assert rig.stabilized[1].profile_changed is False   # blip re-confirm

@@ -1,7 +1,6 @@
 """Contract test: the setting ids Python reads and settings.xml declares agree.
 
-settings.xml is now hand-written (the generator died with the offset matrix in
-E3), so nothing mechanically keeps the declared knobs and the runtime's reads in
+settings.xml is hand-written, so nothing mechanically keeps the declared knobs and the runtime's reads in
 lockstep. A typo in an id, a setting declared but never wired up, or a read that
 never got a control would all pass silently — Kodi returns the type default for
 a missing id, so the addon would look "fine" while a knob did nothing.

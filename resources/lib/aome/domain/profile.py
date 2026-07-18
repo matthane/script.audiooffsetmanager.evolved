@@ -1,6 +1,6 @@
 """Immutable stream profile — verbatim detection facts.
 
-Pure data under the open vocabulary (EVOLVED design §3.2): the axes carry
+Pure data under the open format vocabulary: the axes carry
 what Kodi REPORTED, normalized only by case-fold/trim (plus the detector's
 sdr default for an absent HDR axis). No whitelist shapes these fields, and
 no settings key is derived here — the store key is composed at lookup/write
@@ -28,7 +28,7 @@ class StreamProfile:
         """The fps key axis: integer truncation of the reported rate.
 
         Truncation — not rounding — is what keeps the NTSC fractional rates
-        on their own keys (23.976 -> 23 vs 24.0 -> 24; design guarantee).
+        on their own keys (23.976 -> 23 vs 24.0 -> 24).
         None when the rate was not detected.
         """
         if self.video_fps is None:
