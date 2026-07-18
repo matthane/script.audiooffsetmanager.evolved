@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta11" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta12" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,17 +7,16 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta11 (2026-07-17)
+        <news>v1.0.0~beta12 (2026-07-18)
+- New backup buttons under Advanced: Export offsets saves everything learned to a file, Import offsets restores from it and replaces the current set
+- Notifications use short format names such as DV, DD+, and TrueHD Atmos so the message fits on one line
+- Addon display name is now Audio Offset Manager: Evolved
+- Settings help text rewritten in one plain voice
+
+v1.0.0~beta11 (2026-07-17)
 - Stored offsets list shows a frame rate only when Per-frame-rate offsets is on; entries saved for a specific rate keep their rate and stay marked inactive while it is off
 - Inactive entries are dimmed, and HDR type names are bold in the group list
 - Simpler settings layout: the Offsets and Advanced categories no longer use group headers
-
-v1.0.0~beta10 (2026-07-17)
-- New addon ID, icon, and fanart. Install this version fresh; to keep learned offsets, copy offsets.json from the old addon_data folder to the new one
-- Learning and applying are now separate toggles: Learn audio offsets stores your adjustments, Apply audio offsets replays stored ones. Both off matches the old pause
-- The four seek-back toggles merged into one Seek back after selection with a shared seconds slider
-- Offset change seek-back now fires when an adjustment settles, not only when it is saved
-- Manage view groups whenever two or more HDR types are stored, each group can be cleared on its own, and HDR10+ is labeled correctly
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
