@@ -18,7 +18,7 @@ msgid "Playback Behavior"
 msgstr ""
 
 msgctxt "#32017"
-msgid "Settings related to addon playback behavior"
+msgid "Seek backs and playback notifications"
 msgstr ""
 
 msgctxt "#32021"
@@ -30,7 +30,7 @@ msgid "Notification duration (seconds)"
 msgstr ""
 
 msgctxt "#32091"
-msgid "Control the length of time that notifications appear"
+msgid "Show notifications for this many seconds."
 msgstr ""
 
 msgctxt "#32092"
@@ -46,7 +46,7 @@ msgid "Advanced"
 msgstr ""
 
 msgctxt "#32101"
-msgid "Advanced settings"
+msgid "Backup, restore, and debug logging"
 msgstr ""
 
 msgctxt "#32103"
@@ -54,7 +54,7 @@ msgid "Enable debug logging"
 msgstr ""
 
 msgctxt "#32104"
-msgid "Show log items and debug snapshots within Kodi's standard log level"
+msgid "Write the addon's debug detail to the Kodi log without enabling Kodi's global debug mode."
 msgstr ""
 
 msgctxt "#32105"
@@ -86,7 +86,7 @@ msgid "Manage stored offsets"
 msgstr ""
 
 msgctxt "#32116"
-msgid "View and remove the audio offsets the addon has learned"
+msgid "View and remove the audio offsets the addon has learned."
 msgstr ""
 
 msgctxt "#32117"
@@ -94,7 +94,7 @@ msgid "Show notification when an offset is applied"
 msgstr ""
 
 msgctxt "#32118"
-msgid "Display a notification whenever a stored audio offset is automatically applied to playback"
+msgid "Show a notification when a stored offset is applied to playback."
 msgstr ""
 
 msgctxt "#32119"
@@ -102,7 +102,7 @@ msgid "Show notification when an offset is saved"
 msgstr ""
 
 msgctxt "#32120"
-msgid "Display a notification whenever a manual adjustment is saved as a stored offset"
+msgid "Show a notification when a manual adjustment is saved as a stored offset."
 msgstr ""
 
 msgctxt "#32121"
@@ -210,7 +210,7 @@ msgid "Manual offset change"
 msgstr ""
 
 msgctxt "#32148"
-msgid "How far back the player seeks after a selected event"
+msgid "Seek back this many seconds after a selected event."
 msgstr ""
 
 msgctxt "#32149"
