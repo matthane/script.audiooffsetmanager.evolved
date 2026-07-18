@@ -260,6 +260,34 @@ class TestDiscovery:
         assert rig.session.stream_state is StreamState.STABILIZING
         assert rig.errors == []
 
+    def test_fps_only_wait_logs_one_diagnostic(self, rig):
+        # The badly-muxed-file signature (field, 2026-07-18): the file
+        # declares no frame rate, so audio/HDR resolve instantly while
+        # Player.Process(videofps) reads 0.000 until Kodi finishes
+        # measuring the real rate (~6s). Exactly ONE diagnostic line at
+        # FPS_WAIT_LOG_ATTEMPT names the likely cause.
+        rig.gateway.infolabels[INFOLABEL_FPS] = '0.000'
+        rig.start()
+        for _ in range(StreamDetector.FPS_WAIT_LOG_ATTEMPT + 3):
+            rig.advance(StreamDetector.PROBE_SPACING_SECONDS)
+        waits = [line for line in rig.debug if 'measuring' in line]
+        assert len(waits) == 1
+        # Kodi's measurement lands -> discovery completes as usual.
+        rig.gateway.infolabels[INFOLABEL_FPS] = '24.000'
+        rig.advance(StreamDetector.PROBE_SPACING_SECONDS)
+        assert rig.session.profile.video_fps == 24.0
+        assert rig.warnings == []
+
+    def test_unresolved_codec_wait_stays_silent_on_fps_diagnostic(self, rig):
+        # Audio is ALSO unresolved: ordinary startup renegotiation, not the
+        # missing-fps file signature — the diagnostic must not fire.
+        rig.gateway.codec = 'none'
+        rig.gateway.infolabels[INFOLABEL_FPS] = '0.000'
+        rig.start()
+        for _ in range(StreamDetector.FPS_WAIT_LOG_ATTEMPT + 3):
+            rig.advance(StreamDetector.PROBE_SPACING_SECONDS)
+        assert [line for line in rig.debug if 'measuring' in line] == []
+
     def test_budget_exhaustion_warns_and_stops_probing(self, rig):
         _exhaust_discovery(rig)
         assert len(rig.warnings) == 1        # gave up exactly once

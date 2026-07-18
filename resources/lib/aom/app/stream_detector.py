@@ -176,6 +176,15 @@ class StreamDetector:
     # non-'none' codec).
     PROBE_BUDGET = 20
     VERIFY_WINDOW_SECONDS = 1.0
+    # Attempt at which a discovery still missing ONLY the frame rate logs
+    # its one diagnostic line (~2s in). That shape is the field signature
+    # of a file that declares no frame rate, leaving Kodi to measure it
+    # from the stream: Player.Process(videofps) reads 0.000 for ~6s while
+    # every other axis is ready (observed 2026-07-18, demo .m2ts batch).
+    # The line turns the resulting "slow toast" report into a one-grep
+    # diagnosis. Threshold, not attempt 1: a rate that is merely a probe
+    # or two behind the codec is ordinary startup, not the signature.
+    FPS_WAIT_LOG_ATTEMPT = 5
 
     _PROBE_KEY = 'aom.detector.probe'
     _VERIFY_KEY = 'aom.detector.verify'
@@ -235,6 +244,13 @@ class StreamDetector:
                       f"{event.attempt}: {facts.profile}")
             self._adopt(session, facts.profile)
         elif event.attempt < self.PROBE_BUDGET:
+            if (event.attempt == self.FPS_WAIT_LOG_ATTEMPT
+                    and facts.profile.video_fps is None
+                    and facts.profile.audio_format != formats.UNKNOWN):
+                self._log("AOMe_StreamDetector: only the frame rate is "
+                          "still unreported; Kodi is likely measuring it "
+                          "because the file does not declare one — "
+                          "discovery continues")
             self._dispatcher.schedule(
                 self._jittered_spacing(),
                 events.ProbeStream(session_id=event.session_id,
