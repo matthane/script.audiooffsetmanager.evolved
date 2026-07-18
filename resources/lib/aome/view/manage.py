@@ -103,6 +103,7 @@ _LABEL_GROUP_ENTRIES = 32136  # "{0} entries" — group-index count, plural
 _LABEL_OTHER_GROUP = 32137    # "Other" — the unsplittable-key bucket
 _LABEL_CLEAR_GROUP = 32138    # the scoped clear row inside an open group
 _MSG_CONFIRM_CLEAR_GROUP = 32139
+_LABEL_INACTIVE = 32167       # "{0} — inactive" — the dormant row's value line
 
 # English fallbacks for the strings that must never render blank:
 # localized() degrades to '' on a transient failure, and a blank
@@ -110,8 +111,9 @@ _MSG_CONFIRM_CLEAR_GROUP = 32139
 # coexistence notices). Confirmations keep the raw localized
 # text: they carry the entry description alongside it. The group-index
 # strings are here too — 'Other' is a row's ENTIRE label (blank would
-# render a nameless group), and the count templates are the only content
-# beside the group name.
+# render a nameless group), the count templates are the only content
+# beside the group name, and the inactive tag is the dormant row's whole
+# explanation.
 _FALLBACKS = {
     _MSG_EMPTY: ("Nothing is stored yet. Adjust Kodi's audio offset during "
                  "playback and the value will be saved for that stream "
@@ -130,6 +132,7 @@ _FALLBACKS = {
     _LABEL_OTHER_GROUP: "Other",
     _LABEL_CLEAR_GROUP: "Clear all offsets in this group",
     _MSG_CONFIRM_CLEAR_GROUP: "Delete all stored offsets in this group?",
+    _LABEL_INACTIVE: "{0} — inactive",
 }
 
 # One presentable entry: the full profile line (flat rows AND the first
@@ -414,9 +417,9 @@ class ManageView:
         except ValueError:
             return key
 
-    @staticmethod
-    def _detail(entry, *, inactive):
-        """The value line: '-115 ms', tagged '— inactive' when dormant.
+    def _detail(self, entry, *, inactive):
+        """The value line: '-115 ms', run through the localized inactive
+        template when dormant.
 
         Just the verbatim signed value — the store's source/updated
         metadata stays in the file but out of the row (field feedback:
@@ -426,7 +429,7 @@ class ManageView:
         sign = "+" if isinstance(delay, int) and delay > 0 else ""
         detail = "{0}{1} ms".format(sign, delay)
         if inactive:
-            detail += " — inactive"
+            detail = self._template(_LABEL_INACTIVE, detail)
         return detail
 
     # -- grouping -------------------------------------------------------------
@@ -485,21 +488,7 @@ class ManageView:
         (dialog message text, same content, no list to stand out in).
         """
         string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
-        template = self._text(string_id)
-        if '{' not in template:
-            # A translation that dropped the placeholder would not raise —
-            # format() would just return it, silently swallowing the count
-            # (never-under-represent applies to the index too).
-            template = _FALLBACKS[string_id]
-        try:
-            counted = template.format(count)
-        except Exception:
-            # A malformed translation degrades to the English template
-            # rather than crashing the view. Deliberately broad: which
-            # exception a bad template raises is the translator's choice
-            # ('{0' ValueError, '{1}' IndexError, '{x}' KeyError, '{0.n}'
-            # AttributeError, '{0[x]}' TypeError...).
-            counted = _FALLBACKS[string_id].format(count)
+        counted = self._template(string_id, count)
         name = self._group_name(segment)
         if emphasize:
             name = _BOLD.format(name)
@@ -550,6 +539,26 @@ class ManageView:
     def _text(self, string_id):
         """localized() with the English fallback for must-never-blank strings."""
         return self._gui.localized(string_id) or _FALLBACKS[string_id]
+
+    def _template(self, string_id, *values):
+        """A format template with translation guards (the transfer view
+        carries the same helper): a translation missing ANY of the
+        expected ``{0}..{n}`` placeholders would not raise — format()
+        silently ignores unused arguments, swallowing the value
+        (never-under-represent) — and one malformed enough to raise
+        degrades to the English fallback rather than crashing the view.
+        Deliberately broad except: which exception a bad template raises
+        is the translator's choice ('{0' ValueError, '{1}' IndexError,
+        '{x}' KeyError, '{0.n}' AttributeError, '{0[x]}' TypeError...).
+        """
+        template = self._text(string_id)
+        if any('{' + str(index) + '}' not in template
+               for index in range(len(values))):
+            template = _FALLBACKS[string_id]
+        try:
+            return template.format(*values)
+        except Exception:
+            return _FALLBACKS[string_id].format(*values)
 
 
 # Sentinels, private unique objects so they can never collide with real

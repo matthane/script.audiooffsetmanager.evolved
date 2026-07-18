@@ -284,3 +284,7 @@ msgstr ""
 msgctxt "#32166"
 msgid "Could not read the Kodi log file"
 msgstr ""
+
+msgctxt "#32167"
+msgid "{0} — inactive"
+msgstr ""
