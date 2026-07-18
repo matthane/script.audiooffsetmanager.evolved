@@ -28,8 +28,8 @@ settings.xml.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from resources.lib.aom.app.seek_scheduler import SeekScheduler
-from resources.lib.aom.kodi.settings import Settings
+from resources.lib.aome.app.seek_scheduler import SeekScheduler
+from resources.lib.aome.kodi.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_XML = REPO_ROOT / "resources" / "settings.xml"

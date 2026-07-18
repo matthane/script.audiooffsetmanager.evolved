@@ -11,10 +11,10 @@ import json
 
 import pytest
 
-from resources.lib.aom.app.store_mutations import (ACK_MESSAGE,
+from resources.lib.aome.app.store_mutations import (ACK_MESSAGE,
                                                    MUTATION_MESSAGE)
-from resources.lib.aom.kodi.mutation_client import MutationClient
-from resources.lib.aom.kodi.settings import ADDON_ID
+from resources.lib.aome.kodi.mutation_client import MutationClient
+from resources.lib.aome.kodi.settings import ADDON_ID
 
 
 ACK_METHOD = 'Other.' + ACK_MESSAGE

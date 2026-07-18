@@ -7,8 +7,8 @@ and the D4 write rule (store-instant derivation, never lookup-dependent).
 
 import pytest
 
-from resources.lib.aom.store import resolve
-from resources.lib.aom.store.offset_store import OffsetStore
+from resources.lib.aome.store import resolve
+from resources.lib.aome.store.offset_store import OffsetStore
 
 
 def make_store(tmp_path):

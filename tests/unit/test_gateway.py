@@ -1,4 +1,4 @@
-"""Behavioral tests for aom.kodi.gateway.KodiGateway.
+"""Behavioral tests for aome.kodi.gateway.KodiGateway.
 
 The gateway is the redesign's single-shot boundary to Kodi: exactly one
 JSON-RPC round-trip per call, zero retries, zero sleeps — patience now lives in
@@ -18,7 +18,7 @@ import json
 import xbmc
 import xbmcgui
 
-from resources.lib.aom.kodi.gateway import KodiGateway
+from resources.lib.aome.kodi.gateway import KodiGateway
 
 
 # --- fakes / helpers ---------------------------------------------------------

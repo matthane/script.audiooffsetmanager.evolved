@@ -8,7 +8,7 @@ timer-driven behaviour is driven with ``Dispatcher.run_pending()`` rather
 than real sleeps.
 
 ``FakeGateway`` (Phase 4) is the scriptable stand-in for
-``aom.kodi.gateway.KodiGateway``: tests mutate its attributes between pumps
+``aome.kodi.gateway.KodiGateway``: tests mutate its attributes between pumps
 to script what the "platform" reports, mirroring how the real single-shot
 gateway reads live Kodi state on every call.
 
@@ -17,7 +17,7 @@ methods app components read (detector: fps_override_enabled; scheduler:
 seek_back_config) — one fake, so the facade contract cannot drift between
 suites.
 
-``FakeGui`` (Phase 7) is the stand-in for ``aom.kodi.gui.Gui``: it records
+``FakeGui`` (Phase 7) is the stand-in for ``aome.kodi.gui.Gui``: it records
 toasts and returns a deterministic ``localized()`` marker so the Notifier's
 message assembly is asserted without a real string table.
 
@@ -64,7 +64,7 @@ class FakeClock:
 
 
 class FakeGateway:
-    """Scriptable stand-in for ``aom.kodi.gateway.KodiGateway``.
+    """Scriptable stand-in for ``aome.kodi.gateway.KodiGateway``.
 
     Mirrors the real gateway's single-shot semantics: every read reflects the
     CURRENT attribute values, so tests script a stream by mutating
@@ -130,7 +130,7 @@ class FakeFacade:
     ``notification_ms`` cover the Notifier's per-kind toast gates and
     duration (D10 defaults: both gates ON). Offset reads/writes live on
     ``FakeOffsetTable`` (matching the real split:
-    ``aom.kodi.settings.Settings`` + ``OffsetTable``).
+    ``aome.kodi.settings.Settings`` + ``OffsetTable``).
     """
 
     def __init__(self, per_fps=False):
@@ -168,7 +168,7 @@ class FakeOffsetTable:
     """Scriptable stand-in for the store-backed ``OffsetTable`` adapter.
 
     Backed by a plain dict (key -> ms). ``resolve``/``write_key`` reuse the
-    REAL pure functions from ``aom.store.resolve`` so the fake cannot drift
+    REAL pure functions from ``aome.store.resolve`` so the fake cannot drift
     from the decision table; only persistence is faked. Pass the rig's
     ``FakeFacade`` as ``facade`` so the per-fps toggle has ONE source of
     truth shared with every other consumer (a fake-only split between
@@ -214,13 +214,13 @@ class FakeOffsetTable:
         return True
 
     def resolve(self, profile):
-        from resources.lib.aom.store import resolve as store_resolve
+        from resources.lib.aome.store import resolve as store_resolve
         return store_resolve.resolve(
             self, profile.hdr_type, profile.video_fps, profile.audio_format,
             per_fps=self.per_fps)
 
     def write_key(self, profile):
-        from resources.lib.aom.store import resolve as store_resolve
+        from resources.lib.aome.store import resolve as store_resolve
         try:
             return store_resolve.write_key(
                 profile.hdr_type, profile.video_fps, profile.audio_format,

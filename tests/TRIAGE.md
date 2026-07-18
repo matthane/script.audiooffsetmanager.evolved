@@ -58,7 +58,7 @@ decision table).
 | test_policies.py | REWRITE(E2) | `should_apply` loses `new_install` + `hdr_enabled` gates; `parse_delay_ms` parts KEEP |
 | test_runtime.py | REWRITE(E2) | Composition gains the store (path injection, load-at-start) |
 | test_stream_detector.py | REWRITE(E2, partial) | Probe/verify orchestration KEEPS; `fps_override_enabled(hdr_type)` per-HDR callable becomes the global `per_fps_offsets` read; fps bucket-whitelist assertions become integer-truncation assertions (open fps axis); platform-write consumers gone but `StreamProbed` posting stays |
-| test_stream_profile.py | REWRITE(E1/E2) | `setting_id()` (`hdr_fps_audio` settings-id format) becomes the store key codec (`hdr\|fps\|audio` via `aom/store/keys.py`); `summary()` display coverage KEEPS |
+| test_stream_profile.py | REWRITE(E1/E2) | `setting_id()` (`hdr_fps_audio` settings-id format) becomes the store key codec (`hdr\|fps\|audio` via `aome/store/keys.py`); `summary()` display coverage KEEPS |
 | test_audio_format_matching.py | DIES(E1/E2) | `_derive_audio_format`'s ordered-substring whitelist is deleted outright (verbatim acceptance — nothing is matched against anything); replaced by verbatim-roundtrip pins in the new key tests |
 | test_formats.py | REWRITE(E1, then E3) | E1 demoted `formats.py` to display/vocabulary tables; E3 shrank it to the UNKNOWN sentinel (tables died with the matrix) — the test now pins the sentinel value, the demolition, and verbatim round-trip of the classic names |
 | test_platform_recorder.py | DIES(E2) | Component dissolves — platform capability writes are cut (P3) |
@@ -67,7 +67,7 @@ decision table).
 
 | File | Fate | Notes |
 |---|---|---|
-| test_architecture.py | KEEP | Purity contract enforces no-Kodi-imports on the new `aom/store/` too (extend, don't relax) |
+| test_architecture.py | KEEP | Purity contract enforces no-Kodi-imports on the new `aome/store/` too (extend, don't relax) |
 | test_settings_matrix.py | DIES(E3) — DONE | The 315-id oracle died with the matrix |
 | test_settings_generated.py | DIES(E3) — DONE | Generator no-diff test died with `tools/generate_settings.py` |
 | test_strings.py | REWRITE(E3) — DONE | Re-pointed automatically at the pruned strings.po; gained the reverse no-orphan direction. The two-way settings-id oracle landed as the NEW `test_settings_contract.py` |

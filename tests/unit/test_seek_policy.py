@@ -1,4 +1,4 @@
-"""Unit tests for aom.domain.policies.seek_decision — the seek quiet-window
+"""Unit tests for aome.domain.policies.seek_decision — the seek quiet-window
 policy stated as one pure function.
 
 These are pure table tests (no dispatcher, no clock, no fakes): the caller
@@ -14,7 +14,7 @@ tables use small readable numbers.
 
 import pytest
 
-from resources.lib.aom.domain import policies
+from resources.lib.aome.domain import policies
 
 
 # The decision is evaluated in a fixed order (served -> deadline -> quiet);

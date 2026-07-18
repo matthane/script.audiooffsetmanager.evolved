@@ -1,6 +1,6 @@
 """Addon helper script entry point."""
 
-from resources.lib.aom.script_router import handle_script_call
+from resources.lib.aome.script_router import handle_script_call
 
 
 if __name__ == '__main__':

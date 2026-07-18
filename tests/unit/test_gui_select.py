@@ -9,7 +9,7 @@ stubs do not retain constructor arguments.
 
 import xbmcgui
 
-from resources.lib.aom.kodi.gui import Gui
+from resources.lib.aome.kodi.gui import Gui
 
 
 class FakeListItem:

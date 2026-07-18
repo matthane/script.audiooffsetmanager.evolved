@@ -1,4 +1,4 @@
-"""Behavioral tests for aom.store.table (the OffsetTable adapter).
+"""Behavioral tests for aome.store.table (the OffsetTable adapter).
 
 Moved here from test_kodi_settings.py with the class itself (E2 review):
 the table adapts the pure store + one injected settings read, so it lives
@@ -6,9 +6,9 @@ in the store package. Uses a REAL OffsetStore on tmp_path — only the
 settings toggle is faked.
 """
 
-from resources.lib.aom.domain.profile import StreamProfile
-from resources.lib.aom.store.offset_store import OffsetStore
-from resources.lib.aom.store.table import OffsetTable
+from resources.lib.aome.domain.profile import StreamProfile
+from resources.lib.aome.store.offset_store import OffsetStore
+from resources.lib.aome.store.table import OffsetTable
 
 
 def _profile(hdr='dolbyvision', audio='truehd', video_fps=23.976):
@@ -33,7 +33,7 @@ class _ToggleSettings:
 
 
 def _make_table(tmp_path, per_fps=False):
-    from resources.lib.aom.store.offset_store import OffsetStore
+    from resources.lib.aome.store.offset_store import OffsetStore
     store = OffsetStore(str(tmp_path / "offsets.json"))
     store.load()
     return OffsetTable(store, _ToggleSettings(per_fps)), store

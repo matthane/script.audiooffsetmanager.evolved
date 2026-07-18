@@ -7,9 +7,9 @@ event type, so the order pins here are behavioral guarantees, not style.
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.stream_detector import StreamDetector
-from resources.lib.aom.runtime import ServiceRuntime
+from resources.lib.aome.app import events
+from resources.lib.aome.app.stream_detector import StreamDetector
+from resources.lib.aome.runtime import ServiceRuntime
 
 
 @pytest.fixture

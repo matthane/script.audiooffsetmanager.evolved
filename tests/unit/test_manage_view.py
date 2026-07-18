@@ -1,4 +1,4 @@
-"""Unit tests for :class:`resources.lib.aom.view.manage.ManageView`.
+"""Unit tests for :class:`resources.lib.aome.view.manage.ManageView`.
 
 The view is pure Python driven entirely through injected seams, so these
 tests use no Kodi: a scripted ``FakeGui`` (from ``tests.fakes``) answers the
@@ -16,8 +16,8 @@ import inspect
 
 import pytest
 
-from resources.lib.aom.store.offset_store import StoreUnreadable
-from resources.lib.aom.view.manage import ManageView
+from resources.lib.aome.store.offset_store import StoreUnreadable
+from resources.lib.aome.view.manage import ManageView
 from tests.fakes import FakeGui
 
 

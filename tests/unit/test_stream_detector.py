@@ -1,4 +1,4 @@
-"""Unit tests for aom.app.stream_detector.
+"""Unit tests for aome.app.stream_detector.
 
 Two surfaces are exercised:
 
@@ -19,18 +19,18 @@ verify window is 1.0s; the probe budget is 20 attempts.
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.app.stream_detector import (
+from resources.lib.aome.app import events
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.app.stream_detector import (
     StreamDetector,
     derive_stream_facts,
     INFOLABEL_FPS,
     INFOLABEL_HDR,
     INFOLABEL_GAMUT,
 )
-from resources.lib.aom.domain import formats
-from resources.lib.aom.domain.stream_state import StreamState
+from resources.lib.aome.domain import formats
+from resources.lib.aome.domain.stream_state import StreamState
 from tests.fakes import FakeClock, FakeFacade, FakeGateway
 
 

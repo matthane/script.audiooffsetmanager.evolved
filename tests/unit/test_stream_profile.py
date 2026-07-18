@@ -1,7 +1,7 @@
-"""Unit tests for aom.domain.profile — verbatim facts, identity, describe.
+"""Unit tests for aome.domain.profile — verbatim facts, identity, describe.
 
 The classic ``setting_id()`` (the settings-matrix key) is GONE: store keys
-are composed by ``aom.store`` at lookup/write instant. What the profile owns
+are composed by ``aome.store`` at lookup/write instant. What the profile owns
 now: immutability, the truncated fps axis, the offset-relevant identity
 tuple, and the greppable ``describe()`` log form.
 """
@@ -10,7 +10,7 @@ import dataclasses
 
 import pytest
 
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.domain.profile import StreamProfile
 
 
 def make_profile(hdr_type='dolbyvision', audio_format='truehd',

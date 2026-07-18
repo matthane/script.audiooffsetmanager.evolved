@@ -1,4 +1,4 @@
-"""Behavioral tests for aom.app.dispatcher.Dispatcher.
+"""Behavioral tests for aome.app.dispatcher.Dispatcher.
 
 The dispatcher is the spine of the redesign (DESIGN.md "Pillar A"): one thread
 owns a queue and a timer heap, so every timer/debounce/retry becomes a
@@ -18,7 +18,7 @@ import pytest
 # ``_STOP`` is the module-private sentinel ``stop()`` enqueues. One test posts it
 # directly to exercise the "sentinel consumed mid-drain" halt without spinning up
 # a background thread; importing it keeps that test faithful to real behaviour.
-from resources.lib.aom.app.dispatcher import Dispatcher, _STOP
+from resources.lib.aome.app.dispatcher import Dispatcher, _STOP
 from tests.fakes import FakeClock
 
 

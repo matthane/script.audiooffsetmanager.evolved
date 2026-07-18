@@ -1,4 +1,4 @@
-"""Unit tests for aom.domain.formats — now just the UNKNOWN sentinel.
+"""Unit tests for aome.domain.formats — now just the UNKNOWN sentinel.
 
 The classic vocabulary tables (HDR/audio/fps tuples, display names,
 settings-id tables, the 315-key generator feed) died with the offset matrix
@@ -9,7 +9,7 @@ detector's verbatim handling of the names the classic vocabulary used to
 gatekeep.
 """
 
-from resources.lib.aom.domain import formats
+from resources.lib.aome.domain import formats
 
 
 def test_unknown_sentinel_value_is_frozen():
@@ -37,7 +37,7 @@ def test_classic_vocabulary_still_round_trips_verbatim():
     # gone) plus strangers it used to reject: all pass through the detector
     # verbatim now. The tables were gatekeepers; verbatim acceptance keeps
     # their NAMES working without keeping the gate.
-    from resources.lib.aom.app.stream_detector import derive_stream_facts
+    from resources.lib.aome.app.stream_detector import derive_stream_facts
     classic = ('truehd', 'eac3', 'ac3', 'dtshd_ma', 'dtshd_hra', 'dca', 'pcm')
     for audio in classic + ('x-future-codec', 'aac'):
         facts = derive_stream_facts(

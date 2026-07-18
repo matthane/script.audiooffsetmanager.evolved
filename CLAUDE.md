@@ -27,7 +27,7 @@ design) — all at the repo root, **git-excluded via `.git/info/exclude`**
 (they exist only in the primary working copy and never materialize in
 agent worktrees; reference them by absolute path). Phases **E0–E4 are
 complete** (the runtime runs the sparse store); **E7** — the field beta
-cycle, currently at 1.0.0~beta11 — is underway. Trust the `aom/` module
+cycle, currently at 1.0.0~beta11 — is underway. Trust the `aome/` module
 docstrings and the local docs over any stale statement here — this file
 gets its full rewrite in E8.
 
@@ -45,7 +45,7 @@ gets its full rewrite in E8.
 
 ## Entry points
 
-Unchanged from 2.0: `service.py` → `aom.runtime` (the dispatcher-owned
+Unchanged from 2.0: `service.py` → `aome.runtime` (the dispatcher-owned
 service), `script.py` → the script-process router (settings, and from E4
 the `manage_offsets` management view).
 
@@ -53,10 +53,10 @@ the `manage_offsets` management view).
 
 The 2.0 backend is inherited whole: single-threaded dispatcher owning all
 state, per-playback `PlaybackSession` with the STARTING/STABILIZING/STABLE
-stream-state machine, `aom/domain|app|kodi` layering (domain/app are pure —
+stream-state machine, `aome/domain|app|kodi` layering (domain/app are pure —
 the architecture contract test enforces it), scheduled probe/verify stream
 detection, seek scheduler with PM4K coordination, deferral-based notifier.
-See the `aom/` module docstrings — they are the architecture documentation.
+See the `aome/` module docstrings — they are the architecture documentation.
 
 **What Evolved replaces (the offset data model):**
 
@@ -103,7 +103,7 @@ settings-state doctrine survives for these, unchanged and binding:
 ## Conventions
 
 - Match existing style: module docstrings, constructor dependency
-  injection, no globals; new runtime files under `resources/lib/aom/`.
+  injection, no globals; new runtime files under `resources/lib/aome/`.
 - Kodi I/O through the gateway adapters; logging through the injected
   sinks with `AOMe_`-prefixed messages (the `e` distinguishes Evolved's
   lines from classic AOM's in a shared kodi.log); Python 3.8 syntax.

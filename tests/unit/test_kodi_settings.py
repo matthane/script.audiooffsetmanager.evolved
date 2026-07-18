@@ -1,4 +1,4 @@
-"""Behavioral tests for aom.kodi.settings (the Settings adapter).
+"""Behavioral tests for aome.kodi.settings (the Settings adapter).
 
 Kodi is faked via Kodistubs: ``xbmcaddon.Addon(...).getSettings()`` yields a
 stub ``Settings`` object whose ``getBool``/``getInt``/``setBool``/``setInt`` we
@@ -9,8 +9,8 @@ Kodi log level. No fixtures beyond ``monkeypatch``.
 
 import xbmc
 
-from resources.lib.aom.kodi.settings import ADDON_ID, Settings
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.kodi.settings import ADDON_ID, Settings
+from resources.lib.aome.domain.profile import StreamProfile
 
 
 # --- helpers -----------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Behavior matrix for aom.domain.policies.parse_delay_ms.
+"""Behavior matrix for aome.domain.policies.parse_delay_ms.
 
 Began in Phase 0 as characterization tests for ActiveMonitor.convert_delay_to_ms
 (relocated to the domain in Phase 1). Phase 6 gave the parser to the
@@ -10,7 +10,7 @@ matrix now pins the FIXED semantics, targeting the domain function directly
 
 import pytest
 
-from resources.lib.aom.domain.policies import parse_delay_ms
+from resources.lib.aome.domain.policies import parse_delay_ms
 
 NNBSP = " "  # narrow no-break space (U+202F)
 UMINUS = "−"  # Unicode minus sign

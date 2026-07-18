@@ -1,4 +1,4 @@
-"""Unit tests for aom.app.adjustment_watcher (AdjustmentWatcher).
+"""Unit tests for aome.app.adjustment_watcher (AdjustmentWatcher).
 
 Driven exactly like test_seek_scheduler / test_stream_detector: a FakeClock
 plus manually pumped Dispatcher, a real SessionTracker (subscribed FIRST so
@@ -33,11 +33,11 @@ Timing facts the tests rely on (all derived from the class constants):
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.app import events
+from resources.lib.aome.app.adjustment_watcher import AdjustmentWatcher
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeFacade, FakeGateway, FakeOffsetTable
 
 

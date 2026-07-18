@@ -1,4 +1,4 @@
-"""Unit tests for aom.app.notifier (Notifier).
+"""Unit tests for aome.app.notifier (Notifier).
 
 Driven exactly like test_adjustment_watcher / test_seek_scheduler: a FakeClock
 plus a manually pumped Dispatcher, a real SessionTracker (subscribed FIRST so
@@ -14,13 +14,13 @@ never leave these tests green-but-wrong against a stale float.
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.notifier import (
+from resources.lib.aome.app import events
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.notifier import (
     CORRUPTION_NOTICE_MS, Notifier, STRING_OFFSET_APPLIED,
     STRING_OFFSET_SAVED, STRING_STORE_CORRUPTED)
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeGui
 
 

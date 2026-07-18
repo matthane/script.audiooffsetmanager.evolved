@@ -1,4 +1,4 @@
-"""Unit tests for aom.store.offset_store.OffsetStore.
+"""Unit tests for aome.store.offset_store.OffsetStore.
 
 Plain pytest with tmp_path and a fixed fake clock; log sinks are collected
 into lists so warnings/debug lines can be asserted. The doctrine pins live
@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from resources.lib.aom.store.offset_store import OffsetStore
+from resources.lib.aome.store.offset_store import OffsetStore
 
 # 1752613391.0 epoch -> 2025-07-15T21:03:11Z (UTC).
 FAKE_TS = 1752613391.0
@@ -305,7 +305,7 @@ def test_atomic_swap_failure_leaves_original_intact(tmp_path, monkeypatch):
     store.set(KEY, 100)  # establishes a valid original on disk
     original = open(path, "rb").read()
 
-    import resources.lib.aom.store.offset_store as module
+    import resources.lib.aome.store.offset_store as module
 
     def broken_replace(src, dst):
         # PERSISTENT failure: every attempt (including the E4 sharing-
@@ -334,7 +334,7 @@ def test_transient_replace_failure_is_retried_and_recovers(tmp_path,
     store, path, _debug, warning = make_store(tmp_path)
     store.load()
 
-    import resources.lib.aom.store.offset_store as module
+    import resources.lib.aome.store.offset_store as module
     real_replace = os.replace
     calls = {"n": 0}
 
@@ -365,7 +365,7 @@ def test_read_profiles_names_dropped_entries_through_log_debug(tmp_path):
         "bad|delay|type": {"delay_ms": "fast"},
     }}), encoding="utf-8")
 
-    from resources.lib.aom.store.offset_store import read_profiles
+    from resources.lib.aome.store.offset_store import read_profiles
     lines = []
     entries = read_profiles(str(path), log_debug=lines.append)
 
@@ -381,7 +381,7 @@ def test_clear_reports_persist_failure_as_zero(tmp_path, monkeypatch):
     store.set(KEY, 100)
     store.set(KEY + "2", 200)
 
-    import resources.lib.aom.store.offset_store as module
+    import resources.lib.aome.store.offset_store as module
 
     def broken_replace(_src, _dst):
         raise OSError("simulated replace failure")
@@ -441,7 +441,7 @@ def test_delete_reports_persist_failure(tmp_path, monkeypatch):
     store.load()
     store.set(KEY, 100)
 
-    import resources.lib.aom.store.offset_store as module
+    import resources.lib.aome.store.offset_store as module
 
     def broken_replace(_src, _dst):
         raise OSError("simulated replace failure")
@@ -497,7 +497,7 @@ def test_parent_dir_created(tmp_path):
 # --- read_profiles: the other-process (management view) reader ----------------
 
 def _read_profiles(path):
-    from resources.lib.aom.store.offset_store import read_profiles
+    from resources.lib.aome.store.offset_store import read_profiles
     return read_profiles(path)
 
 
@@ -518,7 +518,7 @@ def test_read_profiles_roundtrips_written_entries(tmp_path):
 def test_read_profiles_never_quarantines_a_corrupt_file(tmp_path):
     # The script process must not mutate the file (single-writer doctrine):
     # unlike load(), a corrupt file raises instead of renaming to .bad.
-    from resources.lib.aom.store.offset_store import StoreUnreadable
+    from resources.lib.aome.store.offset_store import StoreUnreadable
     path = tmp_path / "offsets.json"
     path.write_text("junk {{{", encoding="utf-8")
 
@@ -530,7 +530,7 @@ def test_read_profiles_never_quarantines_a_corrupt_file(tmp_path):
 
 
 def test_read_profiles_refuses_future_schema_untouched(tmp_path):
-    from resources.lib.aom.store.offset_store import StoreUnreadable
+    from resources.lib.aome.store.offset_store import StoreUnreadable
     path = tmp_path / "offsets.json"
     blob = json.dumps({"version": 2, "profiles": {KEY: {"delay_ms": 5}}})
     path.write_text(blob, encoding="utf-8")
@@ -640,7 +640,7 @@ def test_scribbled_resets_section_degrades_to_no_markers(tmp_path):
 
 def test_read_profiles_never_shows_reset_markers(tmp_path):
     # The management view lists offsets; a pending reset is not an offset.
-    from resources.lib.aom.store.offset_store import read_profiles
+    from resources.lib.aome.store.offset_store import read_profiles
     store, path, _debug, _warning = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
@@ -653,14 +653,14 @@ def test_read_profiles_never_shows_reset_markers(tmp_path):
 # --- read_import: the backup restore-source reader -----------------------------
 
 def _read_import(path):
-    from resources.lib.aom.store.offset_store import read_import
+    from resources.lib.aome.store.offset_store import read_import
     return read_import(path)
 
 
 def test_read_import_missing_file_raises(tmp_path):
     # THE divergence from read_profiles: an absent restore source is a
     # failed import, never "replace everything with nothing".
-    from resources.lib.aom.store.offset_store import StoreUnreadable
+    from resources.lib.aome.store.offset_store import StoreUnreadable
     with pytest.raises(StoreUnreadable):
         _read_import(str(tmp_path / "offsets.json.import"))
 
@@ -675,7 +675,7 @@ def test_read_import_roundtrips_a_written_store_file(tmp_path):
 
 
 def test_read_import_rejects_corrupt_and_future_files(tmp_path):
-    from resources.lib.aom.store.offset_store import StoreUnreadable
+    from resources.lib.aome.store.offset_store import StoreUnreadable
     corrupt = tmp_path / "corrupt.json"
     corrupt.write_text("{nope", encoding="utf-8")
     with pytest.raises(StoreUnreadable) as excinfo:
@@ -807,7 +807,7 @@ def test_replace_all_reports_persist_failure_with_memory_standing(
 # --- read_import_document / discard_import (the restore round trip) ------------
 
 def test_read_import_document_carries_validated_reset_markers(tmp_path):
-    from resources.lib.aom.store.offset_store import read_import_document
+    from resources.lib.aome.store.offset_store import read_import_document
     path = tmp_path / "backup.json"
     path.write_text(json.dumps({
         "version": 1,
@@ -822,7 +822,7 @@ def test_read_import_document_carries_validated_reset_markers(tmp_path):
 
 
 def test_read_import_document_without_resets_section_is_empty(tmp_path):
-    from resources.lib.aom.store.offset_store import read_import_document
+    from resources.lib.aome.store.offset_store import read_import_document
     path = tmp_path / "backup.json"
     path.write_text(json.dumps({"version": 1,
                                 "profiles": {KEY: {"delay_ms": 1}}}),
@@ -849,7 +849,7 @@ def test_replace_all_carries_backup_reset_markers(tmp_path):
 
 
 def test_discard_import_removes_file_and_tolerates_absence(tmp_path):
-    from resources.lib.aom.store.offset_store import discard_import
+    from resources.lib.aome.store.offset_store import discard_import
     staged = tmp_path / "offsets.json.import"
     staged.write_text("{}", encoding="utf-8")
 

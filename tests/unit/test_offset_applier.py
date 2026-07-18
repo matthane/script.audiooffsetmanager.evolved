@@ -1,4 +1,4 @@
-"""Unit tests for aom.app.offset_applier (OffsetApplier).
+"""Unit tests for aome.app.offset_applier (OffsetApplier).
 
 Rig pattern shared with the sibling app suites: FakeClock + manually pumped
 Dispatcher + real SessionTracker (subscribed first), a scriptable FakeGateway,
@@ -17,12 +17,12 @@ gates applying only; learning is the watcher's own toggle).
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.offset_applier import OffsetApplier
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.app import events
+from resources.lib.aome.app.adjustment_watcher import AdjustmentWatcher
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.offset_applier import OffsetApplier
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeGateway, FakeOffsetTable
 
 ALL_KEY = 'dolbyvision|all|truehd'

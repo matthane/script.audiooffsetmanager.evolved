@@ -1,6 +1,6 @@
 """Main addon service entry point."""
 
-from resources.lib.aom.runtime import ServiceRuntime
+from resources.lib.aome.runtime import ServiceRuntime
 
 
 if __name__ == '__main__':

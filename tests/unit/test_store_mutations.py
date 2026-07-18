@@ -16,16 +16,16 @@ Two surfaces, tested at their real seams:
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.app.store_mutations import (ACK_MESSAGE, ALLOWED_OPS,
+from resources.lib.aome.app import events
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.app.store_mutations import (ACK_MESSAGE, ALLOWED_OPS,
                                                    IMPORT_SUFFIX,
                                                    MUTATION_MESSAGE,
                                                    StoreMutationHandler)
-from resources.lib.aom.kodi.monitor_bridge import MonitorBridge
-from resources.lib.aom.kodi.settings import ADDON_ID
-from resources.lib.aom.store.offset_store import OffsetStore
+from resources.lib.aome.kodi.monitor_bridge import MonitorBridge
+from resources.lib.aome.kodi.settings import ADDON_ID
+from resources.lib.aome.store.offset_store import OffsetStore
 from tests.fakes import FakeClock
 
 
@@ -504,7 +504,7 @@ def test_channel_end_to_end_across_both_processes(tmp_path, monkeypatch):
     as Kodi would: method 'Other.<message>', data re-serialized as JSON.
     """
     import json
-    from resources.lib.aom.kodi.mutation_client import MutationClient
+    from resources.lib.aome.kodi.mutation_client import MutationClient
 
     r = Rig(tmp_path)
     r.store.set(KEY_A, -115)

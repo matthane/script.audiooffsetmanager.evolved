@@ -1,4 +1,4 @@
-"""Unit tests for aom.store.keys — the verbatim-acceptance key algebra.
+"""Unit tests for aome.store.keys — the verbatim-acceptance key algebra.
 
 These read as a contract: the VERBATIM PINS and FRACTIONAL-RATE PINS below are
 the regression armor for the doctrine that Kodi's reported strings become keys
@@ -7,8 +7,8 @@ as presented, with only case-fold + trim (+ a `|` defense) applied.
 
 import pytest
 
-from resources.lib.aom.domain import formats
-from resources.lib.aom.store import keys
+from resources.lib.aome.domain import formats
+from resources.lib.aome.store import keys
 
 
 # --- Verbatim pins: strings pass through with only case-fold + trim ---------

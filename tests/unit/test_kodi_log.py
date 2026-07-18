@@ -1,4 +1,4 @@
-"""Behavioral tests for aom.kodi.log.KodiLogger.
+"""Behavioral tests for aome.kodi.log.KodiLogger.
 
 ``xbmc.log`` is monkeypatched with a recorder capturing ``(message, level)``
 tuples, so tests pin both the emitted text (prefix rules) and the escalated
@@ -7,7 +7,7 @@ level. No fixtures beyond ``monkeypatch``.
 
 import xbmc
 
-from resources.lib.aom.kodi.log import KodiLogger
+from resources.lib.aome.kodi.log import KodiLogger
 
 
 def _install_recorder(monkeypatch):

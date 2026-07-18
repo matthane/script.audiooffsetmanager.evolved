@@ -1,4 +1,4 @@
-"""Unit tests for aom.app.seek_scheduler (SeekScheduler + ExternalSeekCoordinator).
+"""Unit tests for aome.app.seek_scheduler (SeekScheduler + ExternalSeekCoordinator).
 
 Driven exactly like test_stream_detector / test_dispatcher: a FakeClock plus
 Dispatcher.run_pending() pumping, with a Rig that assembles the scheduler on
@@ -28,15 +28,15 @@ depend on cross-type ordering exploit this deterministically.
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.seek_scheduler import (
+from resources.lib.aome.app import events
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.seek_scheduler import (
     SeekScheduler,
     ExternalSeekCoordinator,
 )
-from resources.lib.aom.app.session import SessionTracker
-from resources.lib.aom.domain.profile import StreamProfile
-from resources.lib.aom.domain.stream_state import StreamState
+from resources.lib.aome.app.session import SessionTracker
+from resources.lib.aome.domain.profile import StreamProfile
+from resources.lib.aome.domain.stream_state import StreamState
 from tests.fakes import FakeClock, FakeFacade, FakeGateway
 
 
@@ -97,11 +97,11 @@ class Rig:
         """Reasons with a live scheduled attempt — the request state IS the
         key-replaced timer, so pendingness is read off the dispatcher."""
         return {reason for reason in SeekScheduler.REASONS
-                if f'aom.seek.{reason}' in self.dispatcher._active_keys}
+                if f'aome.seek.{reason}' in self.dispatcher._active_keys}
 
     def pending_request(self, reason):
         """The live queued ExecuteSeek event for a reason (or None)."""
-        key = f'aom.seek.{reason}'
+        key = f'aome.seek.{reason}'
         live_seq = self.dispatcher._active_keys.get(key)
         for _fire_at, seq, timer_key, event in self.dispatcher._timers:
             if timer_key == key and seq == live_seq:

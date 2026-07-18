@@ -18,11 +18,11 @@ post-stop AV events.
 
 import pytest
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.notifier import (STRING_OFFSET_APPLIED,
+from resources.lib.aome.app import events
+from resources.lib.aome.app.notifier import (STRING_OFFSET_APPLIED,
                                             STRING_OFFSET_SAVED)
-from resources.lib.aom.app.stream_detector import INFOLABEL_FPS, INFOLABEL_HDR
-from resources.lib.aom.domain.stream_state import StreamState
+from resources.lib.aome.app.stream_detector import INFOLABEL_FPS, INFOLABEL_HDR
+from resources.lib.aome.domain.stream_state import StreamState
 from tests.fakes import FakeClock, FakeGateway
 
 
@@ -36,7 +36,7 @@ INFOLABELS = {
 
 @pytest.fixture
 def rig(monkeypatch):
-    from resources.lib.aom.runtime import ServiceRuntime
+    from resources.lib.aome.runtime import ServiceRuntime
     runtime = ServiceRuntime()
 
     # Deterministic time everywhere: every clock-holding component gets the
@@ -74,7 +74,7 @@ def rig(monkeypatch):
     # Every profile resolves to a stored -125 at its all-level key, so the
     # apply path always has an entry (the learn/miss flows have their own
     # integration suite).
-    from resources.lib.aom.store import resolve as store_resolve
+    from resources.lib.aome.store import resolve as store_resolve
 
     def fake_resolve(profile):
         key = f"{profile.hdr_type}|all|{profile.audio_format}"
@@ -278,7 +278,7 @@ def test_blip_and_revert_announces_no_change(rig):
     assert session.stream_state is StreamState.STABLE
     assert len(applied) == baseline_applied
     assert len(notified) == baseline_notified
-    assert 'aom.seek.adjust' not in runtime.dispatcher._active_keys
+    assert 'aome.seek.adjust' not in runtime.dispatcher._active_keys
 
 
 def test_failed_apply_rpc_is_retried_on_next_stabilization(rig):
@@ -418,7 +418,7 @@ def test_settings_save_reapply_reads_as_self_echo_not_adjustment(
     # modeled by re-pointing the rig's resolve, exactly what the real
     # table's fresh read would produce.)
     runtime, clock, gateway, applied, notified = rig
-    from resources.lib.aom.store import resolve as store_resolve
+    from resources.lib.aome.store import resolve as store_resolve
 
     monkeypatch.setattr(runtime.settings, 'remember_adjustments_enabled',
                         lambda: True)

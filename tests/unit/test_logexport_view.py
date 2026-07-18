@@ -1,4 +1,4 @@
-"""Unit tests for :class:`resources.lib.aom.view.logexport.LogExportView`.
+"""Unit tests for :class:`resources.lib.aome.view.logexport.LogExportView`.
 
 Pure Python through injected seams, like the transfer view's suite: a
 scripted ``FakeGui`` answers the dialogs, list-of-lines readers stand in
@@ -16,8 +16,8 @@ produced, not the whole export.
 
 import pytest
 
-from resources.lib.aom.view import logexport
-from resources.lib.aom.view.logexport import LogExportView
+from resources.lib.aome.view import logexport
+from resources.lib.aome.view.logexport import LogExportView
 from tests.fakes import FakeGui
 
 
@@ -41,7 +41,7 @@ TRACEBACK_ENTRY = [
     "(PythonToCppException): ...",
     "Traceback (most recent call last):",
     '  File "C:\\Kodi\\home\\addons\\script.audiooffsetmanager.evolved\\'
-    'resources\\lib\\aom\\view\\manage.py", line 1, in run',
+    'resources\\lib\\aome\\view\\manage.py", line 1, in run',
     "ValueError: boom",
 ]
 

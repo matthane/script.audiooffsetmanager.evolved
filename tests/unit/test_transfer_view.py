@@ -1,4 +1,4 @@
-"""Unit tests for :class:`resources.lib.aom.view.transfer.TransferView`.
+"""Unit tests for :class:`resources.lib.aome.view.transfer.TransferView`.
 
 Pure Python through injected seams, like the manage view's suite: a
 scripted ``FakeGui`` answers the dialogs (browse answers included), and a
@@ -16,8 +16,8 @@ a missing service.
 
 import pytest
 
-from resources.lib.aom.store.offset_store import StoreUnreadable
-from resources.lib.aom.view.transfer import TransferView
+from resources.lib.aome.store.offset_store import StoreUnreadable
+from resources.lib.aome.view.transfer import TransferView
 from tests.fakes import FakeGui
 
 
@@ -152,7 +152,7 @@ def test_export_copies_verbatim_to_a_timestamped_name():
     # through the view (verbatim copy is the export contract).
     assert destination.startswith("smb://nas/backups/aom-evolved-offsets-")
     assert destination.endswith(".json")
-    assert "//aom" not in destination     # no doubled separator
+    assert "//aom-evolved" not in destination     # no doubled separator
     # The report carries the count and the full destination path.
     assert gui.oks == [("#32149", "Saved 2 entries to {0}".format(destination))]
 
@@ -370,7 +370,7 @@ def test_import_refused_ack_maps_known_details_to_their_wordings(
 
 def test_the_view_never_sends_anything_but_import():
     import inspect
-    from resources.lib.aom.view import transfer
+    from resources.lib.aome.view import transfer
 
     source = inspect.getsource(transfer)
     # The only channel op this module can express is 'import' (P6 sibling

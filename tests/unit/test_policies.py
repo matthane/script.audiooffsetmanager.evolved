@@ -1,4 +1,4 @@
-"""Unit tests for aom.domain.policies — parsing, completeness, gating.
+"""Unit tests for aome.domain.policies — parsing, completeness, gating.
 
 parse_delay_ms started as a verbatim move of ActiveMonitor.convert_delay_to_ms
 (full locale/clamping matrix in tests/unit/test_delay_parsing.py); Phase 6
@@ -8,8 +8,8 @@ and the int() ms truncation — and flipped the pins here and there.
 
 import pytest
 
-from resources.lib.aom.domain import policies
-from resources.lib.aom.domain.profile import StreamProfile
+from resources.lib.aome.domain import policies
+from resources.lib.aome.domain.profile import StreamProfile
 
 NNBSP = " "
 

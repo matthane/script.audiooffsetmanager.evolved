@@ -1,9 +1,9 @@
 """Unit tests for PlaybackSession + SessionTracker (Pillar B primitives)."""
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.dispatcher import Dispatcher
-from resources.lib.aom.app.session import PlaybackSession, SessionTracker
-from resources.lib.aom.domain.stream_state import StreamState
+from resources.lib.aome.app import events
+from resources.lib.aome.app.dispatcher import Dispatcher
+from resources.lib.aome.app.session import PlaybackSession, SessionTracker
+from resources.lib.aome.domain.stream_state import StreamState
 from tests.fakes import FakeClock
 
 

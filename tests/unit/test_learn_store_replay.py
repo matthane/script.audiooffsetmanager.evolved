@@ -34,12 +34,12 @@ from types import SimpleNamespace
 import pytest
 import xbmcvfs
 
-from resources.lib.aom.app import events
-from resources.lib.aom.app.adjustment_watcher import AdjustmentWatcher
-from resources.lib.aom.app.stream_detector import (INFOLABEL_FPS, INFOLABEL_HDR,
+from resources.lib.aome.app import events
+from resources.lib.aome.app.adjustment_watcher import AdjustmentWatcher
+from resources.lib.aome.app.stream_detector import (INFOLABEL_FPS, INFOLABEL_HDR,
                                                    StreamDetector)
-from resources.lib.aom.kodi.gui import Gui
-from resources.lib.aom.store.offset_store import OffsetStore
+from resources.lib.aome.kodi.gui import Gui
+from resources.lib.aome.store.offset_store import OffsetStore
 from tests.fakes import FakeClock, FakeGateway
 
 
@@ -68,7 +68,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     monkeypatch.setattr(xbmcvfs, 'translatePath',
                         lambda _p: str(tmp_path / 'offsets.json'))
 
-    from resources.lib.aom.runtime import ServiceRuntime
+    from resources.lib.aome.runtime import ServiceRuntime
     runtime = ServiceRuntime()
 
     # Deterministic time everywhere: every clock-holding component gets the

@@ -1,4 +1,4 @@
-"""Contract tests for aom.app.events — the typed event catalog.
+"""Contract tests for aome.app.events — the typed event catalog.
 
 Events are dispatched by ``type`` and parked on a queue / timer heap, so each
 must be an immutable value object: a frozen dataclass with equality by payload.
@@ -10,7 +10,7 @@ from dataclasses import FrozenInstanceError, is_dataclass
 
 import pytest
 
-from resources.lib.aom.app import events
+from resources.lib.aome.app import events
 
 
 # The player/monitor group Phase 2 wires up (posted by the Kodi bridges).

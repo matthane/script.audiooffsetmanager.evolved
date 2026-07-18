@@ -10,9 +10,9 @@ import pytest
 import xbmcaddon
 import xbmcvfs
 
-from resources.lib.aom import script_router
-from resources.lib.aom.kodi.gui import Gui
-from resources.lib.aom.kodi.mutation_client import MutationClient
+from resources.lib.aome import script_router
+from resources.lib.aome.kodi.gui import Gui
+from resources.lib.aome.kodi.mutation_client import MutationClient
 
 
 class _StubSettings:
@@ -252,7 +252,7 @@ def test_transfer_view_composition(monkeypatch, tmp_path):
     # paths (staging = store + IMPORT_SUFFIX, the channel protocol
     # constant), the real Gui, and the mutation client's send as the only
     # channel leg.
-    from resources.lib.aom.store.offset_store import StoreUnreadable
+    from resources.lib.aome.store.offset_store import StoreUnreadable
 
     built = {}
 
