@@ -2,7 +2,7 @@
 
 # Audio Offset Manager: Evolved
 
-Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers your lipsync corrections. Adjust the audio offset during playback however you normally would: the slider in Kodi's audio settings, a keymap, a remote app, or anything else that sets the offset. Evolved picks up the change no matter where it came from, saves the value for that stream's profile (HDR type, audio format, and optionally frame rate), and applies it automatically the next time you play matching content.
+**Kodi's missing lipsync tool.** Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers your lipsync corrections. Adjust the audio offset during playback however you normally would: the slider in Kodi's audio settings, a keymap, a remote app, or anything else that sets the offset. Evolved picks up the change no matter where it came from, saves the value for that stream's profile (HDR type, audio format, and optionally frame rate), and applies it automatically the next time you play matching content.
 
 **Why a separate addon?** Evolved is the addon the original Audio Offset Manager set out to be. Where the original was built around a fixed (and very limited) list of formats configured in its settings, Evolved learns offsets for whatever Kodi reports, so any format or codec works, including ones Kodi adds in the future. Rebuilding the original around this model would have wiped out every existing user's configuration, so it lives on as-is and Evolved is a separate addon.
 
