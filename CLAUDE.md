@@ -75,8 +75,12 @@ See the `aom/` module docstrings — they are the architecture documentation.
   reintroduce step (25 ms/5 ms) or range assumptions anywhere.
 - The management view (script process) is inspection + delete/clear only
   (P6 — no value entry anywhere outside playback); its mutations reach the
-  service over a `NotifyAll` channel whitelisted to delete/clear. The
-  script process NEVER writes the store file.
+  service over a `NotifyAll` channel whitelisted to delete/clear/import.
+  The `import` op is the backup restore (Advanced export/import buttons,
+  2026-07-17): replace-all semantics, values only ever from a staged
+  backup file (`offsets.json.import` — the one sibling file the script
+  process may write), no path and no value on the wire. The script
+  process NEVER writes the store file itself.
 - No onboarding, no test video, no `new_install`, no stored platform
   capability flags — capability gating is emergent from the store (P3).
 
