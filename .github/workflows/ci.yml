@@ -1,12 +1,18 @@
 name: CI
 
-# Runs on every push and PR. Two independent gates:
+# Manual-dispatch on this branch (user call, 2026-07-17): the full local
+# pytest suite already gates every commit, so per-push CI was noise — run
+# it as part of cutting a beta zip instead:
+#   gh workflow run ci.yml --ref evolved/1.0   (then gh run watch)
+# Push triggers are per-branch (GitHub reads the workflow file on the
+# pushed ref), so main/redesign branches keep their own per-push CI.
+# Two independent gates:
 #   * tests   — pytest against the source tree on the supported Python range.
 #   * package — kodi-addon-checker against a `git archive` extraction, i.e. the
 #               exact bytes that ship (export-ignore'd dev files excluded), so
 #               tests/, requirements-dev.txt, pytest.ini, etc. can never trip it.
 on:
-  push:
+  workflow_dispatch:
   pull_request:
 
 jobs:
