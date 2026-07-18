@@ -1,69 +1,60 @@
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/main/resources/icon.png" width="256" height="256" alt="Audio Offset Manager">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/icon.png" width="256" height="256" alt="Audio Offset Manager: Evolved">
 
-# Audio Offset Manager
+# Audio Offset Manager: Evolved
 
-Audio Offset Manager is a utility addon for Kodi (v20.0+) designed to enhance your viewing experience by providing dynamic audio delay adjustments tailored to the content you're watching. This addon intelligently adjusts the audio offset based on the detected HDR type, audio format, and even FPS value according to user-configured settings. 
+Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers your lipsync corrections. Adjust the audio offset during playback with Kodi's own slider, the way you always have. Evolved saves the value for that stream's profile (HDR type, audio format, and optionally frame rate) and applies it automatically the next time you play matching content.
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/main/resources/screenshot-1.jpg" width="100%" alt="Audio Offset Manager screenshot 1">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-6.png" width="100%" alt="Playback notification showing a saved offset for Dolby Vision with Dolby TrueHD Atmos">
 
-## Features
+## How it works
 
-- **Dynamic Audio Offset Application**: Automatically sets audio delay based on the HDR type, audio format, and FPS value of the current video, applying user-defined offsets to ensure consistent audio-visual sync without needing repeated manual adjustments.
+1. Play a video and adjust the audio offset in Kodi's audio settings.
+2. Once the adjustment settles, Evolved saves it for the current stream profile: the HDR type and audio format of the video itself, plus its frame rate when per-frame-rate offsets are enabled.
+3. On every later playback with a matching profile, the saved offset is applied automatically.
 
-- **Active Monitoring Mode**: Monitors when users manually adjust audio delay via Kodi's OSD settings, stores those adjustments, and applies them for future playback of similar content. This feature is particularly useful for initial AV calibration, allowing users to fine-tune audio sync and have those settings automatically applied to similar content in the future.
+There are no offset values to type in and no per-format settings pages. Everything the addon knows comes from adjustments you make during playback. Offsets are stored at 1 ms resolution, exactly as Kodi reports them, across Kodi's full range.
 
-- **Custom Seek-Backs**: Offers user-configurable "seek-back" functionality to rewind a few seconds in specific playback situations to keep audio synchronized, such as:
-  - When playback starts or resumes
-  - When the audio stream changes during playback
-  - When the audio offset is adjusted
-  - When the player is unpaused
+## Settings
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/main/resources/screenshot-2.jpg" width="100%" alt="Audio Offset Manager screenshot 2">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-1.png" width="100%" alt="Offsets settings category with Learn, Apply, and Per-frame-rate toggles">
 
-This addon streamlines your viewing experience by automating the process of audio delay adjustment, ensuring that once you've configured the appropriate offsets, they are dynamically applied for each type of content.
+- **Learn audio offsets**: save adjustments you make during playback. Off stops new offsets from being saved.
+- **Apply audio offsets**: replay saved offsets on matching playback. Off leaves playback untouched.
+- **Per-frame-rate offsets**: also key offsets by the video's frame rate, for setups where sync differs between, say, 24 and 60 fps content. When a stream has no offset saved for its exact frame rate, the offset saved for all rates is used instead.
 
-## Supported Formats
+## Managing stored offsets
 
-### Audio Formats
-- Dolby TrueHD*
-- Dolby Digital Plus (E-AC-3)*
-- Dolby Digital (AC-3)
-- DTS-HD MA*
-- DTS-HD HRA*
-- DTS (DCA)
-- Other/PCM 
+The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings (for example, frame-rate specific entries while per-frame-rate offsets is off) are shown dimmed.
 
-*These formats can also contain spatial audio encoding such as Dolby Atmos or DTS:X on top of the base audio format
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-2.png" width="100%" alt="Manage stored offsets view grouped by HDR type">
 
-### Video Formats
-- Dolby Vision
-- HDR10
-- HDR10+ (platform/build specific)
-- HLG
-- SDR
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-3.png" width="100%" alt="Stored offsets for Dolby Vision listed per audio format">
 
-### FPS Types
-23.98, 24, 25, 29.97, 30, 50, 59.94, 60
+## Playback behavior
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/main/resources/screenshot-3.jpg" width="100%" alt="Audio Offset Manager screenshot 3">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-4.png" width="100%" alt="Playback Behavior settings with seek back and notification options">
 
-## Installation and Usage
+- **Seek back after**: rewind a few seconds after events you select (such as playback start or an offset adjustment) so audio and video pick up in sync. The seek distance is configurable.
+- **Notifications**: optional on-screen notifications when an offset is applied or saved, with a configurable duration.
 
-1. Download the addon from the Kodi repository or install it manually.
-2. Enable the addon in Kodi's addon settings.
-3. Open and briefly play any video to fully initialize and enable all addon settings.
-4. Configure your desired audio offsets for different HDR types, audio formats, and FPS types in the addon settings. Enabling FPS based offsets allows different offsets to be applied and saved based on the FPS of the source video, in addition to the HDR type and audio format, allowing for more fine-tuned control.
-5. If you want to perform initial AV calibration, enable the active monitoring mode in the addon settings. This will allow the addon to learn and store your manual audio offset adjustments for future use.
-6. The addon will run as a background service, automatically applying your configured offsets during playback.
+## Backup
+
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager/refs/heads/evolved/1.0/resources/aome-screenshot-5.png" width="100%" alt="Advanced settings with export, import, and debug logging">
+
+**Export stored offsets** writes a backup file of everything the addon has learned. **Import stored offsets** restores a backup, replacing the current data. Useful when moving to a new device or reinstalling Kodi.
+
+## Installation
+
+1. Install the addon from a zip file (Add-ons > Install from zip file).
+2. Play a video and fix the lipsync with Kodi's audio offset slider.
+3. The addon runs as a background service from then on, saving your adjustments and applying them to matching content.
 
 ## Compatibility
 
-This addon is designed for Kodi v20.0 and above. It may not function correctly with earlier versions of Kodi.
+Requires Kodi v20 (Nexus) or later.
 
-## Contributing and Reporting Issues
+Evolved is a separate addon from the original Audio Offset Manager (`script.audiooffsetmanager`) and does not share its settings or data.
 
-Contributions to improve Audio Offset Manager are welcome. If you encounter any issues or have suggestions for improvements, please open an issue on the [GitHub repository](https://github.com/matthane/script.audiooffsetmanager).
+## Contributing and reporting issues
 
-### Attributions
-
-Icon designed by [Freepik](http://www.freepik.com/)
+Contributions are welcome. If you run into a problem or have a suggestion, please open an issue on the [GitHub repository](https://github.com/matthane/script.audiooffsetmanager).
