@@ -106,6 +106,38 @@ class Gui:
                       xbmc.LOGERROR)
             return False
 
+    def browse_folder(self, heading):
+        """Show a writable-folder picker; return the path, '' on cancel/error.
+
+        The export destination surface: type 3 is Kodi's
+        ShowAndGetWriteableDirectory, over the 'files' shares so local
+        drives, network shares, and USB mounts all offer themselves. Kodi
+        answers a cancel with the default value — the empty string here —
+        so '' doubles as the error fallback (a transient GUI failure reads
+        as "user backed out", same doctrine as select()).
+        """
+        try:
+            return xbmcgui.Dialog().browseSingle(3, heading, 'files')
+        except Exception as e:
+            self._log(f"AOMe_Gui: Error showing folder browser: {str(e)}",
+                      xbmc.LOGERROR)
+            return ''
+
+    def browse_file(self, heading, mask):
+        """Show a file picker filtered to ``mask``; '' on cancel/error.
+
+        The import source surface: type 1 is ShowAndGetFile, ``mask`` an
+        extension filter like '.json'. Cancel/error semantics as
+        browse_folder.
+        """
+        try:
+            return xbmcgui.Dialog().browseSingle(1, heading, 'files',
+                                                 mask)
+        except Exception as e:
+            self._log(f"AOMe_Gui: Error showing file browser: {str(e)}",
+                      xbmc.LOGERROR)
+            return ''
+
     def notification(self, message, duration_ms, title=None, icon=None):
         """Raise one Kodi toast for ``message`` lasting ``duration_ms``.
 

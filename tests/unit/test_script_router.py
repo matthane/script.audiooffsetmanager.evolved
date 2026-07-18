@@ -117,3 +117,76 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
     assert getattr(method, '__name__', '') == 'send'
     assert isinstance(getattr(method, '__self__', None), MutationClient)
     assert callable(built['log'])
+
+
+class RecordingTransfer:
+    """Stand-in for the composed TransferView: records which flow ran."""
+
+    ran = []
+
+    def run_export(self):
+        RecordingTransfer.ran.append('export')
+
+    def run_import(self):
+        RecordingTransfer.ran.append('import')
+
+
+@pytest.mark.parametrize("route,flow", [
+    ('export_offsets', 'export'),
+    ('import_offsets', 'import'),
+])
+def test_transfer_routes_run_their_flow_then_return_to_settings(
+        monkeypatch, route, flow):
+    RecordingTransfer.ran = []
+    monkeypatch.setattr(script_router, '_transfer_view', RecordingTransfer)
+
+    script_router.handle_script_call(['script.py', route])
+
+    assert RecordingTransfer.ran == [flow]
+    assert sum(a.opened for a in RecordingAddon.instances) == 1
+
+
+def test_transfer_view_composition(monkeypatch, tmp_path):
+    # The backup surface's graph: readers on the shared store/staging
+    # paths (staging = store + IMPORT_SUFFIX, the channel protocol
+    # constant), the real Gui, and the mutation client's send as the only
+    # channel leg.
+    from resources.lib.aom.store.offset_store import StoreUnreadable
+
+    built = {}
+
+    class FakeTransfer:
+        def __init__(self, gui, send_mutation, **kwargs):
+            built['gui'] = gui
+            built['send'] = send_mutation
+            built.update(kwargs)
+
+    monkeypatch.setattr(script_router, 'TransferView', FakeTransfer)
+    monkeypatch.setattr(xbmcvfs, 'translatePath',
+                        lambda _p: str(tmp_path / 'offsets.json'))
+
+    copies = []
+    monkeypatch.setattr(xbmcvfs, 'copy',
+                        lambda src, dst: copies.append((src, dst)) or True)
+    deletes = []
+    monkeypatch.setattr(xbmcvfs, 'delete', lambda p: deletes.append(p))
+
+    script_router._transfer_view()
+
+    assert isinstance(built['gui'], Gui)
+    method = built['send']
+    assert getattr(method, '__name__', '') == 'send'
+    assert isinstance(getattr(method, '__self__', None), MutationClient)
+
+    store_path = str(tmp_path / 'offsets.json')
+    staging_path = store_path + '.import'
+    assert built['read_entries']() == {}          # read-only reader, no file
+    with pytest.raises(StoreUnreadable):
+        built['read_staged']()                    # missing staging = error
+
+    assert built['export_file']('/backups/x.json') is True
+    assert copies[-1] == (store_path, '/backups/x.json')
+    assert built['stage_file']('/downloads/y.json') is True
+    assert copies[-1] == ('/downloads/y.json', staging_path)
+    built['discard_staged']()
+    assert deletes == [staging_path]

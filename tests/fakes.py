@@ -263,9 +263,11 @@ class FakeGui:
         self.localized_strings = {}      # optional overrides: id -> str
         self.select_answers = []         # scripted select() replies (FIFO)
         self.yesno_answers = []          # scripted yesno() replies (FIFO)
+        self.browse_answers = []         # scripted browse_*() replies (FIFO)
         self.selects = []                # (heading, options) per select()
         self.yesnos = []                 # (heading, message) per yesno()
         self.oks = []                    # (heading, message) per ok()
+        self.browses = []                # (kind, heading[, mask]) per browse_*()
 
     def localized(self, string_id):
         return self.localized_strings.get(string_id, f"#{string_id}")
@@ -294,3 +296,18 @@ class FakeGui:
     def ok(self, heading, message):
         self.oks.append((heading, message))
         return True
+
+    def browse_folder(self, heading):
+        # Shared answer queue with browse_file: the transfer view never
+        # shows both in one flow. Exhausted -> '' (the real adapter's
+        # cancel value), so an unscripted flow always backs out.
+        self.browses.append(('folder', heading))
+        if self.browse_answers:
+            return self.browse_answers.pop(0)
+        return ''
+
+    def browse_file(self, heading, mask):
+        self.browses.append(('file', heading, mask))
+        if self.browse_answers:
+            return self.browse_answers.pop(0)
+        return ''

@@ -220,3 +220,51 @@ msgstr ""
 msgctxt "#32148"
 msgid "How far back the player seeks after a selected event"
 msgstr ""
+
+msgctxt "#32149"
+msgid "Export stored offsets"
+msgstr ""
+
+msgctxt "#32150"
+msgid "Save all stored offsets to a backup file in a folder you choose."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Import stored offsets"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Restore stored offsets from a backup file. This replaces all currently stored offsets."
+msgstr ""
+
+msgctxt "#32153"
+msgid "Saved {0} to {1}"
+msgstr ""
+
+msgctxt "#32154"
+msgid "Could not save the backup file"
+msgstr ""
+
+msgctxt "#32155"
+msgid "Could not read the selected file"
+msgstr ""
+
+msgctxt "#32156"
+msgid "The selected file is not a stored offsets backup"
+msgstr ""
+
+msgctxt "#32157"
+msgid "The selected file was saved by a newer version of this addon and cannot be imported"
+msgstr ""
+
+msgctxt "#32158"
+msgid "The selected file contains no stored offsets"
+msgstr ""
+
+msgctxt "#32159"
+msgid "Import {0}? This replaces all currently stored offsets."
+msgstr ""
+
+msgctxt "#32160"
+msgid "Imported {0}"
+msgstr ""

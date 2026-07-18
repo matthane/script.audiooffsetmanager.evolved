@@ -121,6 +121,26 @@
 
         <!-- Advanced -->
         <category id="advanced" label="32100" help="32101">
+            <!-- Backup: verbatim export of offsets.json, and the staged
+                 replace-all restore over the mutation channel. Both close
+                 the dialog (the action-button doctrine) and land back in
+                 settings when the flow exits. -->
+            <group id="6">
+                <setting id="export_offsets" type="action" label="32149" help="32150">
+                    <level>0</level>
+                    <data>RunScript(script.audiooffsetmanager.evolved,export_offsets)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="import_offsets" type="action" label="32151" help="32152">
+                    <level>0</level>
+                    <data>RunScript(script.audiooffsetmanager.evolved,import_offsets)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+            </group>
             <group id="5">
                 <setting id="enable_debug_logging" type="boolean" label="32103" help="32104">
                     <level>0</level>

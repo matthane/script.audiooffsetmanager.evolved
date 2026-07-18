@@ -74,3 +74,44 @@ def test_select_failure_reads_as_cancel(monkeypatch):
 
     monkeypatch.setattr(FakeDialog, 'select', boom)
     assert gui.select("heading", [("a", "b")]) == -1
+
+
+# -- browse adapters (the transfer view's pickers) ----------------------------
+
+class BrowsingDialog:
+    last = None
+
+    def browseSingle(self, type_, heading, shares, mask=''):
+        BrowsingDialog.last = (type_, heading, shares, mask)
+        return '/picked'
+
+
+def _browsing_gui(monkeypatch):
+    monkeypatch.setattr(xbmcgui, 'Dialog', BrowsingDialog)
+    BrowsingDialog.last = None
+    return Gui(log=lambda message, level=0: None)
+
+
+def test_browse_folder_is_the_writeable_directory_picker(monkeypatch):
+    gui = _browsing_gui(monkeypatch)
+    assert gui.browse_folder("heading") == '/picked'
+    # Type 3 = ShowAndGetWriteableDirectory over the files shares.
+    assert BrowsingDialog.last == (3, "heading", 'files', '')
+
+
+def test_browse_file_passes_the_extension_mask(monkeypatch):
+    gui = _browsing_gui(monkeypatch)
+    assert gui.browse_file("heading", '.json') == '/picked'
+    # Type 1 = ShowAndGetFile.
+    assert BrowsingDialog.last == (1, "heading", 'files', '.json')
+
+
+def test_browse_failure_reads_as_cancel(monkeypatch):
+    gui = _browsing_gui(monkeypatch)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("gui layer down")
+
+    monkeypatch.setattr(BrowsingDialog, 'browseSingle', boom)
+    assert gui.browse_folder("heading") == ''
+    assert gui.browse_file("heading", '.json') == ''
