@@ -3,10 +3,12 @@
 Two surfaces, tested at their real seams:
 
 * ``StoreMutationHandler`` on a REAL dispatcher + tracker + ``OffsetStore``
-  (tmp_path-backed): the whitelist boundary (P6 — delete/clear ONLY, loud
-  rejection of everything else), honest acks for every outcome
-  (deleted/missing/read_only/persist_failed/cleared), and the
-  ``miss_announced`` dedupe clearing the ledgered E2-review rule demands.
+  (tmp_path-backed): the whitelist boundary (P6 — delete/clear/import ONLY,
+  loud rejection of everything else), honest acks for every outcome
+  (deleted/missing/read_only/persist_failed/cleared/imported/invalid/
+  future), the staged-backup import consuming its staging file whatever
+  the outcome, and the ``miss_announced`` dedupe clearing the ledgered
+  E2-review rule demands.
 * ``MonitorBridge.onNotification``: the sender/message filter and the
   verbatim payload -> typed event decode, including the malformed-JSON
   path that must still surface as a loudly-rejected event.
@@ -18,6 +20,7 @@ from resources.lib.aom.app import events
 from resources.lib.aom.app.dispatcher import Dispatcher
 from resources.lib.aom.app.session import SessionTracker
 from resources.lib.aom.app.store_mutations import (ACK_MESSAGE, ALLOWED_OPS,
+                                                   IMPORT_SUFFIX,
                                                    MUTATION_MESSAGE,
                                                    StoreMutationHandler)
 from resources.lib.aom.kodi.monitor_bridge import MonitorBridge
@@ -44,12 +47,14 @@ class Rig:
         self.tracker = SessionTracker(self.dispatcher, clock=self.clock,
                                       log_debug=self.debug.append)
         self.store_path = str(tmp_path / 'offsets.json')
+        self.import_path = self.store_path + IMPORT_SUFFIX
         self.store = OffsetStore(self.store_path,
                                  log_debug=self.debug.append,
                                  log_warning=self.warnings.append)
         self.store.load()
         self.handler = StoreMutationHandler(
             self.dispatcher, self.tracker, self.store, self.acks.append,
+            import_path=self.import_path,
             log_debug=self.debug.append, log_warning=self.warnings.append)
         # The immediate-reconcile signal (E7): posted only by ops that
         # actually changed the store.
@@ -147,22 +152,26 @@ def test_non_whitelisted_ops_are_rejected_loudly(rig, bad_op):
 
 def test_the_channel_has_no_value_write_op(rig):
     # P6 structural pin: the event carries no value field and the whitelist
-    # is exactly delete/clear — a value write cannot even be EXPRESSED.
-    assert ALLOWED_OPS == ('delete', 'clear')
+    # is exactly delete/clear/import — a value write cannot even be
+    # EXPRESSED on the wire (import reads values only from the staged
+    # backup file the user placed).
+    assert ALLOWED_OPS == ('delete', 'clear', 'import')
     assert not hasattr(events.StoreMutationRequested(op='delete'), 'ms')
     assert not hasattr(events.StoreMutationRequested(op='delete'), 'delay_ms')
     assert not hasattr(events.StoreMutationRequested(op='delete'), 'value')
+    assert not hasattr(events.StoreMutationRequested(op='import'), 'path')
 
 
 # --- read-only / persist-failure honesty ---------------------------------------
 
-def test_read_only_store_refuses_both_ops(rig):
+def test_read_only_store_refuses_all_ops(rig):
     rig.store._read_only = True
 
     rig.request('delete', key=KEY_A)
     rig.request('clear')
+    rig.request('import')
 
-    assert [a['detail'] for a in rig.acks] == ['read_only', 'read_only']
+    assert [a['detail'] for a in rig.acks] == ['read_only'] * 3
     assert all(a['ok'] is False for a in rig.acks)
     assert len(rig.store) == 2
 
@@ -288,6 +297,141 @@ def test_ops_that_change_nothing_post_nothing(rig):
     rig.mutated.clear()
     rig.request('clear')                        # empty clear: nothing changed
     assert rig.mutated == []
+
+
+# --- import (the staged backup restore) ------------------------------------------
+
+import json as _json
+import os as _os
+
+
+def _stage(rig, profiles, version=1, resets=None):
+    document = {'version': version, 'profiles': profiles}
+    if resets is not None:
+        document['resets'] = resets
+    with open(rig.import_path, 'w', encoding='utf-8') as handle:
+        handle.write(_json.dumps(document))
+
+
+def test_import_replaces_store_consumes_staging_and_acks_count(rig):
+    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    rig.request('import', request_id='imp')
+
+    assert rig.acks == [{'ok': True, 'detail': 'imported', 'count': 1,
+                         'op': 'import', 'request_id': 'imp'}]
+    assert set(rig.store.entries()) == {'hlg|all|eac3'}
+    # Restore semantics: the dropped keys carry reset markers.
+    assert rig.store.reset_pending(KEY_A) is True
+    assert rig.store.reset_pending(KEY_B) is True
+    # The staging file was consumed.
+    assert not _os.path.exists(rig.import_path)
+    # Durable: a second store built on the same file agrees.
+    reread = OffsetStore(rig.store_path)
+    reread.load()
+    assert set(reread.entries()) == {'hlg|all|eac3'}
+    assert [(e.op, e.key) for e in rig.mutated] == [('import', None)]
+
+
+def test_import_without_staged_file_is_refused(rig):
+    # A spoofed import request (nothing staged) must never clear the store.
+    rig.request('import')
+
+    assert rig.acks[0]['ok'] is False
+    assert rig.acks[0]['detail'] == 'invalid'
+    assert len(rig.store) == 2
+    assert rig.mutated == []
+    assert rig.warned('unusable staged backup')
+
+
+def test_import_of_corrupt_staging_is_refused_and_consumed(rig):
+    with open(rig.import_path, 'w', encoding='utf-8') as handle:
+        handle.write('{nope')
+    rig.request('import')
+
+    assert rig.acks[0]['detail'] == 'invalid'
+    assert len(rig.store) == 2
+    assert rig.mutated == []
+    assert not _os.path.exists(rig.import_path)
+
+
+def test_import_of_empty_backup_is_refused_at_the_choke_point(rig):
+    # The view refuses empty backups with friendly wording, but the
+    # SERVICE is the security boundary: a hand-made (or truncated-but-
+    # valid) empty document must never become a disguised clear-all,
+    # whoever sent the request.
+    _stage(rig, {})
+    rig.request('import')
+
+    assert rig.acks[0]['ok'] is False
+    assert rig.acks[0]['detail'] == 'empty'
+    assert len(rig.store) == 2
+    assert rig.mutated == []
+    assert not _os.path.exists(rig.import_path)
+    assert rig.warned('empty backup')
+
+
+def test_import_restores_the_backups_reset_markers(rig):
+    # The export is a verbatim file copy, resets section and all; the
+    # restore must not silently drop the one section that is not an
+    # offset — a pending "expect 0" promise survives the round trip.
+    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}},
+           resets=['sdr|all|aac', '', 7])       # scribble dropped, keys kept
+    rig.request('import')
+
+    assert rig.acks[0]['ok'] is True
+    assert rig.store.reset_pending('sdr|all|aac') is True
+    # The live keys the backup dropped are marked too (restore contract).
+    assert rig.store.reset_pending(KEY_A) is True
+
+
+def test_import_of_future_schema_staging_acks_future(rig):
+    # The wording split matters to the view: a newer-version backup is not
+    # corrupt, it is unimportable by THIS build.
+    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}}, version=99)
+    rig.request('import')
+
+    assert rig.acks[0]['detail'] == 'future'
+    assert len(rig.store) == 2
+    assert not _os.path.exists(rig.import_path)
+
+
+def test_import_persist_failure_still_reconciles_and_consumes(rig,
+                                                              monkeypatch):
+    monkeypatch.setattr(rig.store, '_persist', lambda: False)
+    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    rig.request('import')
+
+    assert rig.acks[0] == {'ok': False, 'detail': 'persist_failed',
+                           'op': 'import', 'request_id': 'req-1'}
+    # In-memory replacement stands (OffsetStore doctrine): reconcile fires.
+    assert [(e.op, e.key) for e in rig.mutated] == [('import', None)]
+    assert set(rig.store.entries()) == {'hlg|all|eac3'}
+    assert not _os.path.exists(rig.import_path)
+
+
+def test_import_clears_live_session_state_like_other_mutations(rig):
+    rig.post(events.PlaybackStarted())
+    session = rig.tracker.current
+    session.miss_announced = ('sdr|all|aac',)
+    session.watch_baseline_ms = -115
+    session.watch_pending = (0, 123.0)
+
+    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    rig.request('import')
+
+    assert session.miss_announced is None
+    assert session.watch_pending is None
+    assert session.watch_baseline_ms is None
+
+
+def test_failed_import_leaves_live_session_state_alone(rig):
+    rig.post(events.PlaybackStarted())
+    session = rig.tracker.current
+    session.miss_announced = ('sdr|all|aac',)
+
+    rig.request('import')                        # nothing staged: refused
+
+    assert session.miss_announced == ('sdr|all|aac',)
 
 
 # --- MonitorBridge.onNotification ----------------------------------------------

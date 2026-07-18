@@ -7,10 +7,27 @@ store file (single-writer doctrine): its mutations travel as
 dispatcher thread — the same thread that owns every other store write.
 
 The op whitelist is the security boundary of the channel (P6): only
-``delete`` and ``clear`` exist. There is no value field on the event and no
-``set`` op, so the channel STRUCTURALLY cannot carry a value write; an
-unknown op (or a malformed payload the bridge posted verbatim) is rejected
-loudly — one warning line plus a failed ack — never silently dropped.
+``delete``, ``clear``, and ``import`` exist. There is no value field on the
+event and no ``set`` op, so the channel STRUCTURALLY cannot carry a value
+write; an unknown op (or a malformed payload the bridge posted verbatim) is
+rejected loudly — one warning line plus a failed ack — never silently
+dropped.
+
+``import`` is the backup-restore op (2026-07-17 user call) and keeps P6
+intact: it transports values that were LEARNED during playback (on this box
+or another), it never lets anyone type one. The wire carries no path and no
+payload — the script process stages the user's chosen backup file at the
+well-known ``<store>.import`` sibling path (a staging file, NOT the store
+file, so the single-writer doctrine holds) and the service reads it from
+there, re-validates it with the same reader the script used, REPLACES the
+whole store (restore semantics, never merge — user call; the backup's
+reset markers ride along), and discards the staging file whatever the
+outcome. The window a spoofed ``import`` could exploit is structurally
+small: the view stages the file for its pre-flight read, discards it
+BEFORE the confirmation dialog, and re-stages only after the user
+confirmed, milliseconds before the send — so outside that instant a
+spoofed request finds no staged file and fails, and a valid-but-empty
+staged file is refused HERE regardless (never a disguised clear-all).
 
 Every request is acknowledged through the injected ``ack`` callable (the
 runtime wires it to ``KodiGateway.notify_all`` under ``ACK_MESSAGE``),
@@ -25,11 +42,12 @@ resolve moment for the live session (E7, user call 2026-07-16) — deleting
 the PLAYING profile's offset takes effect immediately, the marked miss
 forcing its promised 0 at the deletion itself. "Store-changing" means the
 IN-MEMORY store the live session resolves against: a delete that removed
-an entry or a clear with entries, INCLUDING their persist-failed variants
-(OffsetStore keeps the in-memory removal and markers when only the disk
-write failed — the ack reports the durability truth, the live session
-follows the in-memory truth). A missing-key delete, an empty clear, and
-refused ops changed nothing and trigger nothing. Nothing HERE touches
+an entry, a clear with entries, or an import that replaced the store,
+INCLUDING their persist-failed variants (OffsetStore keeps the in-memory
+mutation when only the disk write failed — the ack reports the durability
+truth, the live session follows the in-memory truth). A missing-key
+delete, an empty clear, refused ops, and an import whose staged backup
+failed validation changed nothing and trigger nothing. Nothing HERE touches
 Kodi's live delay; the applier owns that reaction, behind its standing
 gates.
 
@@ -38,6 +56,9 @@ script-process client share one definition.
 """
 
 from resources.lib.aom.app import events
+from resources.lib.aom.store.offset_store import (StoreUnreadable,
+                                                  discard_import,
+                                                  read_import_document)
 
 
 def _noop(_message):
@@ -49,23 +70,33 @@ def _noop(_message):
 MUTATION_MESSAGE = 'store_mutation'
 ACK_MESSAGE = 'store_mutation_ack'
 
-# The complete op vocabulary of the channel (P6: inspection + removal only).
-ALLOWED_OPS = ('delete', 'clear')
+# The complete op vocabulary of the channel (P6: inspection, removal, and
+# the backup restore — never value entry).
+ALLOWED_OPS = ('delete', 'clear', 'import')
+
+# The import staging file: the store path plus this suffix, derived
+# identically by both processes (a protocol constant, like the message
+# names, so no path ever travels on the wire).
+IMPORT_SUFFIX = '.import'
 
 
 class StoreMutationHandler:
     """Executes whitelisted cross-process store mutations on the dispatcher."""
 
     def __init__(self, dispatcher, session_tracker, store, ack, *,
-                 log_debug=None, log_warning=None):
+                 import_path, log_debug=None, log_warning=None):
         """``store`` is the raw ``OffsetStore`` (mutations bypass the
         ``OffsetTable`` resolve/write-key algebra — they target literal
         keys the view listed). ``ack`` is a REQUIRED callable taking the
-        reply payload dict."""
+        reply payload dict. ``import_path`` is the REQUIRED local staging
+        path the script process copies a backup to (store path +
+        ``IMPORT_SUFFIX``; the runtime derives it, keeping this module
+        pure of Kodi path translation)."""
         self._dispatcher = dispatcher
         self._sessions = session_tracker
         self._store = store
         self._ack = ack
+        self._import_path = import_path
         self._log = log_debug or _noop
         self._warn = log_warning or _noop
 
@@ -78,6 +109,8 @@ class StoreMutationHandler:
             reply = self._delete(event.key)
         elif event.op == 'clear':
             reply = self._clear()
+        elif event.op == 'import':
+            reply = self._import()
         else:
             # The loud rejection (P6): anything outside the whitelist —
             # including a would-be value write or a malformed payload —
@@ -137,6 +170,56 @@ class StoreMutationHandler:
             # An empty clear changed nothing: no dedupe reset, no event.
             self._store_changed(op='clear')
         return {'ok': True, 'detail': 'cleared', 'count': count}
+
+    def _import(self):
+        """Replace the whole store from the staged backup file (restore).
+
+        The staging file is validated by the same reader the script process
+        already ran (defense in depth: the file sat on disk between the two
+        reads, and the service must never trust another process's
+        validation), then the store is REPLACED — restore semantics, with
+        reset markers for every key the backup drops AND every marker the
+        backup itself carried (OffsetStore doctrine — a restore preserves
+        the backup's pending "expect 0" promises). A valid-but-EMPTY
+        backup is refused HERE, not just in the view: "restore nothing,
+        deleting everything" is clear-all wearing a costume, and the
+        service is the choke point — the view's identical refusal is only
+        the friendly pre-flight. The staging file is discarded whatever
+        the outcome: it is a copy the script made for exactly one
+        request, and the user's original backup is untouched.
+        """
+        try:
+            if self._store.read_only:
+                self._warn("AOMe_StoreMutations: store is read-only; "
+                           "refusing import")
+                return {'ok': False, 'detail': 'read_only'}
+            try:
+                entries, resets = read_import_document(
+                    self._import_path, log_debug=self._log)
+            except StoreUnreadable as error:
+                detail = 'future' if error.future else 'invalid'
+                self._warn(f"AOMe_StoreMutations: refusing import of "
+                           f"unusable staged backup ({error})")
+                return {'ok': False, 'detail': detail}
+            if not entries:
+                self._warn("AOMe_StoreMutations: refusing import of an "
+                           "empty backup (clear-all lives in the manage "
+                           "view, never here)")
+                return {'ok': False, 'detail': 'empty'}
+            if not self._store.replace_all(entries, resets=resets):
+                # Read-only was already excluded above, so False here is a
+                # persist failure: the in-memory replacement stands
+                # (OffsetStore doctrine) and the live session must
+                # reconcile against it; only durability failed.
+                self._store_changed(op='import')
+                return {'ok': False, 'detail': 'persist_failed'}
+            count = len(self._store)
+            self._log(f"AOMe_StoreMutations: imported {count} stored "
+                      f"offset(s), replacing the store")
+            self._store_changed(op='import')
+            return {'ok': True, 'detail': 'imported', 'count': count}
+        finally:
+            discard_import(self._import_path, log_warning=self._warn)
 
     # -- internals ---------------------------------------------------------------
 

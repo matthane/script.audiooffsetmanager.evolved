@@ -37,6 +37,9 @@ importing any legacy ``resources.lib.<module>`` fails
 
 import xbmc
 import xbmcaddon
+import xbmcvfs
+
+from resources.lib.aom.app.store_mutations import IMPORT_SUFFIX
 
 ADDON_ID = 'script.audiooffsetmanager.evolved'
 
@@ -45,6 +48,17 @@ ADDON_ID = 'script.audiooffsetmanager.evolved'
 # builds the OffsetStore on it, the script router points the management
 # view's read-only reader at it.
 STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
+
+
+def import_staging_path():
+    """The import channel's staged-backup path, translated and ready.
+
+    Derived HERE, once, because the protocol depends on BOTH processes
+    computing the identical path (the script stages, the service reads):
+    the suffix is the channel's constant, the base is the translated
+    store path, and neither composition root repeats the derivation.
+    """
+    return xbmcvfs.translatePath(STORE_PATH) + IMPORT_SUFFIX
 
 
 class Settings:

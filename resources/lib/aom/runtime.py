@@ -57,7 +57,8 @@ from resources.lib.aom.kodi.gui import Gui
 from resources.lib.aom.kodi.log import KodiLogger
 from resources.lib.aom.kodi.monitor_bridge import MonitorBridge
 from resources.lib.aom.kodi.player_bridge import PlayerBridge
-from resources.lib.aom.kodi.settings import ADDON_ID, STORE_PATH, Settings
+from resources.lib.aom.kodi.settings import (ADDON_ID, STORE_PATH, Settings,
+                                             import_staging_path)
 from resources.lib.aom.store.offset_store import OffsetStore
 from resources.lib.aom.store.table import OffsetTable
 
@@ -132,6 +133,7 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.store,
             lambda payload: self.gateway.notify_all(
                 ADDON_ID, ACK_MESSAGE, payload),
+            import_path=import_staging_path(),
             log_debug=self.logger.debug, log_warning=self.logger.warning)
 
         self.player_bridge = PlayerBridge(self.dispatcher)

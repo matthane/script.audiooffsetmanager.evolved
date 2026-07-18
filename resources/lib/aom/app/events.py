@@ -284,8 +284,9 @@ class StoreMutationRequested:
 
     Posted by the monitor bridge VERBATIM from the (untrusted) payload —
     fields may be None or wrong-typed; the StoreMutationHandler owns
-    validation and the op whitelist (delete/clear ONLY, P6: the channel
-    structurally cannot carry a value write — there is no value field).
+    validation and the op whitelist (delete/clear/import ONLY, P6: the
+    channel structurally cannot carry a value write — there is no value
+    field, and import reads values only from the staged backup file).
     ``request_id`` is echoed back on the ack so the script process can
     match replies.
     """
