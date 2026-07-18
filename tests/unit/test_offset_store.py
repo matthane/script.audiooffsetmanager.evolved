@@ -648,3 +648,214 @@ def test_read_profiles_never_shows_reset_markers(tmp_path):
     store.delete(KEY)
     entries = read_profiles(path)
     assert set(entries) == {"other|24|ac3"}
+
+
+# --- read_import: the backup restore-source reader -----------------------------
+
+def _read_import(path):
+    from resources.lib.aom.store.offset_store import read_import
+    return read_import(path)
+
+
+def test_read_import_missing_file_raises(tmp_path):
+    # THE divergence from read_profiles: an absent restore source is a
+    # failed import, never "replace everything with nothing".
+    from resources.lib.aom.store.offset_store import StoreUnreadable
+    with pytest.raises(StoreUnreadable):
+        _read_import(str(tmp_path / "offsets.json.import"))
+
+
+def test_read_import_roundtrips_a_written_store_file(tmp_path):
+    store, path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, -115, video_fps=23.976)
+    entries = _read_import(path)
+    assert entries[KEY]["delay_ms"] == -115
+    assert entries[KEY]["video_fps"] == 23.976
+
+
+def test_read_import_rejects_corrupt_and_future_files(tmp_path):
+    from resources.lib.aom.store.offset_store import StoreUnreadable
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{nope", encoding="utf-8")
+    with pytest.raises(StoreUnreadable) as excinfo:
+        _read_import(str(corrupt))
+    assert excinfo.value.future is False
+
+    future = tmp_path / "future.json"
+    future.write_text(json.dumps({"version": 99, "profiles": {}}),
+                      encoding="utf-8")
+    with pytest.raises(StoreUnreadable) as excinfo:
+        _read_import(str(future))
+    assert excinfo.value.future is True
+
+
+def test_read_import_filters_malformed_entries_like_load(tmp_path):
+    path = tmp_path / "backup.json"
+    path.write_text(json.dumps({
+        "version": 1,
+        "profiles": {
+            KEY: {"delay_ms": 175},
+            "scribble": "not-a-dict",
+            "boolish": {"delay_ms": True},
+        },
+    }), encoding="utf-8")
+    assert set(_read_import(str(path))) == {KEY}
+
+
+# --- replace_all: the import/restore write ------------------------------------
+
+def test_replace_all_replaces_everything_and_persists(tmp_path):
+    store, path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.set("hdr10|all|ac3", 50)
+
+    imported = {"hlg|all|eac3": {"delay_ms": -75, "updated": "x",
+                                 "source": "user"}}
+    assert store.replace_all(imported) is True
+    assert store.get(KEY) is None
+    assert store.get("hlg|all|eac3")["delay_ms"] == -75
+    assert len(store) == 1
+
+    reopened, _p, _d2, _w2 = make_store(tmp_path)
+    reopened.load()
+    assert set(reopened.entries()) == {"hlg|all|eac3"}
+
+
+def test_replace_all_marks_dropped_keys_for_reset(tmp_path):
+    # Restore semantics inherit delete/clear's contract: a key the backup
+    # does not carry means "expect 0 the next time it plays".
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.set("hdr10|all|ac3", 50)
+
+    store.replace_all({"hdr10|all|ac3": {"delay_ms": 60}})
+    assert store.reset_pending(KEY) is True
+    assert store.reset_pending("hdr10|all|ac3") is False
+
+    reopened, _p, _d2, _w2 = make_store(tmp_path)
+    reopened.load()
+    assert reopened.reset_pending(KEY) is True
+
+
+def test_replace_all_supersedes_pending_markers_it_covers(tmp_path):
+    # A pending reset whose key the import (re)fills is superseded, like
+    # set(); one for a key the import still lacks stays pending.
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    store.set("hdr10|all|ac3", 50)
+    store.delete(KEY)                       # marker for KEY
+    store.delete("hdr10|all|ac3")           # marker for hdr10
+
+    store.replace_all({KEY: {"delay_ms": 25}})
+    assert store.reset_pending(KEY) is False
+    assert store.reset_pending("hdr10|all|ac3") is True
+
+
+def test_replace_all_filters_malformed_entries(tmp_path):
+    # The write path re-filters (defense in depth: it must stay safe even
+    # when the caller is not read_import).
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.replace_all({
+        KEY: {"delay_ms": -115},
+        "scribble": "not-a-dict",
+        "boolish": {"delay_ms": True},
+    })
+    assert set(store.entries()) == {KEY}
+
+
+def test_replace_all_with_empty_dict_acts_like_clear(tmp_path):
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    assert store.replace_all({}) is True
+    assert len(store) == 0
+    assert store.reset_pending(KEY) is True
+
+
+def test_replace_all_refused_when_read_only(tmp_path):
+    path = tmp_path / "offsets.json"
+    original = {"version": 99, "profiles": {KEY: {"delay_ms": 1}}}
+    path.write_text(json.dumps(original), encoding="utf-8")
+    store, _p, _d, warning = make_store(tmp_path)
+    store.load()
+
+    assert store.replace_all({KEY: {"delay_ms": 5}}) is False
+    assert any("read-only" in line for line in warning)
+    # The future file is untouched (the future is sacred).
+    assert json.loads(path.read_text(encoding="utf-8")) == original
+
+
+def test_replace_all_reports_persist_failure_with_memory_standing(
+        tmp_path, monkeypatch):
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+    monkeypatch.setattr(store, "_persist", lambda: False)
+
+    assert store.replace_all({"hlg|all|eac3": {"delay_ms": -75}}) is False
+    # In-memory replacement stands, consistent with set/delete/clear.
+    assert store.get("hlg|all|eac3")["delay_ms"] == -75
+    assert store.get(KEY) is None
+    assert store.reset_pending(KEY) is True
+
+
+# --- read_import_document / discard_import (the restore round trip) ------------
+
+def test_read_import_document_carries_validated_reset_markers(tmp_path):
+    from resources.lib.aom.store.offset_store import read_import_document
+    path = tmp_path / "backup.json"
+    path.write_text(json.dumps({
+        "version": 1,
+        "profiles": {KEY: {"delay_ms": 175}},
+        "resets": ["sdr|all|aac", "", 7, None],
+    }), encoding="utf-8")
+
+    entries, resets = read_import_document(str(path))
+    assert set(entries) == {KEY}
+    # Same rules as load(): non-string/empty markers dropped, keys kept.
+    assert resets == {"sdr|all|aac"}
+
+
+def test_read_import_document_without_resets_section_is_empty(tmp_path):
+    from resources.lib.aom.store.offset_store import read_import_document
+    path = tmp_path / "backup.json"
+    path.write_text(json.dumps({"version": 1,
+                                "profiles": {KEY: {"delay_ms": 1}}}),
+                    encoding="utf-8")
+    assert read_import_document(str(path))[1] == set()
+
+
+def test_replace_all_carries_backup_reset_markers(tmp_path):
+    # The restore preserves the backup's own pending "expect 0" promises,
+    # minus any key the import (re)fills.
+    store, _path, _d, _w = make_store(tmp_path)
+    store.load()
+    store.set(KEY, 100)
+
+    store.replace_all({"hdr10|all|ac3": {"delay_ms": 60}},
+                      resets=["sdr|all|aac", "hdr10|all|ac3"])
+    assert store.reset_pending("sdr|all|aac") is True     # carried
+    assert store.reset_pending("hdr10|all|ac3") is False  # superseded
+    assert store.reset_pending(KEY) is True               # dropped live key
+
+    reopened, _p, _d2, _w2 = make_store(tmp_path)
+    reopened.load()
+    assert reopened.reset_pending("sdr|all|aac") is True
+
+
+def test_discard_import_removes_file_and_tolerates_absence(tmp_path):
+    from resources.lib.aom.store.offset_store import discard_import
+    staged = tmp_path / "offsets.json.import"
+    staged.write_text("{}", encoding="utf-8")
+
+    discard_import(str(staged))
+    assert not staged.exists()
+    # Already consumed: the missing-file case is normal and silent.
+    warnings = []
+    discard_import(str(staged), log_warning=warnings.append)
+    assert warnings == []

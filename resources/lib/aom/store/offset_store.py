@@ -23,8 +23,9 @@ Design decisions worth stating up front:
   flushes and ``fsync``s it, then ``os.replace``s it over the target — the
   swap is atomic on POSIX and NTFS, so a power loss on an HTPC box leaves
   either the old file or the new one, never a half-written one.
-* **Deletion leaves a reset marker.** ``delete``/``clear`` record the removed
-  key(s) in a ``resets`` section (E7 field decision): the user who deletes a
+* **Deletion leaves a reset marker.** ``delete``/``clear`` — and an import
+  (``replace_all``) that drops keys — record the removed key(s) in a
+  ``resets`` section (E7 field decision): the user who deletes a
   profile expects 0 the NEXT time that format plays, but Kodi's own per-file
   memory still holds the old applied value — the marker lets the applier
   force the 0 once, bypassing the P1 "never act first" guard for exactly the
@@ -109,6 +110,44 @@ class StoreUnreadable(Exception):
         self.future = future
 
 
+def _parse_document(raw):
+    """Shared parse/validate head of the read-only readers below: the raw
+    text to a shape/version-checked document dict, or StoreUnreadable."""
+    try:
+        data = json.loads(raw)
+    except ValueError as error:
+        raise StoreUnreadable("invalid JSON ({0})".format(error))
+
+    if not _shape_ok(data):
+        raise StoreUnreadable("unexpected shape")
+    if data["version"] > _SCHEMA_VERSION:
+        raise StoreUnreadable(
+            "newer schema version {0}".format(data["version"]), future=True)
+    return data
+
+
+def _load_reset_keys(raw, log_debug):
+    """Validate a resets section: a list of non-empty key strings.
+
+    The single definition shared by load() and the backup reader, so a
+    scribbled marker degrades identically everywhere — to 'no pending
+    reset', never to a crash or a spurious 0.
+    """
+    if raw is None:
+        return set()
+    if not isinstance(raw, list):
+        log_debug("{0} dropping non-list resets section".format(_PREFIX))
+        return set()
+    markers = set()
+    for key in raw:
+        if isinstance(key, str) and key:
+            markers.add(key)
+        else:
+            log_debug("{0} dropping non-string reset marker {1!r}"
+                      .format(_PREFIX, key))
+    return markers
+
+
 def read_profiles(path, log_debug=None):
     """Read-only entry snapshot for ANOTHER process (the management view).
 
@@ -127,18 +166,60 @@ def read_profiles(path, log_debug=None):
         return {}
     except OSError as error:
         raise StoreUnreadable("unreadable ({0})".format(error))
+    return _load_entries(_parse_document(raw)["profiles"], log_debug or _noop)
 
+
+def read_import_document(path, log_debug=None):
+    """Validated ``(entries, reset_keys)`` of an offsets BACKUP file.
+
+    The restore source reader, used by BOTH channel ends: the script
+    process pre-validates the staged backup before asking for the import,
+    and the service validates again before replacing the store. Same
+    shape/version/entry rules as :func:`read_profiles`, with one deliberate
+    divergence: a MISSING file raises :class:`StoreUnreadable` instead of
+    reading as an empty store — an absent offsets.json means "nothing
+    learned yet", but a restore source that is not there is a failed
+    import, never "replace everything with nothing".
+
+    The backup's ``resets`` section rides along (validated by the same
+    rules ``load()`` applies) so a restore preserves pending "expect 0"
+    promises: export copies the file verbatim, and import must not
+    silently drop the one section that is not an offset.
+    """
+    log = log_debug or _noop
     try:
-        data = json.loads(raw)
-    except ValueError as error:
-        raise StoreUnreadable("invalid JSON ({0})".format(error))
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError as error:
+        raise StoreUnreadable("unreadable ({0})".format(error))
+    data = _parse_document(raw)
+    return (_load_entries(data["profiles"], log),
+            _load_reset_keys(data.get("resets"), log))
 
-    if not _shape_ok(data):
-        raise StoreUnreadable("unexpected shape")
-    if data["version"] > _SCHEMA_VERSION:
-        raise StoreUnreadable(
-            "newer schema version {0}".format(data["version"]), future=True)
-    return _load_entries(data["profiles"], log_debug or _noop)
+
+def read_import(path, log_debug=None):
+    """The entries half of :func:`read_import_document` (the script
+    process's pre-flight only needs the count/validity)."""
+    return read_import_document(path, log_debug)[0]
+
+
+def discard_import(path, log_warning=None):
+    """Best-effort removal of a consumed/stale staged backup file.
+
+    Lives HERE so the app-layer mutation handler performs no direct file
+    I/O of its own — the store layer is the one home of store-adjacent
+    disk access. A missing file is the normal case (already consumed);
+    any other failure is logged and swallowed, because a stale staging
+    file is inert (the script process overwrites it before every import
+    request).
+    """
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        (log_warning or _noop)(
+            "{0} could not remove staged backup ({1})".format(_PREFIX, error))
 
 
 class OffsetStore:
@@ -212,26 +293,8 @@ class OffsetStore:
         return _load_entries(profiles, self._log_debug)
 
     def _load_resets(self, raw):
-        """Validate the resets section: a list of non-empty key strings.
-
-        Anything else (absent section, foreign type, scribbled elements) is
-        dropped with a debug line — a bad marker degrades to 'no pending
-        reset', never to a crash or a spurious 0.
-        """
-        if raw is None:
-            return set()
-        if not isinstance(raw, list):
-            self._log_debug("{0} dropping non-list resets section"
-                            .format(_PREFIX))
-            return set()
-        markers = set()
-        for key in raw:
-            if isinstance(key, str) and key:
-                markers.add(key)
-            else:
-                self._log_debug("{0} dropping non-string reset marker {1!r}"
-                                .format(_PREFIX, key))
-        return markers
+        """The shared resets-section validation (see _load_reset_keys)."""
+        return _load_reset_keys(raw, self._log_debug)
 
     def _quarantine(self):
         """Move a corrupt file aside and start empty but writable."""
@@ -366,6 +429,34 @@ class OffsetStore:
         if not self._persist():
             return 0
         return count
+
+    def replace_all(self, entries, resets=()):
+        """Replace the whole store with ``entries`` (import/restore) and persist.
+
+        Restore semantics, not merge: after this call the store holds
+        EXACTLY the given entries, filtered by the same doctrine rules as
+        ``load()`` (the caller normally passes the backup reader's output,
+        but the write path re-filters so it stays safe on its own). The
+        reset markers merge three sources, all minus the imported keys:
+        the live pending markers, every live key the import drops (a
+        restore that drops a profile means "expect 0 the next time it
+        plays", exactly like ``delete``/``clear``), and ``resets`` — the
+        BACKUP's own pending markers, so a restore preserves promises the
+        backup carried. A marker whose key the import (re)fills is
+        superseded, like ``set``. Refused (False) when read-only. A
+        persist failure returns False with the in-memory replacement
+        standing, consistent with set/delete/clear.
+        """
+        if self._read_only:
+            self._log_warning("{0} read-only; refusing replace_all()"
+                              .format(_PREFIX))
+            return False
+        replaced = self._load_entries(entries)
+        carried = {key for key in resets if isinstance(key, str) and key}
+        self._resets = ((self._resets | set(self._profiles) | carried)
+                        - set(replaced))
+        self._profiles = replaced
+        return self._persist()
 
     # -- reset markers ----------------------------------------------------------
 
