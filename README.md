@@ -59,6 +59,18 @@ Requires Kodi v20 (Nexus) or later.
 
 Evolved is a separate addon from the original Audio Offset Manager (`script.audiooffsetmanager`) and does not share its settings or data. The two should not be used together: both react to the same playback and can end up applying audio offsets twice. If Evolved detects that the original addon is enabled, it shows a one-time warning at startup ("Classic Audio Offset Manager detected") recommending that the original be disabled.
 
+## Translating
+
+The addon is currently available in English, and translations are welcome. All user-facing text lives in a single file: [`resources/language/resource.language.en_gb/strings.po`](resources/language/resource.language.en_gb/strings.po). Every entry carries a comment describing where the string appears and what fills each placeholder, so no knowledge of the code is needed.
+
+To add a language:
+
+1. Copy the `resource.language.en_gb` folder to `resource.language.<code>` for your language (for example `resource.language.de_de`), keeping the `strings.po` filename.
+2. Fill in the `msgstr` line of each entry with the translation. Keep placeholders such as `{0}` and `{1}` intact; the comments explain what each one becomes.
+3. Update the `Language:` line in the file header to match your language code.
+
+Kodi shows the English text for any entry left untranslated, so partial translations work fine. Submit the new folder as a pull request.
+
 ## Contributing and reporting issues
 
 Contributions are welcome. If you run into a problem or have a suggestion, please open an issue on the [GitHub repository](https://github.com/matthane/script.audiooffsetmanager.evolved).
