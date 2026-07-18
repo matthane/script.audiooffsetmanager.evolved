@@ -39,11 +39,13 @@ The **Manage stored offsets** view lists everything the addon has learned, group
 - **Seek back after**: rewind a few seconds after events you select so audio and video pick up in sync. The four events are playback start, unpause, audio format change, and manual offset change. The seek distance is configurable.
 - **Notifications**: optional on-screen notifications when an offset is applied or saved, with a configurable duration.
 
-## Backup
+## Backup and troubleshooting
 
 <img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-5.png" width="100%" alt="Advanced settings with export, import, and debug logging">
 
 **Export stored offsets** writes a backup file of everything the addon has learned. **Import stored offsets** restores a backup, replacing the current data. Useful when moving to a new device or reinstalling Kodi.
+
+**Export addon log** saves a copy of the Kodi log containing only this addon's entries, with identifiable information such as usernames and file paths removed. The result is a clean log you can attach when reporting an issue. The button is available while debug logging is enabled. Some problems still require Kodi's full debug log, so you may be asked for one when the filtered log is not enough.
 
 ## Installation
 
