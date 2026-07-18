@@ -170,7 +170,8 @@ class ServiceRuntime:
         heading = self.gui.localized(STRING_COEXISTENCE_HEADING) or (
             "Classic Audio Offset Manager detected")
         body = self.gui.localized(STRING_COEXISTENCE_BODY) or (
-            "AOM Evolved and the classic Audio Offset Manager are both "
+            "Audio Offset Manager: Evolved and the classic Audio Offset "
+            "Manager are both "
             "enabled. Running both can apply audio offsets twice. "
             "Consider disabling the classic addon.")
         if not self.gui.ok(heading, body):

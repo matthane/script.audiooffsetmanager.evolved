@@ -142,7 +142,7 @@ msgid "Classic Audio Offset Manager detected"
 msgstr ""
 
 msgctxt "#32130"
-msgid "AOM Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice. Consider disabling the classic addon."
+msgid "Audio Offset Manager: Evolved and the classic Audio Offset Manager are both enabled. Running both can apply audio offsets twice. Consider disabling the classic addon."
 msgstr ""
 
 msgctxt "#32131"
