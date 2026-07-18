@@ -21,16 +21,8 @@ msgctxt "#32017"
 msgid "Settings related to addon playback behavior"
 msgstr ""
 
-msgctxt "#32018"
-msgid "Seek back"
-msgstr ""
-
 msgctxt "#32021"
 msgid "Seek back amount (seconds)"
-msgstr ""
-
-msgctxt "#32081"
-msgid "Notifications"
 msgstr ""
 
 msgctxt "#32090"

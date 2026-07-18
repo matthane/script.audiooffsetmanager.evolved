@@ -43,7 +43,10 @@
 
         <!-- Playback behavior: seek-backs and notifications. -->
         <category id="playback" label="32016" help="32017">
-            <group id="3" label="32018">
+            <!-- Both groups untitled (user call, matching the Offsets and
+                 Advanced treatment): the divider separates seek-backs from
+                 notifications, and the settings say the rest. -->
+            <group id="3">
                 <!-- One multiselect replaces the four per-reason enable
                      toggles and one shared amount the four per-reason
                      sliders (beta9 field pass). Option VALUES are the
@@ -83,7 +86,7 @@
                 </setting>
             </group>
 
-            <group id="4" label="32081">
+            <group id="4">
                 <!-- D10: per-kind toast gates, both default ON (the toasts
                      are the learn loop's teaching surface). -->
                 <setting id="notify_apply" type="boolean" label="32117" help="32118">
