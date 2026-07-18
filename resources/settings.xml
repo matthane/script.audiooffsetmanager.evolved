@@ -150,6 +150,20 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
+                <!-- Support report: the addon's entries from both Kodi log
+                     files, filtered and redacted, to a picked folder.
+                     Enabled only under the debug toggle (a useful export
+                     presupposes debug lines were being written). -->
+                <setting id="export_log" type="action" label="32161" help="32162">
+                    <level>0</level>
+                    <dependencies>
+                        <dependency type="enable" setting="enable_debug_logging">true</dependency>
+                    </dependencies>
+                    <data>RunScript(script.audiooffsetmanager.evolved,export_log)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
                 <!-- Internal once-flag (level 4, never rendered): set after
                      the classic-AOM coexistence warning has shown once.
                      Behavior state, not offset data. -->

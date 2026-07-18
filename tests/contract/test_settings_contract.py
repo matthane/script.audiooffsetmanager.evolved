@@ -37,7 +37,8 @@ SETTINGS_XML = REPO_ROOT / "resources" / "settings.xml"
 # settings.xml ids that are intentionally not backed by a Python read: UI-only
 # wiring. These are action buttons whose <data> is a RunScript invocation,
 # not a value the runtime ever reads.
-UI_ONLY_SETTING_IDS = {"manage_offsets", "export_offsets", "import_offsets"}
+UI_ONLY_SETTING_IDS = {"manage_offsets", "export_offsets", "import_offsets",
+                       "export_log"}
 
 # The typed primitives and writers on Settings — everything that is NOT an
 # intent-level read. The completeness guard subtracts these from the class's

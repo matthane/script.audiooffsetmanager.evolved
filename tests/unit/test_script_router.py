@@ -158,6 +158,35 @@ def _wire_focus_reopen(monkeypatch, dialog_ids):
     return builtins
 
 
+class RecordingLogExport:
+    """Stand-in for the composed LogExportView: records the run."""
+
+    ran = 0
+
+    def run_export(self):
+        RecordingLogExport.ran += 1
+
+
+def test_export_log_route_runs_the_view_then_reopens_at_advanced(
+        monkeypatch):
+    # The log-export button lives in Advanced too: same close-then-reopen
+    # arc as the transfer routes, never the plain openSettings().
+    RecordingLogExport.ran = 0
+    monkeypatch.setattr(script_router, '_log_export_view',
+                        RecordingLogExport)
+    builtins = _wire_focus_reopen(
+        monkeypatch, [0, script_router.SETTINGS_DIALOG_ID])
+
+    script_router.handle_script_call(['script.py', 'export_log'])
+
+    assert RecordingLogExport.ran == 1
+    assert builtins == [
+        'Addon.OpenSettings(script.audiooffsetmanager.evolved)',
+        'SetFocus({0})'.format(script_router.ADVANCED_CATEGORY_FOCUS),
+    ]
+    assert sum(a.opened for a in RecordingAddon.instances) == 0
+
+
 @pytest.mark.parametrize("route,flow", [
     ('export_offsets', 'export'),
     ('import_offsets', 'import'),
@@ -262,3 +291,85 @@ def test_transfer_view_composition(monkeypatch, tmp_path):
     assert copies[-1] == ('/downloads/y.json', staging_path)
     built['discard_staged']()
     assert deletes == [staging_path]
+
+
+def test_log_export_view_composition(monkeypatch, tmp_path):
+    # The support-report surface's graph: line streams over the two log
+    # files (None when absent, streaming when present), the xbmcvfs
+    # writer, the redaction pairs in both separator spellings, and the
+    # addon version for the export preamble. No mutation client leg: the
+    # flow is read-only everywhere.
+    built = {}
+
+    class FakeLogExport:
+        def __init__(self, gui, **kwargs):
+            built['gui'] = gui
+            built.update(kwargs)
+
+    class RecordingVfsFile:
+        instances = []
+
+        def __init__(self, path, mode=None):
+            self.path = path
+            self.mode = mode
+            self.written = None
+            self.closed = False
+            RecordingVfsFile.instances.append(self)
+
+        def write(self, text):
+            self.written = text
+            return True
+
+        def close(self):
+            self.closed = True
+
+    log_dir = tmp_path / 'logs'
+    log_dir.mkdir()
+    (log_dir / 'kodi.log').write_text(
+        "2026-07-18 10:00:00.000 T:1 info <general>: AOMe_Runtime: line\n",
+        encoding='utf-8')
+    home = str(tmp_path / 'kodi_home') + '\\'
+
+    def fake_translate(path):
+        if path == 'special://logpath/':
+            return str(log_dir) + '\\'
+        if path == 'special://home/':
+            return home
+        return path                       # special://profile/ unresolved
+
+    monkeypatch.setattr(script_router, 'LogExportView', FakeLogExport)
+    monkeypatch.setattr(xbmcvfs, 'translatePath', fake_translate)
+    monkeypatch.setattr(xbmcvfs, 'File', RecordingVfsFile)
+    monkeypatch.setattr(script_router.os.path, 'expanduser',
+                        lambda _p: 'C:\\Users\\tester')
+    RecordingVfsFile.instances = []
+
+    script_router._log_export_view()
+
+    assert isinstance(built['gui'], Gui)
+    assert 'send_mutation' not in built
+
+    # kodi.old.log is absent -> None; kodi.log streams its lines.
+    assert built['read_old_log']() is None
+    assert [line.rstrip('\n') for line in built['read_current_log']()] == \
+        ["2026-07-18 10:00:00.000 T:1 info <general>: AOMe_Runtime: line"]
+
+    # An unresolvable special:// root contributes no pair; the resolved
+    # Kodi home arrives in both separator spellings, and the OS user
+    # profile folds to ~/ (the field-caught leak: a user-picked export
+    # destination under the OS profile sits outside Kodi's home).
+    assert built['redactions'] == [
+        (home, 'special://home/'),
+        (home.replace('\\', '/'), 'special://home/'),
+        ('C:\\Users\\tester\\', '~/'),
+        ('C:/Users/tester/', '~/'),
+    ]
+
+    assert built['write_export']('/reports/aome-log.log', 'text') is True
+    handle = RecordingVfsFile.instances[-1]
+    assert (handle.path, handle.mode) == ('/reports/aome-log.log', 'w')
+    assert handle.written == 'text'
+    assert handle.closed is True
+
+    assert built['version'] == ""         # RecordingAddon's stub info
+    assert callable(built['log_debug'])

@@ -16,6 +16,10 @@ Routes:
 - ``export_offsets`` / ``import_offsets`` — the backup surface (the
   TransferView): verbatim file export to a picked folder, and the staged
   restore over the mutation channel's ``import`` op.
+- ``export_log`` — the support-report surface (the LogExportView): the
+  addon's entries from both Kodi log files, filtered and redacted, to a
+  picked folder. Read-only everywhere: it never touches the store or the
+  channel.
 - anything else / no argument — open the addon settings (D13: launching
   the addon opens the full settings dialog, the natural hub).
 
@@ -28,6 +32,7 @@ always lands on the first category, which field-read as being teleported
 away from where you were.
 """
 
+import os
 import sys
 
 import xbmc
@@ -42,6 +47,7 @@ from resources.lib.aom.kodi.mutation_client import MutationClient
 from resources.lib.aom.kodi.settings import (ADDON_ID, STORE_PATH, Settings,
                                              import_staging_path)
 from resources.lib.aom.store.offset_store import read_import, read_profiles
+from resources.lib.aom.view.logexport import LogExportView
 from resources.lib.aom.view.manage import ManageView
 from resources.lib.aom.view.transfer import TransferView
 
@@ -66,6 +72,10 @@ def handle_script_call(argv=None):
         return
     elif route == 'import_offsets':
         _transfer_view().run_import()
+        _reopen_settings_at_advanced()
+        return
+    elif route == 'export_log':
+        _log_export_view().run_export()
         _reopen_settings_at_advanced()
         return
     xbmcaddon.Addon(ADDON_ID).openSettings()
@@ -166,3 +176,91 @@ def _transfer_view():
         stage_file=lambda source: bool(xbmcvfs.copy(source, staging_path)),
         discard_staged=lambda: xbmcvfs.delete(staging_path),
         log_debug=logger.debug)
+
+
+def _log_export_view():
+    """Compose the filtered-log export surface (the ``export_log`` route).
+
+    The shared preamble minus the mutation client (the flow never touches
+    the store), plus the log seams: line streams over the two Kodi log
+    files, an ``xbmcvfs`` writer so VFS destinations (smb://, nfs://, USB
+    mounts) all work, and the redaction pairs that fold resolved
+    ``special://`` roots back to their portable form.
+    """
+    logger, _settings, gui, _client = _script_graph()
+    log_dir = xbmcvfs.translatePath('special://logpath/')
+    version = xbmcaddon.Addon(ADDON_ID).getAddonInfo('version')
+    return LogExportView(
+        gui,
+        read_old_log=lambda: _log_lines(os.path.join(log_dir,
+                                                     'kodi.old.log')),
+        read_current_log=lambda: _log_lines(os.path.join(log_dir,
+                                                         'kodi.log')),
+        write_export=_write_text,
+        redactions=_path_redactions(),
+        version=version,
+        log_debug=logger.debug)
+
+
+def _log_lines(path):
+    """A line stream over one Kodi log file, ``None`` when it is absent.
+
+    Plain ``open`` on purpose: ``special://logpath`` is always a local
+    directory, and streaming keeps a multi-hundred-MB debug log out of
+    memory (``xbmcvfs.File`` can only hand back whole buffers).
+    """
+    if not os.path.exists(path):
+        return None
+
+    def lines():
+        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+            for line in handle:
+                yield line
+    return lines()
+
+
+def _write_text(destination, text):
+    """Write ``text`` to ``destination`` through xbmcvfs (VFS-capable)."""
+    handle = xbmcvfs.File(destination, 'w')
+    try:
+        return bool(handle.write(text))
+    finally:
+        handle.close()
+
+
+def _path_redactions():
+    """``(resolved_prefix, folded_form)`` pairs for the export's path
+    redaction: the profile root and the Kodi home fold to their
+    ``special://`` forms, and the OS user profile folds to ``~/`` — the
+    field-caught leak (2026-07-18): a user-picked export destination
+    (Desktop, Downloads) sits under the OS profile but OUTSIDE Kodi's
+    home, and the addon logs such destinations in its own AOMe lines, so
+    without this pair the username rides into the next export. Every
+    prefix also appears in its alternate-separator spelling (Windows
+    logs mix ``\\`` and ``/`` depending on which component wrote the
+    line). The view orders all pairs longest-first, so the Kodi roots
+    (under the OS profile on a default install) fold before the ``~/``
+    pair swallows their prefix."""
+    pairs = []
+    for special in ('special://profile/', 'special://home/'):
+        resolved = xbmcvfs.translatePath(special)
+        if not resolved or resolved == special:
+            continue
+        for variant in _separator_variants(resolved):
+            pairs.append((variant, special))
+    user_home = os.path.expanduser('~')
+    if user_home and user_home != '~':
+        if not user_home.endswith(('/', '\\')):
+            user_home += os.sep
+        for variant in _separator_variants(user_home):
+            pairs.append((variant, '~/'))
+    return pairs
+
+
+def _separator_variants(prefix):
+    """The prefix itself plus its swapped-separator spelling (if any)."""
+    yield prefix
+    alternate = (prefix.replace('\\', '/') if '\\' in prefix
+                 else prefix.replace('/', '\\'))
+    if alternate != prefix:
+        yield alternate

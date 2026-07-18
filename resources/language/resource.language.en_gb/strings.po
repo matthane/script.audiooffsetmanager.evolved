@@ -260,3 +260,27 @@ msgstr ""
 msgctxt "#32160"
 msgid "Imported {0}"
 msgstr ""
+
+msgctxt "#32161"
+msgid "Export addon log"
+msgstr ""
+
+msgctxt "#32162"
+msgid "Save this addon's log entries from the current and previous Kodi sessions to a folder you choose. The file contains only this addon's entries, with no media titles or library paths, so it is safe to share when reporting a problem. Some problems may still need a full Kodi debug log."
+msgstr ""
+
+msgctxt "#32163"
+msgid "No addon log entries found. Turn on debug logging, play something, then export again."
+msgstr ""
+
+msgctxt "#32164"
+msgid "Saved the filtered log to {0}"
+msgstr ""
+
+msgctxt "#32165"
+msgid "Could not save the log file"
+msgstr ""
+
+msgctxt "#32166"
+msgid "Could not read the Kodi log file"
+msgstr ""
