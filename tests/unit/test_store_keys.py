@@ -348,7 +348,7 @@ def test_profile_summary_uses_short_names_with_full_table_fallback():
     # only — describe_key (the management view) keeps the full names.
     assert keys.profile_summary('dolbyvision', 'eac3_ddp_atmos', 23.976) == \
         'DV | 23.976 fps | DD+ Atmos'
-    assert keys.profile_summary('dolbyvision', 'ac3') == 'DV | DD'
+    assert keys.profile_summary('dolbyvision', 'ac3') == 'DV | AC3'
     assert keys.describe_key('dolbyvision|all|eac3_ddp_atmos') == \
         'Dolby Vision | Dolby Digital Plus Atmos'
     # A segment with no short form falls back to the FULL display name...

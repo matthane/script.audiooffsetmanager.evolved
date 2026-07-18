@@ -155,7 +155,9 @@ AUDIO_DISPLAY_SHORT = {
     'truehd_atmos': 'TrueHD Atmos',
     'eac3': 'DD+',
     'eac3_ddp_atmos': 'DD+ Atmos',
-    'ac3': 'DD',
+    # 'AC3', not 'DD': it matches what Kodi's own OSD calls the codec,
+    # where a bare 'DD' next to 'DD+' reads as a typo.
+    'ac3': 'AC3',
     'ac4': 'AC-4',
     UNKNOWN: 'Unknown',
 }
