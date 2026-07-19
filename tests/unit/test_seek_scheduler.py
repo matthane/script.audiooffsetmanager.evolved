@@ -10,7 +10,8 @@ Timing facts the tests rely on (from the module):
 
 * ExecuteSeek attempt #1 is scheduled at delay 0, so it fires on the NEXT
   pump with no clock advance — except for the yielding reasons ('unpause'),
-  whose first attempt waits one RECHECK (the detection grace). A deferred
+  whose first attempt waits DETECTION_GRACE_SECONDS (the detection grace,
+  its own knob even while numerically equal to RECHECK). A deferred
   attempt re-schedules RECHECK (0.5s) later, key-replaced so only one
   attempt per reason is ever live.
 * The session's ``started_at`` counts as seek activity, so a fresh seek must
@@ -52,6 +53,7 @@ DEADLINE = SeekScheduler.DEADLINE_SECONDS
 RECHECK = SeekScheduler.RECHECK_SECONDS
 DEBOUNCE = SeekScheduler.DEBOUNCE_SECONDS
 GRACE = SeekScheduler.STABILITY_GRACE_SECONDS
+DETECTION = SeekScheduler.DETECTION_GRACE_SECONDS
 DEADLINE_STEPS = int(DEADLINE / RECHECK)
 
 
@@ -182,7 +184,7 @@ class TestTriggersAndDebounce:
         # detection grace after the trigger (unpause is a yielding reason).
         rig.advance(DEBOUNCE)             # clock -> 6.0
         rig.post(events.Resumed())        # 6.0 - 4.0 == DEBOUNCE, allowed
-        rig.advance(RECHECK)              # t=6.5: the grace attempt fires
+        rig.advance(DETECTION)            # t=6.5: the grace attempt fires
         assert rig.seeks == [(4, 1), (4, 1), (4, 1)]
 
     def test_retrigger_while_pending_key_replaces_to_one_seek(self, rig):
@@ -456,15 +458,15 @@ class TestUnpauseYield:
 
     def test_unpause_first_attempt_waits_the_detection_grace(self, rig):
         # The trigger does NOT execute on its own pump even though the window
-        # is quiet: the first attempt is scheduled one RECHECK out, so an
-        # external reactor to the same unpause has time to raise its busy
-        # flag or land its seek before we commit.
+        # is quiet: the first attempt is scheduled one detection grace out,
+        # so an external reactor to the same unpause has time to raise its
+        # busy flag or land its seek before we commit.
         self._settled(rig)
         rig.post(events.Resumed())        # t=6.0: quiet, but grace first
         assert rig.seeks == [(4, 1)]      # nothing fired on the trigger pump
         assert 'unpause' in rig.pending
 
-        rig.advance(RECHECK)              # t=6.5: nothing else moved -> seek
+        rig.advance(DETECTION)            # t=6.5: nothing else moved -> seek
         assert rig.seeks == [(4, 1), (4, 1)]
         assert rig.session.seek_history['unpause'] == 6.5
 
@@ -476,7 +478,7 @@ class TestUnpauseYield:
         rig.post(events.Resumed())        # t=6.0
         rig.gateway.window_properties[VENDOR_PROP] = '1'
 
-        rig.advance(RECHECK)              # t=6.5: the probe sights the vendor
+        rig.advance(DETECTION)            # t=6.5: the probe sights the vendor
         assert rig.seeks == [(4, 1)]      # yielded, not deferred
         assert 'unpause' not in rig.pending
         assert rig.logged('Yielding unpause')

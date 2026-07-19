@@ -40,16 +40,25 @@ Behavior:
   executes — a fresh user action gets its replay.
 - Unpause yields to the playhead: 'unpause' is the one trigger an
   external actor may mirror (a vendor's own unpause seek-back), so its
-  first attempt waits one recheck — the detection grace, giving a
-  reactor to the same unpause time to reveal itself — and ANY seek
-  activity observed at or after the trigger cancels the replay instead
-  of deferring it (someone else already moved the playhead since the
-  unpause; replaying on top would double their seek). Vendor-agnostic:
-  the signals are the generic activity view (SeekOccurred plus the
-  busy-property list), never a specific addon. 'resume' deliberately
-  keeps defer-past semantics — Kodi's and vendors' start-of-playback
+  first attempt waits the detection grace — giving a reactor to the
+  same unpause time to reveal itself — and ANY seek activity observed
+  at or after the trigger cancels the replay instead of deferring it
+  (someone else already moved the playhead since the unpause; replaying
+  on top would double their seek). Vendor-agnostic: the signals are the
+  generic activity view (SeekOccurred plus the busy-property list),
+  never a specific addon. The yield is single-shot by design (a
+  cancelled replay never revives; the next unpause is a fresh trigger),
+  and the grace closes only the pre-execution race — an external seek
+  landing after our committed replay is the accepted residual, because
+  a corrective seek would itself be a third jump, worse than the double
+  it repairs. The other reasons deliberately do NOT yield: 'resume'
+  keeps defer-past semantics (Kodi's and vendors' start-of-playback
   seeks are POSITIONING, not replays, and cancelling past them would
-  kill the resume replay everywhere.
+  kill the resume replay everywhere), and 'adjust'/'change' ride
+  internal facts (a profile change stabilized, a manual offset settled)
+  that no external actor mirrors — a nearby external seek there is a
+  coincident user scrub to wait out, and yielding would eat the replay
+  the adjustment just earned.
 - Session start counts as seek activity, so playback always gets a settle
   window before the first replay: Kodi's own resume-position seek defers
   the replay past itself, and a start under a sustained seek storm
@@ -151,6 +160,14 @@ class SeekScheduler:
     DEADLINE_SECONDS = 8.0
     RECHECK_SECONDS = 0.5
     DEBOUNCE_SECONDS = 2.0
+    # The yielding reasons' first-attempt delay. Numerically equal to
+    # RECHECK_SECONDS today but deliberately its own knob: RECHECK tunes
+    # the re-poll cadence, this tunes the safety window in which an
+    # external reactor to the same trigger can reveal itself (observed
+    # reactions: a busy flag within milliseconds, a mirrored seek within
+    # ~200ms — 0.5s covers both with margin). Retune THIS, never
+    # RECHECK, if a slower reactor surfaces in a field log.
+    DETECTION_GRACE_SECONDS = 0.5
     # How long a 'seek' verdict defers waiting for STABLE before the quiet
     # window alone decides (never-stabilizing streams keep their replay).
     STABILITY_GRACE_SECONDS = 4.0
@@ -319,12 +336,12 @@ class SeekScheduler:
             return
         # A re-trigger while pending key-replaces the attempt chain; the
         # fresh requested_at restarts the deadline (the newest user action
-        # is the one served). A yielding reason's first attempt waits one
-        # recheck (the detection grace): an external reactor to the same
-        # trigger gets time to raise its busy flag or land its seek before
-        # we commit — firing instantly is what raced ahead of it.
-        delay = (self.RECHECK_SECONDS if reason in self.YIELDING_REASONS
-                 else 0.0)
+        # is the one served). A yielding reason's first attempt waits the
+        # detection grace: an external reactor to the same trigger gets
+        # time to raise its busy flag or land its seek before we commit —
+        # firing instantly is what raced ahead of it.
+        delay = (self.DETECTION_GRACE_SECONDS
+                 if reason in self.YIELDING_REASONS else 0.0)
         self._dispatcher.schedule(
             delay,
             events.ExecuteSeek(session_id=session.session_id, reason=reason,

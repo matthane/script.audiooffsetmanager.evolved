@@ -95,10 +95,13 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     scrubbing — and replaying on top of their seek would double it.
     Activity strictly BEFORE the request never yields (the quiet window
     handles it): the rule is about the playhead having been touched since
-    the trigger, not about recent busyness. Vendor-agnostic by
-    construction: the caller's activity view is the generic aggregate
-    (SeekOccurred, the vendor busy list, our own seeks), never a specific
-    addon.
+    the trigger, not about recent busyness. One sampling nuance the
+    caller owns: vendor busyness is stamped when PROBED, so an external
+    actor still busy at attempt time reads as at-trigger activity and
+    yields — deliberate, since busyness spanning the trigger IS the
+    playhead being handled externally. Vendor-agnostic by construction:
+    the caller's activity view is the generic aggregate (SeekOccurred,
+    the vendor busy list, our own seeks), never a specific addon.
 
     Args (all timestamps monotonic; the caller resolves them):
         now: current time.

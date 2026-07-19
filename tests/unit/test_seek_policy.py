@@ -3,10 +3,11 @@ policy stated as one pure function.
 
 These are pure table tests (no dispatcher, no clock, no fakes): the caller
 resolves every timestamp and the function only decides 'seek' | 'defer' |
-'abandon'. The scheduler-side enforcement (rescheduling, deadline bounding,
-cross-type suppression as it actually plays out on the bus) is pinned in
-test_seek_scheduler.py; here we pin the decision math and, crucially, its
-DOCUMENTED ORDERING: served-check, then deadline, then quietness.
+'abandon' | 'yield'. The scheduler-side enforcement (rescheduling, deadline
+bounding, cross-type suppression as it actually plays out on the bus) is
+pinned in test_seek_scheduler.py; here we pin the decision math and,
+crucially, its DOCUMENTED ORDERING: served-check, then yielded, then
+deadline, then quietness.
 
 All timestamps are monotonic floats; only their differences matter, so the
 tables use small readable numbers.
@@ -17,9 +18,10 @@ import pytest
 from resources.lib.aome.domain import policies
 
 
-# The decision is evaluated in a fixed order (served -> deadline -> quiet);
-# each row names which rule it is meant to exercise so a regression points at
-# the guard it broke.
+# The decision is evaluated in a fixed order (served -> yielded -> deadline
+# -> quiet); this table exercises the default flag-off path, so the yielded
+# step never fires here (its own table follows below). Each row names which
+# rule it is meant to exercise so a regression points at the guard it broke.
 @pytest.mark.parametrize("case, now, requested_at, last_activity, last_own_seek, expected", [
     # -- quietness (the happy path) ------------------------------------------
     # No activity for >= quiet_window and inside the deadline -> seek.
