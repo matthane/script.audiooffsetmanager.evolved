@@ -66,8 +66,8 @@ principles, so this file stands alone:
 - `service.py` → `aome.runtime.ServiceRuntime` — the composition root:
   builds the full dependency graph with required constructor injection
   and blocks on the abort monitor. Subscription order is load-bearing
-  (tracker → detector → applier → notifier → seek scheduler → watcher);
-  the runtime docstring is the authority.
+  (tracker → detector → applier → notifier → seek scheduler → watcher →
+  per-fps advisor); the runtime docstring is the authority.
 - `script.py` → `aome.script_router` — the `RunScript` half, a separate
   process. Routes: `manage_offsets`, `export_offsets` / `import_offsets`,
   `export_log`; anything else opens the settings dialog (launching the
@@ -96,8 +96,9 @@ documentation; trust them first. Layering (enforced by
   per-playback state; a new session IS the reset), `stream_detector`
   (scheduled probe/verify chain, sole writer of `session.profile`),
   `offset_applier`, `adjustment_watcher` (the learn loop),
-  `seek_scheduler`, `notifier`, `store_mutations` (service side of the
-  mutation channel).
+  `seek_scheduler`, `notifier`, `per_fps_advisor` (the mode-flip
+  explainer dialog), `store_mutations` (service side of the mutation
+  channel).
 - **`kodi/`** — the only package allowed to `import xbmc*`: `gateway`
   (single-shot JSON-RPC — patience lives up in scheduled events, never
   sleeps here), `settings`, `gui`, `log`, `player_bridge` /
@@ -139,12 +140,18 @@ never in settings.xml.
   toggle is ON; truncation is what keeps the NTSC fractional rates
   distinct from their integer siblings (23.976→`23` vs 24.0→`24` …) —
   the pairs are pinned in tests and must stay distinct.
-- **Lookup:** `exact → all → miss` (toggle ON) or `all → miss` (OFF);
-  both levels are single keys, so no scan and no tie-break exists.
-  Specific-fps entries are dormant while the toggle is OFF; flipping it
-  is non-destructive both ways. **`aome/store/resolve.py` is the
-  decision table, executable** — its docstring plus
-  `tests/unit/test_store_resolve.py` / `test_store_keys.py` are the spec.
+- **Lookup — strict, one candidate key per mode:** `specific → miss`
+  (toggle ON) or `all → miss` (OFF); no fallback between the levels
+  exists — an offset applies only in the mode it was saved in. Dormancy
+  is symmetric (specific entries sleep while OFF, `all` entries sleep
+  while ON; the manage view dims + tags whichever set is dormant) and
+  flipping is non-destructive both ways; a flip fires a one-shot modal
+  explainer (`app/per_fps_advisor.py`, presented off-dispatcher via the
+  runtime's thread-handing presenter). Unparseable fps under ON degrades
+  to the `all` key ("no fps axis" — defensive only, completeness gating
+  screens it). **`aome/store/resolve.py` is the decision table,
+  executable** — its docstring plus `tests/unit/test_store_resolve.py` /
+  `test_store_keys.py` are the spec.
 - **Miss semantics:** a miss applies nothing UNTIL the addon has acted
   on the session, then it zero-resets stale residue (silent for our own,
   "Offset not saved" toast when discarding an unstored manual value).
