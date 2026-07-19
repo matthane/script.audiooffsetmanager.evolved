@@ -374,3 +374,11 @@ msgstr ""
 msgctxt "#32167"
 msgid "{0} — inactive"
 msgstr ""
+
+#. Suffix on a group row in the stored offsets view when some of the
+#. group's entries are inactive (saved in the other per-frame-rate mode
+#. than the one currently enabled); {0} is how many, e.g. the full row
+#. reads "Dolby Vision — 3 entries (2 inactive)"
+msgctxt "#32170"
+msgid "({0} inactive)"
+msgstr ""

@@ -31,7 +31,8 @@ first-run education: nothing is stored until the user fixes lipsync once.
 
 When the store spans MORE THAN ONE HDR group, the top level renders as a
 group index instead of one flat list: one single-line row per HDR type
-present — display name plus entry count — with
+present — display name plus entry count, with the group's inactive
+share suffixed when it has one ('3 entries (2 inactive)') — with
 hand-edited keys that cannot claim an HDR name (unsplittable, or a blank
 hdr segment) bucketed under 'Other', sorted last (verbatim acceptance
 extends to grouping: a scribbled key still lists and still deletes, and
@@ -108,6 +109,7 @@ _LABEL_OTHER_GROUP = 32137    # "Other" — the unsplittable-key bucket
 _LABEL_CLEAR_GROUP = 32138    # the scoped clear row inside an open group
 _MSG_CONFIRM_CLEAR_GROUP = 32139
 _LABEL_INACTIVE = 32167       # "{0} — inactive" — the dormant row's value line
+_LABEL_GROUP_INACTIVE = 32170  # "({0} inactive)" — group-row count suffix
 
 # English fallbacks for the strings that must never render blank:
 # localized() degrades to '' on a transient failure, and a blank
@@ -137,6 +139,7 @@ _FALLBACKS = {
     _LABEL_CLEAR_GROUP: "Clear all offsets in this group",
     _MSG_CONFIRM_CLEAR_GROUP: "Delete all stored offsets in this group?",
     _LABEL_INACTIVE: "{0} — inactive",
+    _LABEL_GROUP_INACTIVE: "({0} inactive)",
 }
 
 # One presentable entry: the full profile line (flat rows AND the first
@@ -245,15 +248,15 @@ class ManageView:
     def _index_pass(self, heading, groups):
         """The group index: one single-line row per HDR type + clear-all.
 
-        ``groups`` is run()'s ordered ``(segment, count)`` list — the same
-        one that decided the mode. Clear-all stays on this level (and only
-        this level) when grouped: its confirmation covers the whole store,
-        so it belongs where the whole store is represented.
+        ``groups`` is run()'s ordered ``(segment, count, inactive)`` list —
+        the same one that decided the mode. Clear-all stays on this level
+        (and only this level) when grouped: its confirmation covers the
+        whole store, so it belongs where the whole store is represented.
         """
         self._log("AOMe_ManageView: rendering group index ({0} group(s))"
                   .format(len(groups)))
-        options = [self._group_row(segment, count, emphasize=True)
-                   for segment, count in groups]
+        options = [self._group_row(segment, count, inactive, emphasize=True)
+                   for segment, count, inactive in groups]
         options.append(self._gui.localized(_LABEL_CLEAR_ALL))
 
         choice = self._gui.select(heading, options)
@@ -316,7 +319,9 @@ class ManageView:
         right after a deliberate wipe).
         """
         message = (self._text(_MSG_CONFIRM_CLEAR_GROUP) + "\n"
-                   + self._group_row(self._group, len(group_rows)))
+                   + self._group_row(self._group, len(group_rows),
+                                     sum(1 for row in group_rows
+                                         if row.dormant)))
         if not self._gui.yesno(heading, message):
             return None
         self._log("AOMe_ManageView: clearing group {0} ({1} entries)"
@@ -472,26 +477,31 @@ class ManageView:
         return hdr if hdr.strip() else _OTHER_GROUP
 
     def _group_index(self, rows):
-        """Ordered ``(segment, count)`` pairs for the group index.
+        """Ordered ``(segment, count, inactive)`` triples for the group index.
 
         Rows arrive display-sorted, so first appearance yields the same
         HDR-display order the flat list scans in; the Other bucket is
         forced last regardless of where its raw keys interleave. Counts
         include dormant rows — never-under-represent: every stored entry
-        is countable from the index.
+        is countable from the index — and each group carries its dormant
+        share so the split shows before the drill-down.
         """
         order = []
         counts = {}
+        inactive = {}
         for row in rows:
             segment = self._group_of(row.key)
             if segment not in counts:
                 order.append(segment)
                 counts[segment] = 0
+                inactive[segment] = 0
             counts[segment] += 1
+            inactive[segment] += 1 if row.dormant else 0
         if _OTHER_GROUP in counts:
             order.remove(_OTHER_GROUP)
             order.append(_OTHER_GROUP)
-        return [(segment, counts[segment]) for segment in order]
+        return [(segment, counts[segment], inactive[segment])
+                for segment in order]
 
     def _group_name(self, segment):
         """Display name for a group row/heading; verbatim for a stranger."""
@@ -499,15 +509,21 @@ class ManageView:
             return self._text(_LABEL_OTHER_GROUP)
         return HDR_DISPLAY.get(segment, segment)
 
-    def _group_row(self, segment, count, *, emphasize=False):
-        """One index row: 'Dolby Vision — 6 entries' (single-line).
+    def _group_row(self, segment, count, inactive=0, *, emphasize=False):
+        """One index row: 'Dolby Vision — 6 entries (2 inactive)'.
 
-        ``emphasize`` bolds the group name against its count — the index
-        list only; the clear-group confirmation reuses this row PLAIN
-        (dialog message text, same content, no list to stand out in).
+        The inactive suffix appears only when the group has dormant
+        entries — an all-active group reads as before, and the count
+        always states the TOTAL (never-under-represent; the suffix
+        splits it, it never replaces it). ``emphasize`` bolds the group
+        name against its count — the index list only; the clear-group
+        confirmation reuses this row PLAIN (dialog message text, same
+        content, no list to stand out in).
         """
         string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
         counted = self._template(string_id, count)
+        if inactive:
+            counted += " " + self._template(_LABEL_GROUP_INACTIVE, inactive)
         name = self._group_name(segment)
         if emphasize:
             name = _BOLD.format(name)

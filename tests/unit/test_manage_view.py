@@ -517,10 +517,12 @@ def test_multi_group_store_renders_group_index_with_counts():
     assert heading == "#32115"
     # HDR-display order, 'Other' forced last (its raw key would otherwise
     # interleave: 'scribbled-key' sorts before 'sdr'), clear-all closing.
-    # The group name is bolded against its count — index rows only.
+    # The group name is bolded against its count — index rows only. The
+    # toggle is off here, so each per-fps entry surfaces in its group's
+    # inactive share; all-active groups carry no suffix.
     assert options == [
-        "[B]Dolby Vision[/B] — 3 entries",
-        "[B]HDR10[/B] — 3 entries",
+        "[B]Dolby Vision[/B] — 3 entries (1 inactive)",
+        "[B]HDR10[/B] — 3 entries (1 inactive)",
         "[B]HLG[/B] — 2 entries",
         "[B]SDR[/B] — 1 entry",
         "[B]Other[/B] — 1 entry",
@@ -681,7 +683,7 @@ def test_reread_per_pass_reflects_external_mutations():
     # (2 rows + the group-clear row).
     assert len(gui.selects[1][1]) == 3
     # And the re-rendered index shows the new count.
-    assert "[B]Dolby Vision[/B] — 2 entries" in gui.selects[2][1]
+    assert "[B]Dolby Vision[/B] — 2 entries (1 inactive)" in gui.selects[2][1]
 
 
 def test_dormant_rows_count_and_tag_at_both_levels():
@@ -691,8 +693,9 @@ def test_dormant_rows_count_and_tag_at_both_levels():
     view.run()
 
     # The index counts the dormant 23-fps row (never-under-represent:
-    # every stored entry is countable from the index).
-    assert "[B]Dolby Vision[/B] — 3 entries" in gui.selects[0][1]
+    # every stored entry is countable from the index) and states it in
+    # the group's inactive share.
+    assert "[B]Dolby Vision[/B] — 3 entries (1 inactive)" in gui.selects[0][1]
     # And the drill-down tags AND dims it exactly as the flat list would;
     # active rows stay unstyled.
     options = gui.selects[1][1]
@@ -735,7 +738,7 @@ def test_deletes_never_flip_the_mode_until_a_group_empties():
     # the INDEX, not a flat list.
     assert gui.selects[2][0] == "HDR10"
     assert len(gui.selects[2][1]) == 8
-    assert gui.selects[3][1] == ["[B]Dolby Vision[/B] — 1 entry",
+    assert gui.selects[3][1] == ["[B]Dolby Vision[/B] — 1 entry (1 inactive)",
                                  "[B]HDR10[/B] — 7 entries", "#32126"]
     # Emptying the DV group leaves one group: NOW the top level is flat —
     # the single remaining group's contents.
@@ -812,7 +815,8 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
     view.run()
 
     assert gui.selects[0][1] == ["[B]HDR10[/B] — 8 entries",
-                                 "[B]Other[/B] — 2 entries", "#32126"]
+                                 "[B]Other[/B] — 2 entries (1 inactive)",
+                                 "#32126"]
     heading, options = gui.selects[1]
     assert heading == "Other"
     # The blank-hdr key still splits, so its 'all' fps segment reads as
@@ -844,7 +848,7 @@ def test_group_clear_confirmation_shows_scope_and_decline_sends_nothing():
     assert "#32139" in message
     # The scope line is the index row's copy PLAIN — same content, no
     # bold markup in dialog message text.
-    assert "Dolby Vision — 3 entries" in message
+    assert "Dolby Vision — 3 entries (2 inactive)" in message
     assert "[B]" not in message
     assert service.calls == []
     # Declined: still in the group, re-rendered.
@@ -872,7 +876,7 @@ def test_group_clear_deletes_every_group_key_and_lands_on_index():
     final_options = gui.selects[-1][1]
     assert not any(isinstance(option, str) and "Dolby Vision" in option
                    for option in final_options)
-    assert "[B]HDR10[/B] — 3 entries" in final_options
+    assert "[B]HDR10[/B] — 3 entries (2 inactive)" in final_options
 
 
 def test_group_clear_of_the_entire_store_exits_quietly():
@@ -974,4 +978,5 @@ def test_count_template_degrades_on_malformed_or_placeholderless_translation():
         gui.localized_strings[32136] = bad
         view, gui, _ = _build(_grouped_entries(), gui=gui)
         view.run()
-        assert "[B]Dolby Vision[/B] — 3 entries" in gui.selects[0][1], bad
+        assert ("[B]Dolby Vision[/B] — 3 entries (1 inactive)"
+                in gui.selects[0][1]), bad
