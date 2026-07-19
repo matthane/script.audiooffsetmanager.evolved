@@ -215,7 +215,7 @@ def test_preamble_names_the_addon_and_version():
     # The document leads with a UTF-8 BOM so editors that sniff encoding
     # never guess ANSI and mangle the log's multi-byte characters (the
     # notifier's em dash) into mojibake.
-    assert text.startswith('﻿')
+    assert text.startswith('\ufeff')
     head = text[1:].splitlines()[:4]
     assert head[0] == "Audio Offset Manager: Evolved filtered log export"
     assert head[1] == "Addon version: 1.0.0~beta13"

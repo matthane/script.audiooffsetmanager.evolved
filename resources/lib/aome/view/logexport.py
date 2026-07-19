@@ -291,7 +291,7 @@ class LogExportView:
                 current = name
             for line in entry:
                 out.append(self._redact(line))
-        return '﻿' + '\n'.join(out) + '\n'
+        return '\ufeff' + '\n'.join(out) + '\n'
 
     def _redact(self, line):
         for resolved, special in self._redactions:
