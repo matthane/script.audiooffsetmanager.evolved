@@ -22,12 +22,14 @@ auto-merged. Do not edit the classic repo from here.
 
 **Status:** construction is complete and validated (full suite green,
 field-verified on Windows Kodi 22); the `1.0.0~beta` train is in field
-soak. **No GitHub releases are ever created from this repo** — betas are
-local zips via `git archive` into `../dist`, and publishing/distribution
-is a separate future plan (repo split, final assets, version `1.0.0`,
-repo-scripts submission all live there). The version always carries `~`
-or pre-1.0 form, so `submit.yml`'s stable-release trigger structurally
-cannot fire.
+soak and the repo is preparing for release. **Releases are cut by
+tagging:** a release tag gets a GitHub Release. Betas are published as
+pre-releases (the `prereleased` event does not fire `submit.yml`);
+publishing a normal stable Release fires `submit.yml`, which submits
+the addon to Kodi's repo-scripts. The version keeps its `~` pre-release
+form until the deliberate final bump, and `submit.yml` refuses any `~`
+version as a hard backstop — bumping `addon.xml` to `1.0.0` is a
+prerequisite of submission, not a side effect of tagging.
 
 ## Design doctrine (summarized here because the design docs never ship)
 
