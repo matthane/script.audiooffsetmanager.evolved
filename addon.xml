@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta16" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta17" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,13 +7,12 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta16 (2026-07-19)
-- Per-frame-rate offsets now apply only to the frame rate they were saved with. Offsets saved while the mode was off cover all frame rates and are not applied while it is on, instead of acting as a hidden fallback
-- Turning per-frame-rate offsets on or off shows a dialog explaining which stored offsets are in effect
-- The stored offsets view now marks inactive entries in both modes, and labels all-rates entries as All FPS
+        <news>v1.0.0~beta17 (2026-07-19)
+- The mode-change dialog added in beta16 has been removed. It could appear after unrelated clicks in the settings dialog. The setting's help text explains which offsets apply in each mode
 
-v1.0.0~beta15 (2026-07-19)
-- Seek back on unpause waits half a second and stands down if another addon or a manual seek moves playback first, so the video never jumps back twice after unpausing
+v1.0.0~beta16 (2026-07-19)
+- Per-frame-rate offsets now apply only to the frame rate they were saved with. Offsets saved while the mode was off cover all frame rates and are not applied while it is on, instead of acting as a hidden fallback
+- The stored offsets view now marks inactive entries in both modes, and labels all-rates entries as All FPS
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
