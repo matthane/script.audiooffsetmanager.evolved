@@ -48,14 +48,15 @@ class TestOffsetTable:
         assert entry['delay_ms'] == -115           # verbatim
         assert entry['video_fps'] == 23.976        # management-view metadata
 
-    def test_resolve_walks_the_chain_and_reports_hit_kind(self, tmp_path):
+    def test_resolve_consults_only_the_mode_key(self, tmp_path):
+        # STRICT: per_fps ON never falls back to the all entry — the one
+        # candidate key either hits or the resolution is a miss.
         table, store = _make_table(tmp_path, per_fps=True)
         store.set('hdr10|all|eac3', 100)
         got = table.resolve(_profile(hdr='hdr10', audio='eac3',
                                      video_fps=60.0))
-        assert got.entry['delay_ms'] == 100
-        assert got.hit_kind == 'fallback'
-        assert got.tried == ('hdr10|60|eac3', 'hdr10|all|eac3')
+        assert (got.entry, got.hit_kind, got.key) == (None, 'miss', None)
+        assert got.tried == ('hdr10|60|eac3',)
 
     def test_keys_are_composed_at_call_time_from_the_live_toggle(self, tmp_path):
         # Freshness doctrine: the SAME profile writes different keys as the

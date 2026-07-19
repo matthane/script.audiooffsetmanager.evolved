@@ -7,8 +7,9 @@ adapter is injected), keeping the store package's purity contract intact.
 Keys are composed AT CALL TIME from the profile's verbatim facts plus the
 LIVE ``per_fps_offsets`` toggle (freshness doctrine: never a captured key,
 never conditional on lookup history). Lookup routes through
-``resolve.resolve`` (exact -> all -> miss); writes route through
-``resolve.write_key`` — the ONLY sanctioned write-key derivation.
+``resolve.resolve`` (one candidate key per mode -> exact | miss); writes
+route through ``resolve.write_key`` — the ONLY sanctioned write-key
+derivation.
 
 The store-entry dict shape stays INSIDE the store package: consumers read
 values via ``Resolution.ms`` and ``stored_ms_at`` rather than indexing

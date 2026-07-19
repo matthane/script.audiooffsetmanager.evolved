@@ -68,7 +68,7 @@ Notifier hold the toast until stabilization. This component never toasts.
 
 Offsets come from the injected ``OffsetTable`` (the sparse-store adapter):
 ``resolve(profile)`` returns a ``Resolution`` whose ``hit_kind`` is
-exact/fallback/miss. **A miss is a no-op until the addon has acted on the
+exact/miss. **A miss is a no-op until the addon has acted on the
 session, then a zero-reset**: before the addon's first
 apply/store, a miss leaves Kodi's delay completely untouched (a fresh
 install must never clobber the user's/Kodi's own per-file delay). After
@@ -89,10 +89,10 @@ The user's deletion is the authorization the gate otherwise waits for;
 without this, Kodi's per-file memory keeps replaying the deleted offset.
 The forced 0 consumes the markers (one-shot) and is completely SILENT —
 zero is the implicit, expected outcome of the deletion, so a toast would
-be noise; the debug line is the
-only trace. A marker on a key consulted BEFORE a hit (deleted exact
-entry, kept ``all`` fallback) is consumed silently after the hit applies
-— the fallback the user kept overwrites the residue anyway.
+be noise; the debug line is the only trace. A hit never carries a marker
+(the store supersedes a key's marker on set, and the single-candidate
+lookup consults no other key), so marker handling lives entirely on the
+miss path.
 
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
@@ -216,10 +216,6 @@ class OffsetApplier:
         self._log(f"AOMe_OffsetApplier: Applied {delay_ms}ms for {key} "
                   f"(hit={resolution.hit_kind}, provisional={provisional}); "
                   f"{session.describe()}")
-        # A stale marker under a hit (deleted exact entry, kept fallback):
-        # the applied value overwrote any residue, so the marker's job is
-        # done — consume silently.
-        self._consume_markers(resolution.reset_keys)
         self._dispatcher.post(events.OffsetApplied(
             session_id=session.session_id, profile=profile, ms=delay_ms,
             provisional=provisional))

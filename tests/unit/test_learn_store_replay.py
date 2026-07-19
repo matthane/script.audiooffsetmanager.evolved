@@ -101,7 +101,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     # --- settings seams (the single Settings adapter, shared by all) ----------
     settings = runtime.settings
     # A mutable holder so a test can flip per_fps live (OFF = the `all`
-    # key world; ON = exact -> all -> miss).
+    # key world; ON = the fps-specific key or nothing — no fallback).
     per_fps_holder = {'on': per_fps}
     monkeypatch.setattr(settings, 'apply_enabled', lambda: True)
     monkeypatch.setattr(settings, 'per_fps_offsets_enabled',
@@ -258,23 +258,24 @@ def test_replay_applies_seeded_offset_on_playback(build, tmp_path):
     assert replay.applied == [(1, -115)]            # applied with no user input
 
 
-# --- Scenario 4: fallback then specialize (per_fps ON, §3.2 worked flow) ------
+# --- Scenario 4: strict per-fps re-teach (per_fps ON) -------------------------
 
-def test_fallback_then_specialize_per_fps(build, tmp_path):
-    # per_fps ON, only an `all`-key entry seeded: a 60 fps stream falls back to
-    # it (-125). The user then dials -100; the write key is the fps-specific
-    # key, so the exact entry is CREATED while the `all` fallback is untouched.
-    # A replay at 60 fps then hits the exact entry (-100).
+def test_all_entry_dormant_then_specialize_per_fps(build, tmp_path):
+    # per_fps ON, only an `all`-key entry seeded: STRICT mode never falls
+    # back to it, so a 60 fps stream is a MISS — nothing applies and Kodi's
+    # delay stays untouched (the addon has not acted this session). The
+    # user dials -100; the write key is the fps-specific key, so the exact
+    # entry is CREATED while the dormant `all` entry is untouched. A
+    # replay at 60 fps then hits the exact entry (-100).
     _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -125})
 
     # Built AFTER the seed so it loads at construction (service stopped seed).
     rig = build(per_fps=True, infolabels={INFOLABEL_FPS: '60'})
-    # Kodi echoes the fallback apply back through the infolabel (baseline).
-    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.125 s'
+    rig.gateway.infolabels[INFO_AUDIO_DELAY] = '0.000 s'
 
     _play(rig)
-    assert rig.applied == [(1, -125)]               # fallback applied
-    _settle(rig)                                     # self-echo -> baseline -125
+    assert rig.applied == []                         # the all entry is dormant
+    _settle(rig)                                     # adopts baseline 0
 
     # User dials the fps-specific value; quiescence writes the exact key.
     rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.100 s'
@@ -284,7 +285,7 @@ def test_fallback_then_specialize_per_fps(build, tmp_path):
     assert profiles['dolbyvision|60|truehd']['delay_ms'] == -100  # specialized
     assert profiles['dolbyvision|all|truehd']['delay_ms'] == -125  # untouched
 
-    # Replay at 60 fps now hits the exact entry, not the fallback.
+    # Replay at 60 fps hits the exact entry; the all entry stays dormant.
     replay = build(per_fps=True, infolabels={INFOLABEL_FPS: '60'})
     _play(replay)
     assert replay.applied == [(1, -100)]

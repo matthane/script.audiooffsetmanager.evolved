@@ -8,8 +8,8 @@ OffsetApplied posts are collected off the bus.
 The applied-before-RPC ordering contract also has cross-component pins in
 test_session_flow.py; here it is asserted directly at the gateway boundary.
 
-The applier resolves through the sparse-store adapter — hit/fallback
-apply, MISS IS A NO-OP (Kodi's delay untouched, one debug line per
+The applier resolves through the sparse-store adapter — an exact hit
+applies, MISS IS A NO-OP (Kodi's delay untouched, one debug line per
 distinct consulted chain), and applying is gated by the single "Apply
 audio offsets" toggle (it gates applying only; learning is the watcher's
 own toggle).
@@ -204,18 +204,24 @@ class TestApplyPath:
         assert rig.gateway.applied == [(1, 0.0)]
         assert session.applied == (ALL_KEY, 0)
 
-    def test_fallback_hit_applies_the_all_entry(self, rig):
-        # per_fps ON with only the all-level taught: the fallback level
-        # serves the apply, and hit_kind says so in the logs.
+    def test_all_entry_is_dormant_while_per_fps_is_on(self, rig):
+        # STRICT: per_fps ON with only the all-level taught is a MISS —
+        # an offset applies only in the mode it was saved in, so the all
+        # entry is dormant and Kodi's delay stays untouched (the addon
+        # has not acted on this session yet).
         rig.offsets.per_fps = True
         profile = make_profile(video_fps=60.0)
         session = rig.start(profile, offset_ms=-125, key=ALL_KEY)
 
         rig.profile_changed()
 
-        assert rig.gateway.applied == [(1, -0.125)]
-        assert session.applied == (ALL_KEY, -125)
-        assert rig.logged('hit=fallback')
+        assert rig.gateway.applied == []
+        assert session.applied is None
+        assert rig.announced == []
+        miss_lines = [m for m in rig.debug if 'no stored offset' in m]
+        assert len(miss_lines) == 1
+        assert 'dolbyvision|60|truehd' in miss_lines[0]  # the one candidate
+        assert ALL_KEY not in miss_lines[0]              # never consulted
 
 
 class TestMissIsNoOp:
@@ -787,18 +793,19 @@ class TestDeletedReset:
 
         assert [e.session_id for e in resets] == [session.session_id]
 
-    def test_hit_consumes_a_stale_marker_silently(self, rig):
-        # Deleted exact entry over a KEPT 'all' fallback: the fallback wins
-        # (the user kept it) and its apply overwrites any residue — the
-        # stale marker is spent without a reset.
+    def test_deleted_specific_key_forces_zero_despite_a_kept_all_entry(self, rig):
+        # STRICT: the kept all entry cannot serve the rate the user
+        # deleted — no fallback level exists — so the marked miss forces
+        # the promised 0 and spends the marker, silently.
         rig.offsets.per_fps = True
         profile = make_profile()
         session = rig.start(profile, offset_ms=-25)      # seeds ALL_KEY
         rig.offsets.resets = {EXACT_KEY}
+        rig.gateway.infolabels[DELAY_LABEL] = '-0.100 s'
 
         rig.profile_changed()
 
-        assert rig.gateway.applied == [(1, -0.025)]      # the fallback value
-        assert session.applied == (ALL_KEY, -25)
-        assert rig.offsets.consumed == [EXACT_KEY]
-        assert len(rig.announced) == 1                   # normal apply toast
+        assert rig.gateway.applied == [(1, 0.0)]
+        assert session.applied == (None, 0)
+        assert rig.offsets.consumed == [EXACT_KEY]       # one-shot
+        assert rig.announced == []                       # silent: no toast

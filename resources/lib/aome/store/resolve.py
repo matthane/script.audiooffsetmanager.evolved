@@ -3,24 +3,27 @@
 This module IS the key-schema decision table, executable. Both rules are
 deliberately trivial — the design work was making them so:
 
-LOOKUP — both levels are single keys; no scan exists, so no tie-break
-can exist:
+LOOKUP — one candidate key per mode, symmetric in both directions:
 
     per_fps OFF (default):  <hdr>|all|<audio>            -> exact | miss
-    per_fps ON:             <hdr>|<fps>|<audio>          -> exact
-                            else <hdr>|all|<audio>       -> fallback
-                            else                         -> miss
+    per_fps ON:             <hdr>|<fps>|<audio>          -> exact | miss
+
+There is NO fallback between the levels: an offset applies only in the
+mode it was saved in. Specific-fps entries are dormant while the toggle
+is OFF; ``all`` entries are dormant while it is ON — flipping the toggle
+is non-destructive in both directions, and each mode's lookup consults
+only its own key. One deliberate seam in the symmetry: an fps that
+cannot be parsed under the toggle means the stream has NO fps axis, so
+its candidate is the ``all`` key — the same meaning ``all`` carries when
+the toggle is off (defensive only: completeness gating keeps unparseable
+rates out of the production apply path).
 
 A miss means the caller applies NOTHING (Kodi's delay stays untouched) —
-UNLESS a consulted key carries a reset marker (the user deleted it):
-``reset_keys`` names every consulted key with a
-pending reset so the applier can force the 0 the deletion promised. A key
-consulted BEFORE a hit can carry a marker too (deleted exact entry over a
-kept ``all`` fallback); the hit wins — the fallback was kept deliberately
-and its apply overwrites any residue — and the applier consumes the stale
-marker silently. Specific-fps entries are dormant while the toggle is
-OFF; `all` entries remain reachable while it is ON (as the fallback
-level) — flipping the toggle is non-destructive in both directions.
+UNLESS the consulted key carries a reset marker (the user deleted it):
+``reset_keys`` names it so the applier can force the 0 the deletion
+promised. A hit can never carry a marker: the store supersedes a key's
+marker whenever a value is set, and the single-candidate lookup consults
+no other key.
 
 WRITE — one rule, zero history-dependence: the write key is derived
 at store instant from the CURRENT profile facts plus the CURRENT toggle
@@ -40,17 +43,16 @@ from resources.lib.aome.store import keys
 
 # hit_kind values (travel to logging and notification wording only).
 EXACT = 'exact'
-FALLBACK = 'fallback'
 MISS = 'miss'
 
 # entry: the stored dict, or None on a miss.
-# hit_kind: EXACT / FALLBACK / MISS.
+# hit_kind: EXACT / MISS.
 # key: the key that HIT — None on a miss (one stable meaning; no
 #      hit/miss-dependent referent).
-# tried: every key consulted, in lookup order — the once-per-episode debug
-#        line logs this so a diagnostician sees the whole chain that missed.
-# reset_keys: consulted keys carrying a pending reset marker, in lookup
-#             order — non-empty on a miss means "force 0, not no-op".
+# tried: the consulted key, as a 1-tuple — the once-per-episode debug
+#        line logs this so a diagnostician sees exactly what missed.
+# reset_keys: consulted keys carrying a pending reset marker —
+#             non-empty on a miss means "force 0, not no-op".
 #             Defaulted to () so hand-built Resolutions (tests, seams)
 #             stay valid; resolve() always fills it explicitly.
 class Resolution(namedtuple('Resolution',
@@ -72,41 +74,26 @@ class Resolution(namedtuple('Resolution',
 def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):
     """Look up the offset entry for the given stream facts. Total: never raises.
 
-    With the toggle off the fps axis does not exist and the single candidate
-    is the ``all`` key (``fps`` is not even parsed). With it on, the exact
-    key is tried first, then the ``all`` key; an fps that cannot be parsed
-    simply means the exact LEVEL is unavailable — the lookup degrades to the
-    fallback level rather than turning a benign miss into an exception.
+    Exactly one candidate key exists per call: the ``all`` key with the
+    toggle off (``fps`` is not even parsed), the fps-specific key with it
+    on. An fps that cannot be parsed under the toggle means the stream
+    has no fps axis, so its candidate degrades to the ``all`` key rather
+    than turning a benign miss into an exception.
     """
     if not per_fps:
-        only_key = keys.all_key(hdr_raw, audio_raw)
-        entry = store.get(only_key)
-        if entry is not None:
-            return Resolution(entry, EXACT, only_key, (only_key,), ())
-        return Resolution(None, MISS, None, (only_key,),
-                          _pending((only_key,), store))
-
-    tried = []
-    try:
-        exact_key = keys.profile_key(hdr_raw, fps, audio_raw, per_fps=True)
-    except ValueError:
-        exact_key = None  # exact level unavailable (unparseable fps)
-    if exact_key is not None:
-        tried.append(exact_key)
-        entry = store.get(exact_key)
-        if entry is not None:
-            return Resolution(entry, EXACT, exact_key, tuple(tried), ())
-
-    fallback_key = keys.all_key(hdr_raw, audio_raw)
-    tried.append(fallback_key)
-    entry = store.get(fallback_key)
+        candidate = keys.all_key(hdr_raw, audio_raw)
+    else:
+        try:
+            candidate = keys.profile_key(hdr_raw, fps, audio_raw,
+                                         per_fps=True)
+        except ValueError:
+            # No fps axis on this stream: the all key IS its exact key.
+            candidate = keys.all_key(hdr_raw, audio_raw)
+    entry = store.get(candidate)
     if entry is not None:
-        # A marker on the exact level (deleted) under a kept fallback: the
-        # hit wins, the marker travels for silent consumption.
-        return Resolution(entry, FALLBACK, fallback_key, tuple(tried),
-                          _pending(tried[:-1], store))
-    return Resolution(None, MISS, None, tuple(tried),
-                      _pending(tried, store))
+        return Resolution(entry, EXACT, candidate, (candidate,), ())
+    return Resolution(None, MISS, None, (candidate,),
+                      _pending((candidate,), store))
 
 
 def _pending(consulted, store):
