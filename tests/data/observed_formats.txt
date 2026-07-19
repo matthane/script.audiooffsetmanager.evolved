@@ -2,10 +2,11 @@
 #
 # Role (re-scoped per the D11 refinement to verbatim acceptance): this file
 # is reference material, NOT a test driver. The key codec accepts reported
-# strings as presented (case-fold + trim only, no whitelist, no alias
-# table), so there is nothing corpus-shaped to assert. E1's tests pin
-# verbatim roundtrips instead, and the detector logs raw gateway strings
-# so field logs reveal fragmentation if it ever happens.
+# strings as presented (case-fold + trim, no whitelist; the HDR axis adds
+# only the field-observed cross-build canonicalization), so there is
+# nothing corpus-shaped to assert. The unit tests pin the roundtrips
+# instead, and the detector logs raw gateway strings so field logs reveal
+# fragmentation if it ever happens.
 #
 # Provenance caveat (why harvesting was abandoned): classic logs contain
 # almost no gateway-raw strings. AOM's own "probed StreamProfile(...)"

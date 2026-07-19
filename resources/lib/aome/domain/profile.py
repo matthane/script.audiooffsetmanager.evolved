@@ -1,8 +1,9 @@
 """Immutable stream profile — verbatim detection facts.
 
 Pure data under the open format vocabulary: the axes carry
-what Kodi REPORTED, normalized only by case-fold/trim (plus the detector's
-sdr default for an absent HDR axis). No whitelist shapes these fields, and
+what Kodi REPORTED, normalized by ``aome.store.keys`` segment rules —
+case-fold/trim, plus the HDR axis's cross-build canonicalization and the
+detector's sdr default for an absent HDR axis. No whitelist shapes these fields, and
 no settings key is derived here — the store key is composed at lookup/write
 instant by ``aome.store`` (per_fps toggle consulted there, never captured).
 

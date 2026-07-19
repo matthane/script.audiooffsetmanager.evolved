@@ -39,9 +39,10 @@ re-adopt loop.
 
 Verbatim acceptance: the audio and HDR axes carry what
 Kodi reported, normalized by ``aome.store.keys`` (case-fold/trim; absence to
-'unknown'; the sole hlghdr alias). No whitelist, no fps buckets, no per-HDR
-override collapse — the per-fps granularity question lives at the store's
-lookup/write instant. The HDR chain-of-evidence runs primary -> fallback ->
+'unknown'; on the HDR axis also the cross-build canonicalization — whitespace
+strip plus the field-observed aliases). No whitelist, no fps buckets, no
+per-HDR override collapse — the per-fps granularity question lives at the
+store's lookup/write instant. The HDR chain-of-evidence runs primary -> fallback ->
 sdr default -> HLG-gamut sniff.
 
 Timing choices worth knowing:

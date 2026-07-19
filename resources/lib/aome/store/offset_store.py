@@ -23,6 +23,15 @@ Design decisions worth stating up front:
   flushes and ``fsync``s it, then ``os.replace``s it over the target — the
   swap is atomic on POSIX and NTFS, so a power loss on an HTPC box leaves
   either the old file or the new one, never a half-written one.
+* **The store speaks canonical keys.** Every key that crosses the store
+  boundary — file load, the other-process reader, a restored backup — is
+  re-expressed through ``keys.canonical_key``, so entries and reset markers
+  written by an older key codec keep resolving after the codec's spelling
+  rules evolve (live lookups only ever compose canonical keys). On a
+  spelling collision the canonically-spelled entry wins — it was written
+  by the current codec and is the fresher teaching by construction; a
+  marker whose canonical key holds an entry is superseded, exactly as
+  ``set`` supersedes markers.
 * **Deletion leaves a reset marker.** ``delete``/``clear`` — and an import
   (``replace_all``) that drops keys — record the removed key(s) in a
   ``resets`` section: the user who deletes a
@@ -42,6 +51,8 @@ import math
 import os
 import time
 from datetime import datetime, timezone
+
+from resources.lib.aome.store import keys
 
 _PREFIX = "AOMe_OffsetStore:"
 _SCHEMA_VERSION = 1
@@ -75,9 +86,20 @@ def _shape_ok(data):
 
 
 def _load_entries(profiles, log_debug):
-    """Filter entries by the doctrine rules; shared with the reader."""
+    """Filter entries by the doctrine rules; shared with the reader.
+
+    Keys are re-expressed through ``keys.canonical_key`` on the way in
+    (see the module docstring): the canonically-spelled entry wins any
+    spelling collision, and among legacy spellings of one canonical key
+    the last in file order wins.
+    """
     loaded = {}
+    rekeyed = {}
     for key, entry in profiles.items():
+        if not isinstance(key, str):
+            log_debug("{0} dropping non-string key {1!r}"
+                      .format(_PREFIX, key))
+            continue
         if not isinstance(entry, dict):
             log_debug("{0} dropping non-dict entry for {1!r}"
                       .format(_PREFIX, key))
@@ -87,7 +109,19 @@ def _load_entries(profiles, log_debug):
             log_debug("{0} dropping entry {1!r} with non-int delay_ms"
                       .format(_PREFIX, key))
             continue
-        loaded[key] = dict(entry)
+        canonical = keys.canonical_key(key)
+        if canonical == key:
+            loaded[key] = dict(entry)
+            continue
+        log_debug("{0} re-keying {1!r} as {2!r}"
+                  .format(_PREFIX, key, canonical))
+        rekeyed[canonical] = dict(entry)
+    for canonical, entry in rekeyed.items():
+        if canonical in loaded:
+            log_debug("{0} dropping legacy-spelled duplicate of {1!r}"
+                      .format(_PREFIX, canonical))
+            continue
+        loaded[canonical] = entry
     return loaded
 
 
@@ -141,7 +175,10 @@ def _load_reset_keys(raw, log_debug):
     markers = set()
     for key in raw:
         if isinstance(key, str) and key:
-            markers.add(key)
+            # Canonicalized like entries, so a marker recorded under a
+            # legacy spelling still forces its 0 when the canonical key
+            # is consulted (set semantics collapse duplicates for free).
+            markers.add(keys.canonical_key(key))
         else:
             log_debug("{0} dropping non-string reset marker {1!r}"
                       .format(_PREFIX, key))
@@ -284,7 +321,12 @@ class OffsetStore:
             return
 
         self._profiles = self._load_entries(data["profiles"])
-        self._resets = self._load_resets(data.get("resets"))
+        # A marker whose canonical key now holds an entry is superseded,
+        # mirroring set(): runtime writes never produce that coexistence,
+        # so it can only arise from re-keying legacy spellings, where the
+        # canonical entry is the fresher teaching.
+        self._resets = self._load_resets(data.get("resets")) \
+            - set(self._profiles)
 
     def _shape_ok(self, data):
         return _shape_ok(data)
@@ -452,7 +494,10 @@ class OffsetStore:
                               .format(_PREFIX))
             return False
         replaced = self._load_entries(entries)
-        carried = {key for key in resets if isinstance(key, str) and key}
+        # Same validation and canonicalization the load path applies (the
+        # caller normally passes the backup reader's already-canonical
+        # output, but the write path re-filters so it stays safe alone).
+        carried = self._load_resets(list(resets))
         self._resets = ((self._resets | set(self._profiles) | carried)
                         - set(replaced))
         self._profiles = replaced

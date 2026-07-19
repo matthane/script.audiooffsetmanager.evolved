@@ -23,6 +23,11 @@ def test_audio_verbatim_passthrough():
     # NO collapse to a canonical 'pcm' — the reported string is the key.
     assert keys.audio_segment('PCM_S24LE') == 'pcm_s24le'
     assert keys.audio_segment('x-future-codec') == 'x-future-codec'
+    # INNER whitespace survives on the audio axis (only the ends trim):
+    # the HDR axis's whitespace strip is evidence-gated and must never
+    # silently spread here.
+    assert keys.audio_segment('x future codec') == 'x future codec'
+    assert keys.normalize_segment(' a b ') == 'a b'
 
 
 def test_hdr_verbatim_passthrough():
@@ -188,30 +193,47 @@ def test_segment_functions_are_idempotent():
 
 def test_display_known_names():
     assert keys.AUDIO_DISPLAY['truehd'] == 'Dolby TrueHD'
-    assert keys.HDR_DISPLAY['hdr10+'] == 'HDR10+'
-
-
-def test_hdr10plus_display_covers_canonical_and_legacy_keys():
-    # 'hdr10plus' (Kodi 22 native) is the canonical key; 'hdr10+' (Kodi 21
-    # primary infolabel) aliases onto it at compose time. The 'hdr10+'
-    # display entry stays so keys stored before the alias still render as
-    # HDR10+ in the management view — display entries are free.
-    assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
     assert keys.HDR_DISPLAY['hdr10plus'] == 'HDR10+'
+
+
+def test_hdr10plus_display_needs_only_the_canonical_entry():
+    # The store canonicalizes keys at its boundary, so display code only
+    # ever sees the canonical 'hdr10plus' — no alias-source entries in
+    # the display tables.
+    assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
+    assert 'hdr10+' not in keys.HDR_DISPLAY
     assert keys.describe_key('hdr10plus|all|truehd') == \
-        'HDR10+ | Dolby TrueHD'
-    assert keys.describe_key('hdr10+|all|truehd') == \
         'HDR10+ | Dolby TrueHD'
     assert keys.profile_summary('hdr10plus', 'truehd') == \
         'HDR10+ | TrueHD'
 
 
-def test_dolby_vision_toast_short_name_survives_spaced_report():
-    # A Kodi 21 build reporting 'Dolby Vision' must still toast as DV, not
-    # echo the raw spaced string: the short-name table is keyed by the
-    # canonical segment, so canonicalization is what feeds it.
-    assert keys.profile_summary(keys.hdr_segment('Dolby Vision'),
-                                'truehd_atmos') == 'DV | TrueHD Atmos'
+def test_canonical_key_rewrites_legacy_spellings():
+    # The store-boundary re-keying: entries and reset markers written by
+    # an older codec land on the keys live composition produces today.
+    assert keys.canonical_key('hdr10+|all|truehd') == 'hdr10plus|all|truehd'
+    assert keys.canonical_key('dolby vision|23|truehd_atmos') == \
+        'dolbyvision|23|truehd_atmos'
+    assert keys.canonical_key('hlghdr|all|aac') == 'hlg|all|aac'
+
+
+def test_canonical_key_is_idempotent_and_open_vocabulary():
+    # A canonical key round-trips unchanged, and so does a format this
+    # code has never seen — future Kodi formats need no code change.
+    assert keys.canonical_key('hdr10plus|all|truehd') == \
+        'hdr10plus|all|truehd'
+    assert keys.canonical_key('x-future-hdr|48|x-future-codec') == \
+        'x-future-hdr|48|x-future-codec'
+    spaced = keys.canonical_key('some new format|all|aac')
+    assert keys.canonical_key(spaced) == spaced
+
+
+def test_canonical_key_leaves_scribbles_alone():
+    # Unsplittable keys (hand-edited files) pass through verbatim; the
+    # fps segment is already composed and is never rewritten.
+    assert keys.canonical_key('not-a-key') == 'not-a-key'
+    assert keys.canonical_key('dv|23|truehd|extra') == 'dv|23|truehd|extra'
+    assert keys.canonical_key('sdr|weird-fps|aac') == 'sdr|weird-fps|aac'
 
 
 @pytest.mark.parametrize('segment, commercial', [
@@ -256,7 +278,7 @@ def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
 def test_describe_key_known():
     assert keys.describe_key('dolbyvision|all|truehd') == \
         'Dolby Vision | Dolby TrueHD'
-    assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
+    assert keys.describe_key('hdr10plus|23|aac') == 'HDR10+ | 23 fps | AAC'
 
 
 def test_describe_key_unknown_segments_render_verbatim():
@@ -303,9 +325,9 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
 def test_describe_key_degrades_to_segment_without_usable_metadata():
     # Absent or malformed (hand-edited file) metadata falls back to the
     # truncated segment rather than crashing or rendering garbage.
-    assert keys.describe_key('hdr10+|23|aac') == 'HDR10+ | 23 fps | AAC'
+    assert keys.describe_key('hdr10plus|23|aac') == 'HDR10+ | 23 fps | AAC'
     for bad in ('23.976', True, float('nan'), float('inf'), None):
-        assert keys.describe_key('hdr10+|23|aac', video_fps=bad) == \
+        assert keys.describe_key('hdr10plus|23|aac', video_fps=bad) == \
             'HDR10+ | 23 fps | AAC'
 
 

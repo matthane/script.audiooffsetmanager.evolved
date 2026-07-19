@@ -76,11 +76,9 @@ _HDR_ALIASES = {
 HDR_DISPLAY = {
     'dolbyvision': 'Dolby Vision',
     'hdr10': 'HDR10',
-    # 'hdr10plus' is the canonical key ('hdr10+' aliases onto it at
-    # compose time); the 'hdr10+' display entry stays so entries stored
-    # before the alias still render as HDR10+ in the management view —
-    # display entries are free.
-    'hdr10+': 'HDR10+',
+    # Only the canonical 'hdr10plus' needs an entry: the store
+    # canonicalizes every key at its boundary (see canonical_key), so
+    # display code never sees an alias-source spelling like 'hdr10+'.
     'hdr10plus': 'HDR10+',
     'hlg': 'HLG',
     'sdr': 'SDR',
@@ -207,11 +205,10 @@ def hdr_segment(raw):
     absent HDR is the stream detector's chain-of-evidence job, not this
     module's.
 
-    HDR-only hardening against cross-build report drift: internal
-    whitespace is stripped ('Dolby Vision' and 'dolbyvision' are the same
-    format reported by different Kodi builds and must land on one key),
-    then `_HDR_ALIASES` unifies the observed spellings that differ by more
-    than spacing. The audio axis has shown no such drift and keeps pure
+    HDR-only hardening against cross-build report drift (the observed
+    cases live in the module docstring): internal whitespace is stripped,
+    then `_HDR_ALIASES` unifies the spellings that differ by more than
+    spacing. The audio axis has shown no such drift and keeps pure
     verbatim acceptance.
     """
     segment = ''.join(normalize_segment(raw).split())
@@ -266,6 +263,28 @@ def split_key(key):
     if len(parts) != 3:
         raise ValueError("split_key: expected 3 segments, got {!r}".format(key))
     return parts[0], parts[1], parts[2]
+
+
+def canonical_key(key):
+    """Re-express a stored key in this codec's canonical spelling.
+
+    The store runs every key that crosses its boundary (file load, the
+    other-process reader, import) through this, so the spelling rules
+    reach data written by an older codec exactly as they reach live
+    composition — one canonicalization, wherever a key comes from. The
+    segments re-run their own segment functions, which keeps the open
+    vocabulary intact: a format string this code has never seen
+    round-trips verbatim, so future Kodi formats need no code change
+    here. The fps segment is already composed ('all' or a truncated
+    integer) and passes through untouched; an unsplittable key returns
+    unchanged (the store tolerates scribbles, and a scribble is not
+    ours to rewrite). Idempotent by construction.
+    """
+    try:
+        hdr, fps, audio = split_key(key)
+    except ValueError:
+        return key
+    return SEPARATOR.join((hdr_segment(hdr), fps, audio_segment(audio)))
 
 
 def _display_fps(segment, video_fps=None, per_fps=False):

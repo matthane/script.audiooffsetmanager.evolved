@@ -859,3 +859,95 @@ def test_discard_import_removes_file_and_tolerates_absence(tmp_path):
     warnings = []
     discard_import(str(staged), log_warning=warnings.append)
     assert warnings == []
+
+
+# --- boundary canonicalization -------------------------------------------------
+# The store speaks only canonical keys: every key crossing the boundary
+# (load, the other-process reader, import) re-runs the key codec, so data
+# written under an older codec's spellings keeps resolving.
+
+def _write_document(path, profiles, resets=None):
+    payload = {"version": 1, "profiles": profiles}
+    if resets is not None:
+        payload["resets"] = resets
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+
+def test_load_rekeys_legacy_spellings(tmp_path):
+    store, path, debug, _warning = make_store(tmp_path)
+    _write_document(path, {
+        "hdr10+|all|truehd": {"delay_ms": 40},
+        "dolby vision|23|truehd_atmos": {"delay_ms": 50},
+    })
+    store.load()
+    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 40
+    assert store.get("dolbyvision|23|truehd_atmos")["delay_ms"] == 50
+    assert store.get("hdr10+|all|truehd") is None
+    assert store.get("dolby vision|23|truehd_atmos") is None
+    assert any("re-keying" in line for line in debug)
+
+
+def test_load_keeps_unknown_formats_verbatim(tmp_path):
+    # Open vocabulary survives the boundary: a format this code has never
+    # seen loads under exactly the key it was stored with.
+    store, path, _debug, _warning = make_store(tmp_path)
+    _write_document(path, {"x-future-hdr|48|x-future-codec": {"delay_ms": 7}})
+    store.load()
+    assert store.get("x-future-hdr|48|x-future-codec")["delay_ms"] == 7
+
+
+def test_load_prefers_the_canonical_entry_on_collision(tmp_path):
+    # The canonically-spelled entry was written by the current codec and
+    # is the fresher teaching by construction — it wins regardless of
+    # file order.
+    store, path, debug, _warning = make_store(tmp_path)
+    _write_document(path, {
+        "hdr10plus|all|truehd": {"delay_ms": 60},
+        "hdr10+|all|truehd": {"delay_ms": 40},
+    })
+    store.load()
+    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 60
+    assert len(store) == 1
+    assert any("legacy-spelled duplicate" in line for line in debug)
+
+
+def test_load_canonicalizes_reset_markers(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    _write_document(path, {}, resets=["hdr10+|all|ac3"])
+    store.load()
+    assert store.reset_pending("hdr10plus|all|ac3") is True
+    assert store.reset_pending("hdr10+|all|ac3") is False
+
+
+def test_load_entry_supersedes_a_rekeyed_marker(tmp_path):
+    # A pre-rekey delete marker meets a post-rekey re-teach: the entry is
+    # the newer intent, exactly as set() supersedes markers at runtime.
+    store, path, _debug, _warning = make_store(tmp_path)
+    _write_document(path, {"hdr10plus|all|truehd": {"delay_ms": 25}},
+                    resets=["hdr10+|all|truehd"])
+    store.load()
+    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 25
+    assert store.reset_pending("hdr10plus|all|truehd") is False
+
+
+def test_replace_all_canonicalizes_imported_keys_and_markers(tmp_path):
+    # A backup written by an older codec restores onto canonical keys, so
+    # the imported offsets actually resolve after the restore.
+    store, _path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    assert store.replace_all(
+        {"hdr10+|all|aac": {"delay_ms": 5}},
+        resets=["dolby vision|all|ac3"],
+    ) is True
+    assert store.get("hdr10plus|all|aac")["delay_ms"] == 5
+    assert store.get("hdr10+|all|aac") is None
+    assert store.reset_pending("dolbyvision|all|ac3") is True
+
+
+def test_read_profiles_presents_canonical_keys(tmp_path):
+    from resources.lib.aome.store.offset_store import read_profiles
+    path = str(tmp_path / "offsets.json")
+    _write_document(path, {"dolby vision|all|truehd": {"delay_ms": 50}})
+    entries = read_profiles(path)
+    assert set(entries) == {"dolbyvision|all|truehd"}

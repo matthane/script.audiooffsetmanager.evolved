@@ -161,6 +161,26 @@ def test_unheard_of_formats_resolve_like_any_other(tmp_path):
     assert (got.hit_kind, got.entry["delay_ms"]) == (resolve.EXACT, -115)
 
 
+def test_legacy_spelled_file_entries_resolve_after_load(tmp_path):
+    # End-to-end boundary guarantee: an offsets.json written by an older
+    # codec ('hdr10+', spaced 'dolby vision') still resolves for the
+    # profiles live detection produces today, because load() re-keys at
+    # the store boundary.
+    import json
+    path = tmp_path / "offsets.json"
+    path.write_text(json.dumps({"version": 1, "profiles": {
+        "hdr10+|all|truehd": {"delay_ms": -40},
+        "dolby vision|all|truehd_atmos": {"delay_ms": 50},
+    }}), encoding="utf-8")
+    store = OffsetStore(str(path))
+    store.load()
+    got = resolve.resolve(store, "HDR10+", 23.976, "TrueHD", per_fps=False)
+    assert (got.hit_kind, got.entry["delay_ms"]) == (resolve.EXACT, -40)
+    got = resolve.resolve(store, "Dolby Vision", 23.976, "truehd_atmos",
+                          per_fps=False)
+    assert (got.hit_kind, got.entry["delay_ms"]) == (resolve.EXACT, 50)
+
+
 def test_on_with_unparseable_fps_degrades_to_the_fallback_level(tmp_path):
     # resolve() is total: an fps that cannot be parsed means the exact LEVEL
     # is unavailable, not that lookup should explode — the all key still

@@ -124,10 +124,17 @@ never in settings.xml.
   read-only rather than risk clobbering it.
 - **Key schema** `hdr|fps|audio` — **verbatim acceptance**: the reported
   string, case-folded and trimmed, IS the key segment. No whitelist, no
-  substring matching; the only alias is the proven `hlghdr` → `hlg`
-  (empty HDR → `sdr` is the detector's chain-of-evidence call, not the
-  key codec's). Do NOT add speculative aliases — only observed field
-  fragmentation justifies one. `fps` is `all` (default) or the
+  substring matching; the HDR axis additionally strips internal
+  whitespace and carries the field-observed cross-build aliases
+  (`hlghdr` → `hlg`, `hdr10+` → `hdr10plus` — Kodi 21's primary
+  infolabel vs Kodi 22's native spellings; empty HDR → `sdr` is the
+  detector's chain-of-evidence call, not the key codec's). Do NOT add
+  speculative aliases — only observed field fragmentation justifies one.
+  The store canonicalizes every key at its boundary
+  (`keys.canonical_key` on load, the script-process reader, and import),
+  so entries and reset markers written under old spellings keep
+  resolving after the rules evolve; new/unknown formats still pass
+  through verbatim with zero code changes. `fps` is `all` (default) or the
   integer-truncated reported fps when the global `per_fps_offsets`
   toggle is ON; truncation is what keeps the NTSC fractional rates
   distinct from their integer siblings (23.976→`23` vs 24.0→`24` …) —

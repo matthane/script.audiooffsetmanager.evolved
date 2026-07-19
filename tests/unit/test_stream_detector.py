@@ -150,12 +150,14 @@ class TestDeriveStreamFacts:
         assert facts.platform_hdr_full is False
 
     def test_hdr_string_normalization(self):
-        # Case-fold + trim + the one proven 'hlghdr' -> 'hlg' alias.
+        # Case-fold + trim + the field-observed cross-build aliases.
         assert derive(raw_hdr='HLGHDR').profile.hdr_type == 'hlg'
         assert derive(raw_hdr='  HLG  ').profile.hdr_type == 'hlg'
-        # Verbatim acceptance: the '+' SURVIVES into the key segment (the
-        # 'plus' rewrite was settings-id scaffolding, deleted with it).
+        # Kodi 21's primary infolabel spellings land on the canonical
+        # keys Kodi 22 reports natively.
         assert derive(raw_hdr='HDR10+').profile.hdr_type == 'hdr10plus'
+        assert derive(raw_hdr='Dolby Vision').profile.hdr_type == \
+            'dolbyvision'
 
     def test_unrecognized_hdr_keys_verbatim(self):
         # No whitelist: an HDR string the code never heard of is learnable.
