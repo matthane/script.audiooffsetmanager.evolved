@@ -9,9 +9,8 @@ This pins every ``_FALLBACKS`` entry to its msgid verbatim, so the pair can
 only ever change together.
 
 Scope: the dict-based fallbacks in the view modules (manage, transfer,
-logexport) and the app-layer per-fps advisor. The service-side inline
-fallbacks (notifier, runtime) carry no placeholders and are not covered
-here.
+logexport). The service-side inline fallbacks (notifier, runtime) carry no
+placeholders and are not covered here.
 """
 
 import re
@@ -19,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from resources.lib.aome.app import per_fps_advisor
 from resources.lib.aome.view import logexport, manage, transfer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -45,7 +43,7 @@ PO_MSGIDS = _po_msgids()
 # shared pair must not parametrize twice under one id.
 FALLBACK_CASES = sorted(
     {(module.__name__.rsplit(".", 1)[-1], string_id, fallback)
-     for module in (manage, transfer, logexport, per_fps_advisor)
+     for module in (manage, transfer, logexport)
      for string_id, fallback in module._FALLBACKS.items()})
 
 

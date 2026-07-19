@@ -374,15 +374,3 @@ msgstr ""
 msgctxt "#32167"
 msgid "{0} — inactive"
 msgstr ""
-
-#. Explainer dialog shown when per-frame-rate offsets (#32110) is turned
-#. on; the dialog heading is #32110
-msgctxt "#32168"
-msgid "Offsets are now learned and applied separately for each video frame rate. Offsets saved while this was off cover all frame rates and will not be applied while it is on. To teach a frame rate, adjust the audio offset once during playback."
-msgstr ""
-
-#. Explainer dialog shown when per-frame-rate offsets (#32110) is turned
-#. off; the dialog heading is #32110
-msgctxt "#32169"
-msgid "One offset now covers all frame rates of the same HDR type and audio format. Offsets saved for specific frame rates are kept, but will not be applied until per-frame-rate offsets are turned on again."
-msgstr ""
