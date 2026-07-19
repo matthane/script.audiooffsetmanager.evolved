@@ -253,7 +253,13 @@ class LogExportView:
         """One text blob: preamble, then each file's kept entries behind a
         labeled divider, oldest file first, redacted line by line. The
         size cap drops whole entries OLDEST-first (never mid-entry — a
-        halved traceback is noise) and announces the trim up top."""
+        halved traceback is noise) and announces the trim up top.
+
+        The blob leads with a UTF-8 BOM: log lines carry multi-byte
+        characters (the notifier's em dash), and without the BOM an
+        editor that sniffs encoding can guess ANSI and render them as
+        mojibake. The BOM is the one signal those editors honor.
+        """
         combined = deque()
         total = 0
         for name, entries in sources:
@@ -285,7 +291,7 @@ class LogExportView:
                 current = name
             for line in entry:
                 out.append(self._redact(line))
-        return '\n'.join(out) + '\n'
+        return '﻿' + '\n'.join(out) + '\n'
 
     def _redact(self, line):
         for resolved, special in self._redactions:

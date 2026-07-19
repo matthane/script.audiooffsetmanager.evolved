@@ -212,7 +212,11 @@ def test_reader_failing_mid_stream_keeps_what_it_produced():
 def test_preamble_names_the_addon_and_version():
     (_dest, text), _gui = _run_success(current=[AOME_LINE],
                                        version='1.0.0~beta13')
-    head = text.splitlines()[:4]
+    # The document leads with a UTF-8 BOM so editors that sniff encoding
+    # never guess ANSI and mangle the log's multi-byte characters (the
+    # notifier's em dash) into mojibake.
+    assert text.startswith('﻿')
+    head = text[1:].splitlines()[:4]
     assert head[0] == "Audio Offset Manager: Evolved filtered log export"
     assert head[1] == "Addon version: 1.0.0~beta13"
     assert head[2].startswith("Exported: ")
