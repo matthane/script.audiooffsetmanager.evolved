@@ -34,17 +34,23 @@ STRING_HEADING = 32110
 STRING_ENABLED_BODY = 32168
 STRING_DISABLED_BODY = 32169
 
-_FALLBACK_HEADING = "Per-frame-rate offsets"
-_FALLBACK_ENABLED = (
-    "Offsets are now learned and applied separately for each video frame "
-    "rate. Offsets saved while this was off cover all frame rates and "
-    "will not be applied while it is on. To teach a frame rate, adjust "
-    "the audio offset once during playback.")
-_FALLBACK_DISABLED = (
-    "One offset now covers all frame rates of the same HDR type and "
-    "audio format. Offsets saved for specific frame rates are kept, but "
-    "will not be applied until per-frame-rate offsets are turned on "
-    "again.")
+# English fallbacks for the strings that must never render blank. Each is
+# a COPY of the en_gb msgid, pinned verbatim by the string-fallbacks
+# contract test (the view-module convention — this dict's shape is what
+# the test scans).
+_FALLBACKS = {
+    STRING_HEADING: "Per-frame-rate offsets",
+    STRING_ENABLED_BODY: (
+        "Offsets are now learned and applied separately for each video "
+        "frame rate. Offsets saved while this was off cover all frame "
+        "rates and will not be applied while it is on. To teach a frame "
+        "rate, adjust the audio offset once during playback."),
+    STRING_DISABLED_BODY: (
+        "One offset now covers all frame rates of the same HDR type and "
+        "audio format. Offsets saved for specific frame rates are kept, "
+        "but will not be applied until per-frame-rate offsets are turned "
+        "on again."),
+}
 
 
 class PerFpsAdvisor:
@@ -67,13 +73,13 @@ class PerFpsAdvisor:
         if now == self._last:
             return
         self._last = now
-        if now:
-            body = self._gui.localized(STRING_ENABLED_BODY) or (
-                _FALLBACK_ENABLED)
-        else:
-            body = self._gui.localized(STRING_DISABLED_BODY) or (
-                _FALLBACK_DISABLED)
-        heading = self._gui.localized(STRING_HEADING) or _FALLBACK_HEADING
+        body = self._text(STRING_ENABLED_BODY if now
+                          else STRING_DISABLED_BODY)
+        heading = self._text(STRING_HEADING)
         self._log(f"AOMe_PerFpsAdvisor: per-frame-rate offsets turned "
                   f"{'on' if now else 'off'}; presenting the explainer")
         self._present(heading, body)
+
+    def _text(self, string_id):
+        """localized() with the English fallback for must-never-blank strings."""
+        return self._gui.localized(string_id) or _FALLBACKS[string_id]

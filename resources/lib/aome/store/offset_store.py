@@ -513,8 +513,7 @@ class OffsetStore:
         """Discard the reset marker for ``key`` and persist the removal.
 
         Called by the applier once it has acted on the marker (forced the
-        0, found the delay already there, or applied a surviving fallback
-        entry that overwrote the residue anyway). Consuming an absent
+        0, or found the delay already there). Consuming an absent
         marker is a no-op returning True. A persist failure returns False;
         the in-memory removal stands and the reset simply repeats after a
         restart — it is idempotent by construction.

@@ -249,7 +249,9 @@ def profile_key(hdr_raw, fps, audio_raw, *, per_fps):
 
 
 def all_key(hdr_raw, audio_raw):
-    """The fallback-level key ``<hdr>|all|<audio>``.
+    """The all-rates key ``<hdr>|all|<audio>`` — the candidate whenever
+    the fps axis does not exist (toggle off, or a stream with no
+    parseable rate).
 
     Delegates to ``profile_key`` with the toggle off (which forces the 'all'
     segment) so the key shape has exactly one composition point.
