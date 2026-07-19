@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta14" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta15" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,14 +7,12 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta14 (2026-07-18)
+        <news>v1.0.0~beta15 (2026-07-19)
+- Seek back on unpause waits half a second and stands down if another addon or a manual seek moves playback first, so the video never jumps back twice after unpausing
+
+v1.0.0~beta14 (2026-07-18)
 - HDR types that different Kodi versions report with different spellings now share one saved entry, so an offset learned on one device applies on another and backups restore correctly
 - Entries and pending resets saved under an older spelling convert automatically the next time they load
-
-v1.0.0~beta13 (2026-07-18)
-- New Export addon log button under Advanced, shown while debug logging is enabled: saves a support log limited to this addon's entries, with file paths and user names redacted
-- Notifications name Dolby Digital audio AC3, matching Kodi
-- Strings prepared for translation
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
