@@ -368,9 +368,9 @@ msgctxt "#32166"
 msgid "Could not read the Kodi log file"
 msgstr ""
 
-#. Value line of a stored offset that is not applied right now (saved for
-#. a frame rate while per-frame-rate offsets are off); {0} is the value,
-#. e.g. "+125 ms"
+#. Value line of a stored offset that is not applied right now (saved in
+#. the other per-frame-rate mode than the one currently enabled); {0} is
+#. the value, e.g. "+125 ms"
 msgctxt "#32167"
 msgid "{0} — inactive"
 msgstr ""

@@ -289,16 +289,16 @@ def canonical_key(key):
 
 def _display_fps(segment, video_fps=None, per_fps=False):
     if segment == 'all':
-        # Under the per-fps toggle the 'all' entry is the FALLBACK for
-        # rates without their own entry (lookup: exact -> all -> miss), so
-        # 'All FPS' would misread as overriding the exact entries —
-        # 'Other FPS' states the true semantics. With the toggle off,
-        # 'all' is the only key consulted, so the axis carries no
+        # Under the per-fps toggle an 'all' entry is dormant — the lookup
+        # consults only the fps-specific key — so 'All FPS' states its
+        # true scope (it covers every rate, in the other mode) and the
+        # dormancy tag carries the not-in-effect part. With the toggle
+        # off, 'all' is the only key consulted, so the axis carries no
         # information and the segment is OMITTED (None) — any dormant
         # exact-rate siblings keep their rate and are tagged inactive, so
         # the unlabelled row cannot be misread as one of them.
         # 'FPS' (not 'rates') to match the '<n> fps' unit on sibling rows.
-        return 'Other FPS' if per_fps else None
+        return 'All FPS' if per_fps else None
     if isinstance(video_fps, (int, float)) and \
             not isinstance(video_fps, bool) and math.isfinite(video_fps):
         return "{0:g} fps".format(video_fps)
@@ -310,8 +310,8 @@ def describe_key(key, video_fps=None, per_fps=False):
 
     HDR and audio segments use the display tables, falling back to the raw
     segment verbatim when unrecognised. The 'all' fps segment renders as
-    'Other FPS' when ``per_fps`` says the toggle is on (it is the
-    fallback below the exact-rate entries) and is OMITTED when off
+    'All FPS' when ``per_fps`` says the toggle is on (a dormant entry
+    covering every rate in the other mode) and is OMITTED when off
     ('Dolby Vision | Dolby TrueHD') — with the toggle off 'all' is the
     only key consulted, so the axis says nothing. A numeric segment
     renders the EXACT reported rate from the entry's ``video_fps``

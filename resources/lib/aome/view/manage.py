@@ -63,14 +63,16 @@ confirmations always show the FULL profile line, never the shortened
 in-group copy — a confirmation must not depend on which list the user
 came from.
 
-Display is toggle-aware but NEVER filtered: the injected ``per_fps`` flag
-renders the 'all' segment as 'Other FPS' when the toggle is on (it is
-the fallback below the exact-rate entries, not an override); when it is
-off the fps axis is OMITTED from 'all' rows ('All FPS' would restate the
-only semantics that mode has) and dormant per-fps rows keep their rate,
-tagged '— inactive'. Every stored entry always lists — this view is the
-store's only inspection surface, and clear-all's confirmation must never
-under-represent what it deletes.
+Display is toggle-aware but NEVER filtered: dormancy is symmetric with
+the lookup rule (an offset applies only in the mode it was saved in),
+so the injected ``per_fps`` flag decides which rows are tagged. Toggle
+ON: 'all' rows render their axis as 'All FPS' and are dormant. Toggle
+OFF: the fps axis is OMITTED from 'all' rows ('All FPS' would restate
+the only semantics that mode has) and per-fps rows keep their rate and
+are dormant. Dormant rows are tagged '— inactive', never hidden. Every
+stored entry always lists — this view is the store's only inspection
+surface, and clear-all's confirmation must never under-represent what
+it deletes.
 
 List rows carry Kodi label markup, applied at RENDER time only: dormant
 rows are dimmed gray (Kodi's idiom for present-but-not-in-effect; the
@@ -162,11 +164,11 @@ class ManageView:
                  log_debug=None):
         """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
         change while the view is open — the settings dialog is closed). It
-        drives DISPLAY only: 'Other FPS' vs an omitted fps axis for the
-        'all' segment, and the '— inactive' tag on per-fps rows the
-        lookup will not consult while the toggle is off. Never filtering:
-        this view is the store's only inspection surface, so every entry
-        always lists.
+        drives DISPLAY only: 'All FPS' vs an omitted fps axis for the
+        'all' segment, and the '— inactive' tag on whichever rows the
+        lookup will not consult right now (per-fps rows while the toggle
+        is off, 'all' rows while it is on). Never filtering: this view is
+        the store's only inspection surface, so every entry always lists.
         """
         self._read_entries = read_entries
         self._gui = gui
@@ -377,20 +379,24 @@ class ManageView:
         return (label, row.detail)
 
     def _is_dormant(self, key):
-        """True for a per-fps entry the lookup will not consult right now.
+        """True for an entry the lookup will not consult right now.
 
-        With the toggle off, resolution only ever reads the 'all' key, so
-        an exact-rate entry is stored-but-dormant; the row is tagged rather
-        than hidden (hiding would misstate clear-all's scope and strand the
-        entries with no way to prune them). Unsplittable hand-edited keys
-        are never tagged — nothing is known about how they resolve.
+        Dormancy mirrors the lookup rule symmetrically: with the toggle
+        off, resolution only ever reads the 'all' key, so an exact-rate
+        entry is stored-but-dormant; with it on, only the fps-specific
+        key is read, so an 'all' entry is dormant. The row is tagged
+        rather than hidden (hiding would misstate clear-all's scope and
+        strand the entries with no way to prune them). Unsplittable
+        hand-edited keys are never tagged — nothing is known about how
+        they resolve.
         """
-        if self._per_fps:
-            return False
         try:
-            return split_key(key)[1] != 'all'
+            fps_segment = split_key(key)[1]
         except ValueError:
             return False
+        if self._per_fps:
+            return fps_segment == 'all'
+        return fps_segment != 'all'
 
     def _describe(self, key, entry):
         """The full profile line (flat rows, delete confirmations)."""

@@ -181,10 +181,12 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     assert len(options) == 3               # both entries + clear-all
 
 
-def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
-    # Under the toggle the 'all' entry is the fallback BELOW the exact
-    # entries (exact -> all -> miss), so 'All FPS' would misread as an
-    # override: it renders 'Other FPS'. Nothing is dormant when on.
+def test_toggle_on_tags_all_rows_inactive_and_never_hides():
+    # STRICT symmetry: with per_fps on the lookup only reads fps-specific
+    # keys, so an 'all' entry is stored-but-dormant — tagged and dimmed
+    # exactly like a per-fps entry is while the toggle is off. Its axis
+    # renders 'All FPS' (its true scope, in the other mode); the exact
+    # entry stays plain and untagged.
     entries = {
         "dolbyvision|all|eac3": _entry(-25),
         "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
@@ -193,12 +195,11 @@ def test_toggle_on_renders_all_as_other_rates_with_no_inactive_tags():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | Other FPS | Dolby Digital Plus",
-                          "-25 ms")
+    assert options[0] == (
+        "[COLOR gray]Dolby Vision | All FPS | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]-25 ms — inactive[/COLOR]")
     assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
                           "+125 ms")
-    assert not any(isinstance(opt, tuple) and "inactive" in opt[1]
-                   for opt in options)
 
 
 def test_rows_group_by_codec_then_numeric_rate():
@@ -532,9 +533,13 @@ def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
     # level only.
     heading, options = gui.selects[1]
     assert heading == "Dolby Vision"
+    # per_fps is ON here, so the 'all' rows are dormant (dim + tag) and
+    # the exact-rate row is the one in effect.
     assert options == [
-        ("Dolby Digital Plus · Other FPS", "+3 ms"),
-        ("Dolby TrueHD · Other FPS", "+1 ms"),
+        ("[COLOR gray]Dolby Digital Plus · All FPS[/COLOR]",
+         "[COLOR gray]+3 ms — inactive[/COLOR]"),
+        ("[COLOR gray]Dolby TrueHD · All FPS[/COLOR]",
+         "[COLOR gray]+1 ms — inactive[/COLOR]"),
         ("Dolby TrueHD · 23.976 fps", "+2 ms"),
         "#32138",
     ]
@@ -571,8 +576,11 @@ def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
     # on which list the user came from).
     heading, message = gui.yesnos[0]
     assert heading == "#32115"
-    assert "Dolby Vision | Other FPS | Dolby Digital Plus" in message
-    assert "+3 ms" in message
+    # The _Row strings stay PLAIN (no [COLOR] markup in dialog text); the
+    # inactive tag rides along — the confirmation states the row as shown.
+    assert "Dolby Vision | All FPS | Dolby Digital Plus" in message
+    assert "+3 ms — inactive" in message
+    assert "[COLOR" not in message
     assert service.calls == [("delete", "dolbyvision|all|eac3")]
     # After the delete the (re-read) group re-rendered with 2 rows (+ the
     # group-clear row).
@@ -774,8 +782,12 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
                                  "[B]Other[/B] — 2 entries", "#32126"]
     heading, options = gui.selects[1]
     assert heading == "Other"
+    # The blank-hdr key still splits, so its 'all' fps segment reads as
+    # dormant under per_fps ON; the unsplittable key is never tagged
+    # (nothing is known about how it resolves).
     assert options == [
-        ("Dolby TrueHD · Other FPS", "+9 ms"),   # blank hdr, audio intact
+        ("[COLOR gray]Dolby TrueHD · All FPS[/COLOR]",   # blank hdr
+         "[COLOR gray]+9 ms — inactive[/COLOR]"),
         ("scribbled-key", "+10 ms"),
         "#32138",
     ]

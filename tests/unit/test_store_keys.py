@@ -299,12 +299,13 @@ def test_describe_key_shows_exact_rate_from_video_fps_metadata():
 
 
 def test_describe_key_all_segment_is_toggle_aware():
-    # per_fps ON: the 'all' entry is the fallback BELOW exact-rate entries
-    # (exact -> all -> miss), so 'All FPS' would misread as an override —
-    # it renders 'Other FPS'. OFF: 'all' is the only key consulted, so
-    # the fps axis carries no information and is omitted (the default).
+    # per_fps ON: the 'all' entry is dormant (the lookup consults only
+    # the fps-specific key), so 'All FPS' states its true scope — every
+    # rate, in the other mode — and the view's dormancy tag carries the
+    # not-in-effect part. OFF: 'all' is the only key consulted, so the
+    # fps axis carries no information and is omitted (the default).
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=True) == \
-        'Dolby Vision | Other FPS | Dolby TrueHD'
+        'Dolby Vision | All FPS | Dolby TrueHD'
     assert keys.describe_key('dolbyvision|all|truehd', per_fps=False) == \
         'Dolby Vision | Dolby TrueHD'
     # A numeric segment is unaffected by the toggle.
@@ -319,7 +320,7 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
         'Dolby Vision | Dolby TrueHD'
     assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976,
                              per_fps=True) == \
-        'Dolby Vision | Other FPS | Dolby TrueHD'
+        'Dolby Vision | All FPS | Dolby TrueHD'
 
 
 def test_describe_key_degrades_to_segment_without_usable_metadata():
@@ -347,7 +348,7 @@ def test_describe_key_in_group_matches_describe_key_semantics():
     # rate from metadata, segment degradation without it — one vocabulary.
     assert keys.describe_key_in_group('dolbyvision|all|truehd',
                                       per_fps=True) == \
-        'Dolby TrueHD · Other FPS'
+        'Dolby TrueHD · All FPS'
     assert keys.describe_key_in_group('hdr10|59|ac3') == \
         'Dolby Digital · 59 fps'
     # Verbatim fallback for an unlisted codec, like every display surface.
