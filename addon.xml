@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta19" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,12 +7,16 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta19 (2026-07-19)
-- The exported addon log now marks its text encoding, so text editors display it correctly instead of garbling special characters
-
-v1.0.0~beta18 (2026-07-19)
-- The stored offsets view now lists active entries above inactive ones within each group
-- Group rows show how many of their entries are inactive in the current mode
+        <news>v1.0.0 (2026-07-19)
+First release. Supersedes the original Audio Offset Manager: profiles now cover any format Kodi reports instead of a very limited fixed list, and there is nothing to configure up front.
+- Adjust Kodi's audio offset during playback the way you always have; the value is remembered for that stream's HDR type, audio format, and frame rate
+- Saved offsets are applied automatically on every matching playback
+- Optional seek backs to help realign audio and video after key events
+- Notifications when an offset is saved or applied
+- Management view to browse, delete, or clear everything learned
+- Optional per frame rate offsets
+- Backup export and import of saved offsets
+- Support log export from the settings dialog
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
