@@ -6,6 +6,8 @@ composition), and the view composition is pinned separately with a
 recording stand-in for ``ManageView`` under Kodistubs.
 """
 
+import os
+
 import pytest
 import xbmcaddon
 import xbmcvfs
@@ -328,11 +330,11 @@ def test_log_export_view_composition(monkeypatch, tmp_path):
     (log_dir / 'kodi.log').write_text(
         "2026-07-18 10:00:00.000 T:1 info <general>: AOMe_Runtime: line\n",
         encoding='utf-8')
-    home = str(tmp_path / 'kodi_home') + '\\'
+    home = str(tmp_path / 'kodi_home') + os.sep
 
     def fake_translate(path):
         if path == 'special://logpath/':
-            return str(log_dir) + '\\'
+            return str(log_dir) + os.sep
         if path == 'special://home/':
             return home
         return path                       # special://profile/ unresolved
@@ -357,11 +359,15 @@ def test_log_export_view_composition(monkeypatch, tmp_path):
     # An unresolvable special:// root contributes no pair; the resolved
     # Kodi home arrives in both separator spellings, and the OS user
     # profile folds to ~/ (the field-caught leak: a user-picked export
-    # destination under the OS profile sits outside Kodi's home).
+    # destination under the OS profile sits outside Kodi's home). The
+    # home prefix is native to the host platform, so its alternate
+    # spelling swaps whichever separator it actually carries.
+    alt_home = (home.replace('\\', '/') if '\\' in home
+                else home.replace('/', '\\'))
     assert built['redactions'] == [
         (home, 'special://home/'),
-        (home.replace('\\', '/'), 'special://home/'),
-        ('C:\\Users\\tester\\', '~/'),
+        (alt_home, 'special://home/'),
+        ('C:\\Users\\tester' + os.sep, '~/'),
         ('C:/Users/tester/', '~/'),
     ]
 
