@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta18" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta19" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,12 +7,12 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta18 (2026-07-19)
+        <news>v1.0.0~beta19 (2026-07-19)
+- The exported addon log now marks its text encoding, so text editors display it correctly instead of garbling special characters
+
+v1.0.0~beta18 (2026-07-19)
 - The stored offsets view now lists active entries above inactive ones within each group
 - Group rows show how many of their entries are inactive in the current mode
-
-v1.0.0~beta17 (2026-07-19)
-- The mode-change dialog added in beta16 has been removed. It could appear after unrelated clicks in the settings dialog. The setting's help text explains which offsets apply in each mode
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
