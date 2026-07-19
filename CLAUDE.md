@@ -13,12 +13,11 @@ audio format) and re-applies it automatically on every matching playback.
 Seek-back replays, notifications, and a management view of everything
 learned ride along.
 
-`main` is the only line. The addon moved here from branch `evolved/1.0`
-of the classic repo on 2026-07-18, full history preserved. The classic
-addon (`script.audiooffsetmanager`, github.com/matthane/script.audiooffsetmanager
-— the `classic` remote in the primary working copy) is maintenance-only;
-its hotfixes are cherry-picked into this repo deliberately, never
-auto-merged. Do not edit the classic repo from here.
+`main` is the only line. The classic addon (`script.audiooffsetmanager`,
+github.com/matthane/script.audiooffsetmanager — the `classic` remote in
+the primary working copy) is a separate, end-of-life addon: nothing is
+merged or cherry-picked between the repos, and it is never edited from
+here.
 
 **Status:** construction is complete and validated (full suite green,
 field-verified on Windows Kodi 22); the `1.0.0~beta` train is in field
