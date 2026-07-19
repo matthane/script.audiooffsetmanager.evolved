@@ -50,7 +50,7 @@ The **Manage stored offsets** view lists everything the addon has learned, group
 ## Installation
 
 1. Install the addon from the official Kodi repo, or from a zip file (Add-ons > Install from zip file).
-2. Play a video and fix the lipsync with Kodi's audio offset slider.
+2. Play a video and fix the lipsync by adjusting Kodi's audio offset.
 3. The addon runs as a background service from then on, saving your adjustments and applying them to matching content.
 
 ## Compatibility

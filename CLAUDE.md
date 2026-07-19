@@ -7,7 +7,7 @@ Guidance for working in this repo. Dev-only: `export-ignore`'d in
 
 **`script.audiooffsetmanager.evolved` ("Audio Offset Manager: Evolved")** —
 a Kodi service addon whose product is the learn loop: the user fixes
-lipsync once with Kodi's native audio-offset slider during playback, and
+lipsync once by adjusting Kodi's audio offset during playback, and
 Evolved remembers the value per stream profile (HDR type, frame rate,
 audio format) and re-applies it automatically on every matching playback.
 Seek-back replays, notifications, and a management view of everything
@@ -41,8 +41,10 @@ principles, so this file stands alone:
   probe, no `new_install` flag, no stored platform flags. An empty store
   simply does nothing until taught; the save/apply toasts ARE the
   tutorial.
-- **The remembered adjustment IS the product.** Kodi's native slider is
-  the editor; everything else is trim around that loop.
+- **The remembered adjustment IS the product.** The editor is whatever
+  changes Kodi's audio offset during playback — the native slider, a
+  keymap, JSON-RPC, anything; the watcher reads the resulting value and
+  never cares how it was set. Everything else is trim around that loop.
 - **Capability gating is emergent, not probed.** The management view
   lists only profiles the platform actually produced; nothing is hidden
   or gated by stored capability state.
