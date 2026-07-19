@@ -59,6 +59,8 @@ Requires Kodi v20 (Nexus) or later.
 
 Evolved is a separate addon from the original Audio Offset Manager (`script.audiooffsetmanager`) and does not share its settings or data. The two should not be used together: both react to the same playback and can end up applying audio offsets twice. If Evolved detects that the original addon is enabled, it shows a one-time warning at startup ("Classic Audio Offset Manager detected") recommending that the original be disabled.
 
+For addon developers: while Evolved performs a seek back, it sets the home window property `script.audiooffsetmanager.evolved.seeking` to `1` and clears it when the seek completes. Addons that react to seeks can check this property to tell Evolved's seeks apart from the user's. Evolved extends the same courtesy in the other direction: it holds its own seek backs while another addon signals seek activity through a known busy property.
+
 ## Translating
 
 The addon is currently available in English, and translations are welcome. All user-facing text lives in a single file: [`resources/language/resource.language.en_gb/strings.po`](resources/language/resource.language.en_gb/strings.po). Every entry carries a comment describing where the string appears and what fills each placeholder, so no knowledge of the code is needed.
