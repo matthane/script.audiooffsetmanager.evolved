@@ -155,7 +155,7 @@ def test_write_then_resolve_roundtrips_as_exact(tmp_path):
 def test_unheard_of_formats_resolve_like_any_other(tmp_path):
     store = make_store(tmp_path)
     key = resolve.write_key("HDR10+", 119.88, "x-future-codec", per_fps=True)
-    assert key == "hdr10+|119|x-future-codec"
+    assert key == "hdr10plus|119|x-future-codec"
     store.set(key, -115)
     got = resolve.resolve(store, "HDR10+", 119.88, "x-future-codec", per_fps=True)
     assert (got.hit_kind, got.entry["delay_ms"]) == (resolve.EXACT, -115)

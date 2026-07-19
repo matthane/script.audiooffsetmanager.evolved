@@ -2,7 +2,9 @@
 
 These read as a contract: the VERBATIM PINS and FRACTIONAL-RATE PINS below are
 the regression armor for the doctrine that Kodi's reported strings become keys
-as presented, with only case-fold + trim (+ a `|` defense) applied.
+as presented, with only case-fold + trim (+ a `|` defense) applied — plus, on
+the HDR axis only, the cross-build canonicalization (whitespace strip and the
+field-observed alias set) that keeps one format on one key across Kodi builds.
 """
 
 import pytest
@@ -24,18 +26,42 @@ def test_audio_verbatim_passthrough():
 
 
 def test_hdr_verbatim_passthrough():
-    # The '+' SURVIVES: it was settings-id scaffolding that ever stripped it.
-    assert keys.hdr_segment('HDR10+') == 'hdr10+'
-    # Inner space survives; only the ends are trimmed.
-    assert keys.hdr_segment('Dolby Vision') == 'dolby vision'
+    # An unheard-of HDR string becomes a working key with no code changes,
+    # and no character other than whitespace/`|` is ever rewritten (the
+    # '+' survives in a stranger).
+    assert keys.hdr_segment('x-future-hdr+') == 'x-future-hdr+'
+    assert keys.hdr_segment(' HDR10 ') == 'hdr10'
 
 
-# --- The one proven alias ---------------------------------------------------
+# --- Cross-build canonicalization: the observed fragmentation set -----------
 
-def test_hlghdr_alias_is_the_only_one():
+def test_hdr_aliases_unify_the_observed_cross_build_spellings():
+    # Kodi 21's primary HDR infolabel reports 'HDR10+' where Kodi 22's
+    # native detection reports 'hdr10plus': one canonical key keeps a
+    # learned offset matching on both builds (and portable via backup).
+    assert keys.hdr_segment('HDR10+') == 'hdr10plus'
+    assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
     assert keys.hdr_segment('hlghdr') == 'hlg'
     assert keys.hdr_segment('HLGHDR') == 'hlg'
     assert keys.hdr_segment('hlg') == 'hlg'
+
+
+def test_hdr_segment_strips_internal_whitespace():
+    # Kodi 21 reports 'Dolby Vision' (spaced title case) where Kodi 22
+    # reports 'dolbyvision': the whitespace strip lands every spacing
+    # variant on the canonical spelling without per-variant aliases.
+    assert keys.hdr_segment('Dolby Vision') == 'dolbyvision'
+    assert keys.hdr_segment('dolby  vision') == 'dolbyvision'
+    # The strip feeds the alias table: a spaced report of an aliased
+    # spelling still lands on the canonical key.
+    assert keys.hdr_segment('HLG HDR') == 'hlg'
+
+
+def test_cross_build_spellings_compose_identical_keys():
+    assert keys.profile_key('Dolby Vision', 23.976, 'TrueHD_Atmos',
+                            per_fps=True) == \
+        keys.profile_key('dolbyvision', 23.976, 'truehd_atmos', per_fps=True)
+    assert keys.all_key('HDR10+', 'ac3') == keys.all_key('hdr10plus', 'ac3')
 
 
 # --- Absence handling -------------------------------------------------------
@@ -165,18 +191,27 @@ def test_display_known_names():
     assert keys.HDR_DISPLAY['hdr10+'] == 'HDR10+'
 
 
-def test_hdr10plus_display_name_is_field_observed():
-    # Kodi 22's native HDR10+ detection
-    # reports 'hdr10plus', which rendered verbatim until this display
-    # entry. DISPLAY-only, deliberately NOT an alias: the segment stays
-    # verbatim in keys ('hdr10plus' composes and matches as itself), so
-    # offsets already stored under either spelling keep resolving.
+def test_hdr10plus_display_covers_canonical_and_legacy_keys():
+    # 'hdr10plus' (Kodi 22 native) is the canonical key; 'hdr10+' (Kodi 21
+    # primary infolabel) aliases onto it at compose time. The 'hdr10+'
+    # display entry stays so keys stored before the alias still render as
+    # HDR10+ in the management view — display entries are free.
     assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
     assert keys.HDR_DISPLAY['hdr10plus'] == 'HDR10+'
     assert keys.describe_key('hdr10plus|all|truehd') == \
         'HDR10+ | Dolby TrueHD'
+    assert keys.describe_key('hdr10+|all|truehd') == \
+        'HDR10+ | Dolby TrueHD'
     assert keys.profile_summary('hdr10plus', 'truehd') == \
         'HDR10+ | TrueHD'
+
+
+def test_dolby_vision_toast_short_name_survives_spaced_report():
+    # A Kodi 21 build reporting 'Dolby Vision' must still toast as DV, not
+    # echo the raw spaced string: the short-name table is keyed by the
+    # canonical segment, so canonicalization is what feeds it.
+    assert keys.profile_summary(keys.hdr_segment('Dolby Vision'),
+                                'truehd_atmos') == 'DV | TrueHD Atmos'
 
 
 @pytest.mark.parametrize('segment, commercial', [

@@ -104,8 +104,10 @@ def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
     post-normalization echo check compares against the PRIMARY label —
     the fallback returns '' rather than an echo when unresolved, so only
     the primary echo shape occurs in practice). Acceptance is verbatim:
-    audio and HDR strings key the store as reported; fps is the exact
-    parsed rate with no bucket check and no override collapse.
+    audio strings key the store as reported; HDR strings additionally get
+    the key codec's cross-build canonicalization (whitespace strip plus
+    the observed-spelling aliases); fps is the exact parsed rate with no
+    bucket check and no override collapse.
     """
     audio_format = keys.audio_segment(raw_codec)
 

@@ -7,15 +7,22 @@ Kodi REPORTS, exactly as presented. There is NO whitelist, NO substring
 matching, and NO alias table gating which codecs or HDR types are "known." A
 codec or HDR string this code has never encountered becomes a working key with
 zero code changes — that is the whole point. Normalization is deliberately
-minimal: case-fold + trim, plus a defensive `|` substitution (see below).
+minimal: case-fold + trim, plus a defensive `|` substitution (see below); the
+HDR axis additionally strips internal whitespace and unifies the observed
+cross-build spelling splits (see `hdr_segment`).
 
-Exactly ONE historical alias survives, and only because it is proven, shipped
-detection behaviour rather than speculation: `hlghdr` -> `hlg`. Do NOT add
-speculative aliases. Real fragmentation observed in the field is the only
-justification for any future addition here.
+Aliases never grow speculatively. Each entry exists because the SAME format
+was observed reported under two spellings by different Kodi builds, where a
+fragmented key strands a learned offset on the other build: `hlghdr` -> `hlg`
+(shipped detection behaviour) and `hdr10+` -> `hdr10plus` (Kodi 21's primary
+HDR infolabel says 'HDR10+' where Kodi 22's native detection says
+'hdr10plus'). Spaced title-case reports ('Dolby Vision' on Kodi 21 vs
+'dolbyvision' on Kodi 22) are the same fragmentation class, handled wholesale
+by the whitespace strip instead of per-variant aliases. Real fragmentation
+observed in the field remains the only justification for any future addition.
 
 KEY SHAPE: ``<hdr>|<fps>|<audio>`` — e.g. ``dolbyvision|23|truehd`` or
-``hdr10+|all|aac``. The `|` joiner is why `normalize_segment` maps any stray
+``hdr10plus|all|aac``. The `|` joiner is why `normalize_segment` maps any stray
 `|` inside a raw string to `_`: the separator must never appear inside a
 segment, so `split_key` can always recover exactly three parts.
 
@@ -51,8 +58,16 @@ SEPARATOR = '|'
 # the rule per axis is how one absent value fragments into several keys).
 _ABSENT = ('', 'none', UNKNOWN)
 
-# The one proven, shipped HDR alias. Never grow this speculatively.
-_HDR_ALIASES = {'hlghdr': 'hlg'}
+# Field-observed cross-build spellings of the SAME format, unified so a
+# learned offset matches on every build (see module docstring). Never grow
+# this speculatively.
+_HDR_ALIASES = {
+    # Shipped detection behaviour.
+    'hlghdr': 'hlg',
+    # Kodi 21's primary HDR infolabel vs Kodi 22's native detection;
+    # canonical is the forward spelling.
+    'hdr10+': 'hdr10plus',
+}
 
 # --- Display names (used by the management view) ----------------------------
 # The fallback for an unrecognised segment is ALWAYS the raw segment itself,
@@ -61,12 +76,10 @@ _HDR_ALIASES = {'hlghdr': 'hlg'}
 HDR_DISPLAY = {
     'dolbyvision': 'Dolby Vision',
     'hdr10': 'HDR10',
-    # Both spellings of HDR10+ display the same, and NEITHER aliases to
-    # the other: 'hdr10plus' is what Kodi 22's native HDR10+ detection
-    # reports and 'hdr10+' is the older spelling. A key
-    # alias would rewrite future composition and strand offsets already
-    # stored under the other spelling — display entries are free, key
-    # rewrites are not.
+    # 'hdr10plus' is the canonical key ('hdr10+' aliases onto it at
+    # compose time); the 'hdr10+' display entry stays so entries stored
+    # before the alias still render as HDR10+ in the management view —
+    # display entries are free.
     'hdr10+': 'HDR10+',
     'hdr10plus': 'HDR10+',
     'hlg': 'HLG',
@@ -186,16 +199,22 @@ def audio_segment(raw):
 
 
 def hdr_segment(raw):
-    """Normalise an HDR string; apply the lone proven alias, absence to UNKNOWN.
+    """Normalise an HDR string; whitespace strip, proven aliases, absence to UNKNOWN.
 
     The absence rule is the SAME one audio uses ('', 'none', 'unknown' →
     UNKNOWN): an HDR axis Kodi reported nothing for must collapse to one
     sentinel, not fragment across 'none'/'unknown' keys. Choosing 'sdr' for
     absent HDR is the stream detector's chain-of-evidence job, not this
-    module's. 'hlghdr' -> 'hlg' is the only alias (shipped detection
-    behaviour).
+    module's.
+
+    HDR-only hardening against cross-build report drift: internal
+    whitespace is stripped ('Dolby Vision' and 'dolbyvision' are the same
+    format reported by different Kodi builds and must land on one key),
+    then `_HDR_ALIASES` unifies the observed spellings that differ by more
+    than spacing. The audio axis has shown no such drift and keeps pure
+    verbatim acceptance.
     """
-    segment = normalize_segment(raw)
+    segment = ''.join(normalize_segment(raw).split())
     if segment in _ABSENT:
         return UNKNOWN
     return _HDR_ALIASES.get(segment, segment)

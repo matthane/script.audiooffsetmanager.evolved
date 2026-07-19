@@ -155,7 +155,7 @@ class TestDeriveStreamFacts:
         assert derive(raw_hdr='  HLG  ').profile.hdr_type == 'hlg'
         # Verbatim acceptance: the '+' SURVIVES into the key segment (the
         # 'plus' rewrite was settings-id scaffolding, deleted with it).
-        assert derive(raw_hdr='HDR10+').profile.hdr_type == 'hdr10+'
+        assert derive(raw_hdr='HDR10+').profile.hdr_type == 'hdr10plus'
 
     def test_unrecognized_hdr_keys_verbatim(self):
         # No whitelist: an HDR string the code never heard of is learnable.
