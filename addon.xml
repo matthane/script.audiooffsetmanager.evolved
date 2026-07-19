@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta12" name="Audio Offset Manager: Evolved" provider-name="matthane">
+<addon id="script.audiooffsetmanager.evolved" version="1.0.0~beta13" name="Audio Offset Manager: Evolved" provider-name="matthane">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
     </requires>
@@ -7,16 +7,16 @@
     <extension point="xbmc.python.script" library="script.py" />
     <extension point="xbmc.addon.metadata">
         <source>https://github.com/matthane/script.audiooffsetmanager.evolved</source>
-        <news>v1.0.0~beta12 (2026-07-18)
+        <news>v1.0.0~beta13 (2026-07-18)
+- New Export addon log button under Advanced, shown while debug logging is enabled: saves a support log limited to this addon's entries, with file paths and user names redacted
+- Notifications name Dolby Digital audio AC3, matching Kodi
+- Strings prepared for translation
+
+v1.0.0~beta12 (2026-07-18)
 - New backup buttons under Advanced: Export offsets saves everything learned to a file, Import offsets restores from it and replaces the current set
 - Notifications use short format names such as DV, DD+, and TrueHD Atmos so the message fits on one line
 - Addon display name is now Audio Offset Manager: Evolved
 - Settings help text rewritten in one plain voice
-
-v1.0.0~beta11 (2026-07-17)
-- Stored offsets list shows a frame rate only when Per-frame-rate offsets is on; entries saved for a specific rate keep their rate and stay marked inactive while it is off
-- Inactive entries are dimmed, and HDR type names are bold in the group list
-- Simpler settings layout: the Offsets and Advanced categories no longer use group headers
         </news>
         <!-- news is schema-capped at 1500 characters (addon-checker
              enforces it): keep only the last couple of versions here;
