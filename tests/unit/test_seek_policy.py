@@ -78,3 +78,43 @@ def test_served_and_deadline_both_true_still_abandons():
     assert policies.seek_decision(
         now=30.0, requested_at=10.0, last_activity=1.0, last_own_seek=25.0,
         quiet_window=2.0, deadline=8.0) == 'abandon'
+
+
+# The yield rule (yield_to_activity=True, passed by the scheduler for
+# 'unpause'): activity at/after the request means someone else moved the
+# playhead since the trigger, and the replay stands down instead of queueing
+# behind them. Ordering: served -> yielded -> deadline -> quiet.
+@pytest.mark.parametrize("case, now, requested_at, last_activity, last_own_seek, expected", [
+    # Activity AFTER the request yields, even though the window is quiet NOW
+    # (without the flag this row is 'seek'): the playhead moved since the
+    # trigger, so a replay would double that seek.
+    ("activity_after_request_yields", 10.0, 5.0, 6.0, None, 'yield'),
+    # Same-instant activity counts (>= boundary): something was in flight at
+    # the trigger moment — the safe side against a double rewind.
+    ("activity_at_request_instant_yields", 10.0, 9.0, 9.0, None, 'yield'),
+    # Activity strictly BEFORE the request never yields; the ordinary quiet
+    # window handles it (defer here, seek once it elapses).
+    ("activity_before_request_defers_normally", 10.0, 9.0, 8.5, None, 'defer'),
+    ("activity_before_request_quiet_seeks", 10.0, 8.0, 5.0, None, 'seek'),
+    # Served is checked FIRST: an own seek at/after the request reads as
+    # served, not yielded (the distinction keeps the caller's log honest).
+    ("served_wins_over_yield", 10.0, 8.0, 9.0, 9.0, 'abandon'),
+])
+def test_seek_decision_yield_rule(case, now, requested_at, last_activity,
+                                  last_own_seek, expected):
+    assert policies.seek_decision(
+        now=now,
+        requested_at=requested_at,
+        last_activity=last_activity,
+        last_own_seek=last_own_seek,
+        quiet_window=2.0,
+        deadline=8.0,
+        yield_to_activity=True) == expected, case
+
+
+def test_yield_rule_off_by_default():
+    # The flag defaults False: the identical timestamps that yield above
+    # fall through to the ordinary quiet math when the flag is absent.
+    assert policies.seek_decision(
+        now=10.0, requested_at=5.0, last_activity=6.0, last_own_seek=None,
+        quiet_window=2.0, deadline=8.0) == 'seek'

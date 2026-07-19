@@ -9,8 +9,10 @@ window_properties.
 Timing facts the tests rely on (from the module):
 
 * ExecuteSeek attempt #1 is scheduled at delay 0, so it fires on the NEXT
-  pump with no clock advance; a deferred attempt re-schedules RECHECK (0.5s)
-  later, key-replaced so only one attempt per reason is ever live.
+  pump with no clock advance — except for the yielding reasons ('unpause'),
+  whose first attempt waits one RECHECK (the detection grace). A deferred
+  attempt re-schedules RECHECK (0.5s) later, key-replaced so only one
+  attempt per reason is ever live.
 * The session's ``started_at`` counts as seek activity, so a fresh seek must
   wait QUIET_WINDOW (2.0s) from playback start before it can execute — this
   is the post-start settle.
@@ -176,9 +178,11 @@ class TestTriggersAndDebounce:
         assert 'unpause' not in rig.pending      # dropped, not queued
         assert rig.logged('too soon')
 
-        # After DEBOUNCE and with the window quiet again, it fires.
+        # After DEBOUNCE and with the window quiet again, it fires — one
+        # detection grace after the trigger (unpause is a yielding reason).
         rig.advance(DEBOUNCE)             # clock -> 6.0
         rig.post(events.Resumed())        # 6.0 - 4.0 == DEBOUNCE, allowed
+        rig.advance(RECHECK)              # t=6.5: the grace attempt fires
         assert rig.seeks == [(4, 1), (4, 1), (4, 1)]
 
     def test_retrigger_while_pending_key_replaces_to_one_seek(self, rig):
@@ -434,6 +438,87 @@ class TestExecutionGuards:
         assert rig.session.seek_history.get('unpause') is None
         assert rig.logged('Abandoning unpause')
         assert rig.seeks == [(4, 1)]      # only the resume seek ever ran
+
+
+# ============================================================================
+# Unpause yield (the anti-double-seek rule)
+# ============================================================================
+
+class TestUnpauseYield:
+
+    def _settled(self, rig):
+        """Start, stabilize, let the resume replay execute, then go quiet."""
+        rig.start()
+        rig.make_stable()
+        rig.advance(QUIET)                # resume seek at t=2.0
+        rig.advance(4.0)                  # t=6.0: long quiet, debounce clear
+        assert rig.seeks == [(4, 1)]
+
+    def test_unpause_first_attempt_waits_the_detection_grace(self, rig):
+        # The trigger does NOT execute on its own pump even though the window
+        # is quiet: the first attempt is scheduled one RECHECK out, so an
+        # external reactor to the same unpause has time to raise its busy
+        # flag or land its seek before we commit.
+        self._settled(rig)
+        rig.post(events.Resumed())        # t=6.0: quiet, but grace first
+        assert rig.seeks == [(4, 1)]      # nothing fired on the trigger pump
+        assert 'unpause' in rig.pending
+
+        rig.advance(RECHECK)              # t=6.5: nothing else moved -> seek
+        assert rig.seeks == [(4, 1), (4, 1)]
+        assert rig.session.seek_history['unpause'] == 6.5
+
+    def test_unpause_yields_to_vendor_busy_seen_after_trigger(self, rig):
+        # A vendor raising its busy flag between the unpause and our attempt
+        # (its own unpause seek-back in flight) cancels ours outright — no
+        # defer-then-execute double.
+        self._settled(rig)
+        rig.post(events.Resumed())        # t=6.0
+        rig.gateway.window_properties[VENDOR_PROP] = '1'
+
+        rig.advance(RECHECK)              # t=6.5: the probe sights the vendor
+        assert rig.seeks == [(4, 1)]      # yielded, not deferred
+        assert 'unpause' not in rig.pending
+        assert rig.logged('Yielding unpause')
+
+        del rig.gateway.window_properties[VENDOR_PROP]
+        rig.advance(DEADLINE)             # a yielded replay never revives
+        assert rig.seeks == [(4, 1)]
+
+    def test_unpause_yields_to_external_seek_after_trigger(self, rig):
+        # The tight race seen in the field: we unpause, an external actor
+        # seeks ~100ms later without any busy flag. The grace attempt sees
+        # the SeekOccurred and stands down instead of stacking a second
+        # rewind on top — vendor-agnostic (the signal is the player event).
+        self._settled(rig)
+        rig.post(events.Resumed())        # t=6.0
+        rig.advance(0.25)                 # t=6.25, before the grace attempt
+        rig.dispatcher.post(events.SeekOccurred(time_ms=0, offset_ms=0))
+        rig.dispatcher.run_pending()      # external seek recorded at 6.25
+
+        rig.advance(0.25)                 # t=6.5: the grace attempt fires
+        assert rig.seeks == [(4, 1)]      # yielded
+        assert 'unpause' not in rig.pending
+        assert rig.logged('Yielding unpause')
+
+        rig.advance(DEADLINE)             # and stays yielded
+        assert rig.seeks == [(4, 1)]
+
+    def test_unpause_activity_before_trigger_defers_then_executes(self, rig):
+        # Activity strictly BEFORE the unpause is ordinary busyness, not a
+        # mirrored replay: the quiet window defers past it and the replay
+        # still fires — yield is scoped to post-trigger activity only.
+        self._settled(rig)
+        rig.dispatcher.post(events.SeekOccurred(time_ms=0, offset_ms=0))
+        rig.dispatcher.run_pending()      # external activity at t=6.0
+        rig.advance(RECHECK)              # t=6.5
+        rig.post(events.Resumed())        # the trigger comes AFTER the activity
+
+        rig.advance(RECHECK)              # t=7.0: inside the quiet window -> defer
+        assert rig.seeks == [(4, 1)]
+        rig.advance(1.0)                  # t=8.0: quiet elapsed -> executes
+        assert rig.seeks == [(4, 1), (4, 1)]
+        assert rig.session.seek_history['unpause'] == 8.0
 
 
 # ============================================================================

@@ -76,7 +76,7 @@ def stream_identity(profile, per_fps):
 
 
 def seek_decision(now, requested_at, last_activity, last_own_seek,
-                  quiet_window, deadline):
+                  quiet_window, deadline, yield_to_activity=False):
     """The seek quiet-window policy: one rule for every seek-back request.
 
     Do not seek until there has been no seek activity — ours, another
@@ -86,6 +86,19 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
     this request was made — same-instant counts as served, the safe side
     against a double rewind) is abandoned: its purpose — replaying the
     glitched seconds — is done.
+
+    ``yield_to_activity`` is the stronger rule for triggers an external
+    actor may mirror (the scheduler passes it for 'unpause'): ANY seek
+    activity at or after ``requested_at`` yields the request instead of
+    deferring it. Someone else moved the playhead after the trigger —
+    another addon's own unpause seek-back, a repositioning, the user
+    scrubbing — and replaying on top of their seek would double it.
+    Activity strictly BEFORE the request never yields (the quiet window
+    handles it): the rule is about the playhead having been touched since
+    the trigger, not about recent busyness. Vendor-agnostic by
+    construction: the caller's activity view is the generic aggregate
+    (SeekOccurred, the vendor busy list, our own seeks), never a specific
+    addon.
 
     Args (all timestamps monotonic; the caller resolves them):
         now: current time.
@@ -97,15 +110,21 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
         last_own_seek: when WE last executed a seek this session, or None.
         quiet_window: required quiet seconds before seeking.
         deadline: max seconds after requested_at before giving up.
+        yield_to_activity: apply the yield rule above (default off).
 
     Returns:
-        'seek' | 'defer' | 'abandon'. Deadline is checked before quietness:
-        a request that aged past the deadline is abandoned even if the
-        window happens to be quiet now — a very late replay would itself
-        be the disruption it was meant to repair.
+        'seek' | 'defer' | 'abandon' | 'yield'. Evaluated in a fixed
+        order: served, then yielded, then deadline, then quietness.
+        Deadline before quietness: a request that aged past the deadline
+        is abandoned even if the window happens to be quiet now — a very
+        late replay would itself be the disruption it was meant to
+        repair. 'yield' is its own verdict (not folded into 'abandon')
+        so the caller's log states WHY the replay stood down.
     """
     if last_own_seek is not None and last_own_seek >= requested_at:
         return 'abandon'
+    if yield_to_activity and last_activity >= requested_at:
+        return 'yield'
     if now - requested_at >= deadline:
         return 'abandon'
     if now - last_activity < quiet_window:

@@ -38,6 +38,18 @@ Behavior:
   (executed at/after the request) is abandoned by the policy;
   a genuinely-new trigger arriving just after an own seek defers and
   executes — a fresh user action gets its replay.
+- Unpause yields to the playhead: 'unpause' is the one trigger an
+  external actor may mirror (a vendor's own unpause seek-back), so its
+  first attempt waits one recheck — the detection grace, giving a
+  reactor to the same unpause time to reveal itself — and ANY seek
+  activity observed at or after the trigger cancels the replay instead
+  of deferring it (someone else already moved the playhead since the
+  unpause; replaying on top would double their seek). Vendor-agnostic:
+  the signals are the generic activity view (SeekOccurred plus the
+  busy-property list), never a specific addon. 'resume' deliberately
+  keeps defer-past semantics — Kodi's and vendors' start-of-playback
+  seeks are POSITIONING, not replays, and cancelling past them would
+  kill the resume replay everywhere.
 - Session start counts as seek activity, so playback always gets a settle
   window before the first replay: Kodi's own resume-position seek defers
   the replay past itself, and a start under a sustained seek storm
@@ -145,6 +157,10 @@ class SeekScheduler:
 
     # The closed trigger vocabulary; also the cancellation key set.
     REASONS = ('resume', 'unpause', 'adjust', 'change')
+    # Reasons whose replay an external actor may mirror (see the module
+    # docstring): the first attempt waits one recheck (detection grace)
+    # and the policy yields to any activity at/after the trigger.
+    YIELDING_REASONS = ('unpause',)
 
     def __init__(self, dispatcher, session_tracker, settings_facade,
                  coordinator, clock=time.monotonic, *, log_debug,
@@ -235,11 +251,16 @@ class SeekScheduler:
             last_activity=self._coordinator.last_activity(session),
             last_own_seek=max(session.seek_history.values(), default=None),
             quiet_window=self.QUIET_WINDOW_SECONDS,
-            deadline=self.DEADLINE_SECONDS)
+            deadline=self.DEADLINE_SECONDS,
+            yield_to_activity=event.reason in self.YIELDING_REASONS)
 
         if decision == 'abandon':
             self._log(f"AOMe_SeekScheduler: Abandoning {event.reason} seek "
                       f"back (already served or deadline passed)")
+            return
+        if decision == 'yield':
+            self._log(f"AOMe_SeekScheduler: Yielding {event.reason} seek "
+                      f"back to other seek activity")
             return
         if decision == 'defer':
             self._defer(event, 'awaiting quiet window')
@@ -298,9 +319,14 @@ class SeekScheduler:
             return
         # A re-trigger while pending key-replaces the attempt chain; the
         # fresh requested_at restarts the deadline (the newest user action
-        # is the one served).
+        # is the one served). A yielding reason's first attempt waits one
+        # recheck (the detection grace): an external reactor to the same
+        # trigger gets time to raise its busy flag or land its seek before
+        # we commit — firing instantly is what raced ahead of it.
+        delay = (self.RECHECK_SECONDS if reason in self.YIELDING_REASONS
+                 else 0.0)
         self._dispatcher.schedule(
-            0.0,
+            delay,
             events.ExecuteSeek(session_id=session.session_id, reason=reason,
                                requested_at=now),
             key=self._key(reason))
