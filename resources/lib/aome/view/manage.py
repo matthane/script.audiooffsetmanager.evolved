@@ -69,7 +69,9 @@ so the injected ``per_fps`` flag decides which rows are tagged. Toggle
 ON: 'all' rows render their axis as 'All FPS' and are dormant. Toggle
 OFF: the fps axis is OMITTED from 'all' rows ('All FPS' would restate
 the only semantics that mode has) and per-fps rows keep their rate and
-are dormant. Dormant rows are tagged '— inactive', never hidden. Every
+are dormant. Dormant rows are tagged '— inactive', never hidden, and
+sink below the active rows of their HDR group (what applies right now
+reads first; what is merely kept reads last). Every
 stored entry always lists — this view is the store's only inspection
 surface, and clear-all's confirmation must never under-represent what
 it deletes.
@@ -353,7 +355,13 @@ class ManageView:
 
         ``keys.sort_key`` groups by HDR type, then codec, then rate ('all'
         first, numeric order) — total even over hand-edited keys, so the
-        list never shuffles between renders.
+        list never shuffles between renders. Dormancy splits each HDR
+        group in two: the rows the lookup consults right now list first,
+        the dormant ones sink below them, and each stratum keeps the
+        codec/rate order. The split stays INSIDE the group — dormancy
+        must never move an entry between groups, or the index's
+        first-appearance order and the drill-down membership would
+        shuffle with the toggle.
         """
         rows = []
         for key, entry in entries.items():
@@ -363,7 +371,12 @@ class ManageView:
                              self._detail(entry, inactive=dormant),
                              key,
                              dormant))
-        rows.sort(key=lambda row: sort_key(row.key))
+
+        def display_order(row):
+            hdr, audio, fps_rank, raw = sort_key(row.key)
+            return (hdr, row.dormant, audio, fps_rank, raw)
+
+        rows.sort(key=display_order)
         return rows
 
     @staticmethod

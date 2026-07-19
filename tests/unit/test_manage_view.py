@@ -186,7 +186,8 @@ def test_toggle_on_tags_all_rows_inactive_and_never_hides():
     # keys, so an 'all' entry is stored-but-dormant — tagged and dimmed
     # exactly like a per-fps entry is while the toggle is off. Its axis
     # renders 'All FPS' (its true scope, in the other mode); the exact
-    # entry stays plain and untagged.
+    # entry stays plain, untagged, and lists FIRST — dormant rows sink
+    # below the active rows of their group.
     entries = {
         "dolbyvision|all|eac3": _entry(-25),
         "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
@@ -195,17 +196,19 @@ def test_toggle_on_tags_all_rows_inactive_and_never_hides():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == (
+    assert options[0] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
+                          "+125 ms")
+    assert options[1] == (
         "[COLOR gray]Dolby Vision | All FPS | Dolby Digital Plus[/COLOR]",
         "[COLOR gray]-25 ms — inactive[/COLOR]")
-    assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
-                          "+125 ms")
 
 
 def test_rows_group_by_codec_then_numeric_rate():
-    # The tuned display order within one HDR mode: codecs alphabetical,
+    # The tuned display order within one stratum: codecs alphabetical,
     # and each codec's 'all' entry before its per-fps entries in
-    # NUMERIC rate order (119 after 23, not before).
+    # NUMERIC rate order (119 after 23, not before). Here the active
+    # rows (the 'all' keys, toggle off) already sort first, so the
+    # strata are invisible; the next test pins the sink itself.
     entries = {
         "dolbyvision|119|eac3": dict(_entry(1), video_fps=119.88),
         "dolbyvision|23|eac3": dict(_entry(2), video_fps=23.976),
@@ -224,6 +227,34 @@ def test_rows_group_by_codec_then_numeric_rate():
         "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
         "[COLOR gray]Dolby Vision | 119.88 fps | Dolby Digital Plus[/COLOR]",
         "[COLOR gray]Dolby Vision | 24 fps | Dolby TrueHD[/COLOR]",
+    ]
+
+
+def test_dormant_rows_sink_below_active_rows():
+    # Dormancy outranks the codec/rate order inside the HDR group: what
+    # applies right now reads first, what is merely kept reads last.
+    # With the toggle off, the dormant 23-fps Dolby Digital Plus entry
+    # would sort ABOVE the active TrueHD 'all' entry by codec alone; the
+    # sink puts the active row on top. Same store, toggle on: the roles
+    # and the order both flip.
+    entries = {
+        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|truehd": _entry(-25),
+    }
+    view, gui, _ = _build(entries, per_fps=False)
+    view.run()
+    profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
+    assert profiles == [
+        "Dolby Vision | Dolby TrueHD",
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
+    ]
+
+    view, gui, _ = _build(entries, per_fps=True)
+    view.run()
+    profiles = [opt[0] for opt in gui.selects[0][1][:-1]]
+    assert profiles == [
+        "Dolby Vision | 23.976 fps | Dolby Digital Plus",
+        "[COLOR gray]Dolby Vision | All FPS | Dolby TrueHD[/COLOR]",
     ]
 
 
@@ -534,13 +565,13 @@ def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
     heading, options = gui.selects[1]
     assert heading == "Dolby Vision"
     # per_fps is ON here, so the 'all' rows are dormant (dim + tag) and
-    # the exact-rate row is the one in effect.
+    # sink below the exact-rate row that is in effect.
     assert options == [
+        ("Dolby TrueHD · 23.976 fps", "+2 ms"),
         ("[COLOR gray]Dolby Digital Plus · All FPS[/COLOR]",
          "[COLOR gray]+3 ms — inactive[/COLOR]"),
         ("[COLOR gray]Dolby TrueHD · All FPS[/COLOR]",
          "[COLOR gray]+1 ms — inactive[/COLOR]"),
-        ("Dolby TrueHD · 23.976 fps", "+2 ms"),
         "#32138",
     ]
     assert "#32126" not in options
@@ -566,7 +597,9 @@ def test_other_bucket_lists_unsplittable_key_verbatim():
 
 def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
     gui = _grouped_gui()
-    gui.select_answers = [0, 0, -1, -1]  # open DV, delete a row, back, exit
+    # Open DV, delete its first DORMANT row (index 1: the active
+    # exact-rate row leads the list), back, exit.
+    gui.select_answers = [0, 1, -1, -1]
     gui.yesno_answers = [True]
     view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
     view.run()
@@ -742,7 +775,7 @@ def test_group_delete_failed_ack_reports_under_main_heading_and_stays():
         gui=gui, per_fps=True)
     view.run()
 
-    assert service.calls == [("delete", "dolbyvision|all|eac3")]
+    assert service.calls == [("delete", "dolbyvision|23|truehd")]
     heading, message = gui.oks[0]
     assert heading == "#32115"
     assert "#32128" in message and "read_only" in message
@@ -825,12 +858,13 @@ def test_group_clear_deletes_every_group_key_and_lands_on_index():
     view, gui, service = _build(_grouped_entries(), gui=gui, per_fps=True)
     view.run()
 
-    # One delete per group entry, exact keys, display order — and nothing
+    # One delete per group entry, exact keys, display order (the active
+    # exact-rate row leads, the dormant 'all' rows follow) — and nothing
     # but deletes on the wire (no batch op exists).
     assert service.calls == [
+        ("delete", "dolbyvision|23|truehd"),
         ("delete", "dolbyvision|all|eac3"),
         ("delete", "dolbyvision|all|truehd"),
-        ("delete", "dolbyvision|23|truehd"),
     ]
     # The emptied group falls back to the index: DV gone, others intact,
     # no error/education dialog.
