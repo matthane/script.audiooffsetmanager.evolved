@@ -5,109 +5,227 @@ Guidance for working in this repo. Dev-only: `export-ignore`'d in
 
 ## What this is
 
-**This repo builds `script.audiooffsetmanager.evolved` ("AOM Evolved")** —
-a from-the-2.0-core rework of Audio Offset Manager whose product is the
-learn loop: the user fixes lipsync once with Kodi's native audio-offset
-slider during playback, and Evolved remembers the value per stream profile
-(HDR type, audio format, frame rate) and re-applies it automatically
-forever after. `main` is the only line; the addon moved here from branch
-`evolved/1.0` of the classic repo on 2026-07-18, full history preserved.
+**`script.audiooffsetmanager.evolved` ("Audio Offset Manager: Evolved")** —
+a Kodi service addon whose product is the learn loop: the user fixes
+lipsync once with Kodi's native audio-offset slider during playback, and
+Evolved remembers the value per stream profile (HDR type, frame rate,
+audio format) and re-applies it automatically on every matching playback.
+Seek-back replays, notifications, and a management view of everything
+learned ride along.
 
-The classic addon (`script.audiooffsetmanager`) lives in its own repo
-(github.com/matthane/script.audiooffsetmanager — the `classic` remote in
-the primary working copy) and is maintenance-only; its hotfixes are
-cherry-picked into this repo deliberately, never auto-merged. Do not edit
-the classic repo from here.
+`main` is the only line. The addon moved here from branch `evolved/1.0`
+of the classic repo on 2026-07-18, full history preserved. The classic
+addon (`script.audiooffsetmanager`, github.com/matthane/script.audiooffsetmanager
+— the `classic` remote in the primary working copy) is maintenance-only;
+its hotfixes are cherry-picked into this repo deliberately, never
+auto-merged. Do not edit the classic repo from here.
 
-## CONSTRUCTION IN PROGRESS (Phases E0–E8)
+**Status:** construction is complete and validated (full suite green,
+field-verified on Windows Kodi 22); the `1.0.0~beta` train is in field
+soak. **No GitHub releases are ever created from this repo** — betas are
+local zips via `git archive` into `../dist`, and publishing/distribution
+is a separate future plan (repo split, final assets, version `1.0.0`,
+repo-scripts submission all live there). The version always carries `~`
+or pre-1.0 form, so `submit.yml`'s stable-release trigger structurally
+cannot fire.
 
-This addon is being built per **EVOLVED.md** (design contract),
-**EVOLVED-IMPLEMENTATION.md** (execution plan), and **EVOLVED-UI.md** (UI
-design) — all at the repo root, **git-excluded via `.git/info/exclude`**
-(they exist only in the primary working copy and never materialize in
-agent worktrees; reference them by absolute path). Phases **E0–E4 are
-complete** (the runtime runs the sparse store); **E7** — the field beta
-cycle, currently at 1.0.0~beta11 — is underway. Trust the `aome/` module
-docstrings and the local docs over any stale statement here — this file
-gets its full rewrite in E8.
+## Design doctrine (summarized here because the design docs never ship)
 
-## Kodi packaging constraints
+The full design rationale lives in EVOLVED.md / EVOLVED-IMPLEMENTATION.md /
+EVOLVED-UI.md at the repo root of the **primary working copy only**
+(git-excluded via `.git/info/exclude`; they never materialize in agent
+worktrees — reference them by absolute path). The load-bearing
+principles, so this file stands alone:
 
-- Same doctrine as classic: only shippable files tracked without
-  `export-ignore`; dev tooling (this file, `.github/`, `tests/`, `tools/`,
-  `.claude/`) is excluded. Verify anytime:
-  `git archive --format=zip -o /tmp/pkg.zip HEAD` and inspect.
-- Requires `xbmc.python` **3.0.1** (Kodi Nexus, Python 3.8 syntax — D8).
-- **No GitHub releases are ever created from this repo** (publishing is
-  a separate future plan). Betas are local zips via `git archive`. The
-  version always carries `~` or pre-1.0 form, so `submit.yml`'s stable-
-  release trigger structurally cannot fire.
+- **Zero-config install.** No onboarding, no test video, no capability
+  probe, no `new_install` flag, no stored platform flags. An empty store
+  simply does nothing until taught; the save/apply toasts ARE the
+  tutorial.
+- **The remembered adjustment IS the product.** Kodi's native slider is
+  the editor; everything else is trim around that loop.
+- **Capability gating is emergent, not probed.** The management view
+  lists only profiles the platform actually produced; nothing is hidden
+  or gated by stored capability state.
+- **Settings are behavior; data is data.** The dialog holds ~14 behavior
+  knobs; learned offsets live in the JSON store. No runtime state hides
+  in settings.xml — the classic dialog-clobber hazard class is deleted,
+  not managed.
+- **Offsets are authored where they can be judged: during playback.**
+  No surface outside playback ever enters or edits a millisecond value.
+  The management view is inspection + delete/clear; export/import
+  transports learned values without anyone typing one.
+- **Classic's failure mode was overwhelming users; Evolved's is being
+  invisible.** The notification defaults (both ON) and the addon
+  description carry the teaching load — protect them.
 
 ## Entry points
 
-Unchanged from 2.0: `service.py` → `aome.runtime` (the dispatcher-owned
-service), `script.py` → the script-process router (settings, and from E4
-the `manage_offsets` management view).
+- `service.py` → `aome.runtime.ServiceRuntime` — the composition root:
+  builds the full dependency graph with required constructor injection
+  and blocks on the abort monitor. Subscription order is load-bearing
+  (tracker → detector → applier → notifier → seek scheduler → watcher);
+  the runtime docstring is the authority.
+- `script.py` → `aome.script_router` — the `RunScript` half, a separate
+  process. Routes: `manage_offsets`, `export_offsets` / `import_offsets`,
+  `export_log`; anything else opens the settings dialog (launching the
+  addon lands on settings — the hub; every view returns there on exit).
 
-## Architecture
+## Component map
 
-The 2.0 backend is inherited whole: single-threaded dispatcher owning all
-state, per-playback `PlaybackSession` with the STARTING/STABILIZING/STABLE
-stream-state machine, `aome/domain|app|kodi` layering (domain/app are pure —
-the architecture contract test enforces it), scheduled probe/verify stream
-detection, seek scheduler with PM4K coordination, deferral-based notifier.
-See the `aome/` module docstrings — they are the architecture documentation.
+`resources/lib/aome/` — the module docstrings are the architecture
+documentation; trust them first. Layering (enforced by
+`tests/contract/test_architecture.py`):
 
-**What Evolved replaces (the offset data model):**
+- **`domain/`** — pure decisions, no Kodi, no I/O: `profile` (immutable
+  verbatim stream facts), `stream_state` (STARTING → STABILIZING → STABLE
+  machine), `policies` (gating, completeness, delay parsing, seek
+  quiet-window), `formats` (the UNKNOWN absence sentinel only).
+- **`store/`** — the sparse offset database, pure (path injected):
+  `offset_store` (persistence, atomicity, corruption recovery, reset
+  markers), `keys` (key codec + the one display-name table),
+  `resolve` (**the key-schema decision table, executable** — lookup and
+  write-key semantics live here), `table` (`OffsetTable`, the seam the
+  pipeline speaks to).
+- **`app/`** — orchestration on the dispatcher thread, pure:
+  `dispatcher` (single-threaded event loop + timer scheduler — all state
+  lives on this thread, no locks anywhere above it), `events` (typed
+  frozen dataclasses), `session` (`PlaybackSession` owns ALL
+  per-playback state; a new session IS the reset), `stream_detector`
+  (scheduled probe/verify chain, sole writer of `session.profile`),
+  `offset_applier`, `adjustment_watcher` (the learn loop),
+  `seek_scheduler`, `notifier`, `store_mutations` (service side of the
+  mutation channel).
+- **`kodi/`** — the only package allowed to `import xbmc*`: `gateway`
+  (single-shot JSON-RPC — patience lives up in scheduled events, never
+  sleeps here), `settings`, `gui`, `log`, `player_bridge` /
+  `monitor_bridge` (zero-logic posts to the dispatcher), `announce`
+  (shared NotifyAll envelope), `mutation_client` (script-process side).
+- **`view/`** — script-process surfaces over the store: `manage`
+  (inspection + delete/clear), `transfer` (backup export/import),
+  `logexport` (filtered, redacted support log).
 
-- Offsets live in a **sparse JSON store**
-  (`special://profile/addon_data/script.audiooffsetmanager.evolved/offsets.json`),
-  never in settings.xml. Written ONLY by the dispatcher thread (single
-  writer). Atomic persistence (temp + `os.replace`), `.bad` corruption
-  recovery, versioned schema.
-- **Key schema** `hdr|fps|audio` (EVOLVED.md §3.2 — the decision table is
-  the test spec): open vocabulary on all axes with a normalization layer;
-  fps segment is `all` (default) or integer-truncated reported fps when the
-  global `per_fps_offsets` toggle is ON. Lookup: `exact → all → miss`
-  (toggle ON) or `all → miss` (OFF); miss = no-op. The watcher always
-  writes the key derived at store instant from the current profile +
-  toggle — never conditional on lookup history.
-- **Increment/range guarantee:** `delay_ms` is the verbatim signed integer
-  Kodi reports, 1 ms resolution, bounded only by Kodi's ±10 s. Never
-  reintroduce step (25 ms/5 ms) or range assumptions anywhere.
-- The management view (script process) is inspection + delete/clear only
-  (P6 — no value entry anywhere outside playback); its mutations reach the
-  service over a `NotifyAll` channel whitelisted to delete/clear/import.
-  The `import` op is the backup restore (Advanced export/import buttons,
-  2026-07-17): replace-all semantics, values only ever from a staged
-  backup file (`offsets.json.import` — the one sibling file the script
-  process may write), no path and no value on the wire. The script
-  process NEVER writes the store file itself.
-- No onboarding, no test video, no `new_install`, no stored platform
-  capability flags — capability gating is emergent from the store (P3).
+Script-process-only files (`script_router`, `view/*`, the store read
+path) deploy to a test box by file copy with NO Kodi restart;
+service-side changes need a restart.
 
-## Settings doctrine (behavior settings only, post-E3)
+## The offset store doctrine
 
-`settings.xml` holds ~15 behavior knobs (pause, remember-adjustments,
-`per_fps_offsets`, seek-back block, notifications, debug). The classic
-settings-state doctrine survives for these, unchanged and binding:
+Offsets live in a **sparse JSON store**
+(`special://profile/addon_data/script.audiooffsetmanager.evolved/offsets.json`),
+never in settings.xml.
 
-- The settings object is a **live shared proxy**, not a snapshot; keep the
-  parent `Addon` alive for its lifetime.
+- **Single writer:** the dispatcher thread — the ONLY thing that writes
+  the store file, ever. Atomic persistence (temp + fsync +
+  `os.replace`), `.bad` rename on corruption (start empty, log loudly,
+  notify once), versioned schema; a NEWER-schema file makes the store
+  read-only rather than risk clobbering it.
+- **Key schema** `hdr|fps|audio` — **verbatim acceptance**: the reported
+  string, case-folded and trimmed, IS the key segment. No whitelist, no
+  substring matching; the only alias is the proven `hlghdr` → `hlg`
+  (empty HDR → `sdr` is the detector's chain-of-evidence call, not the
+  key codec's). Do NOT add speculative aliases — only observed field
+  fragmentation justifies one. `fps` is `all` (default) or the
+  integer-truncated reported fps when the global `per_fps_offsets`
+  toggle is ON; truncation is what keeps the NTSC fractional rates
+  distinct from their integer siblings (23.976→`23` vs 24.0→`24` …) —
+  the pairs are pinned in tests and must stay distinct.
+- **Lookup:** `exact → all → miss` (toggle ON) or `all → miss` (OFF);
+  both levels are single keys, so no scan and no tie-break exists.
+  Specific-fps entries are dormant while the toggle is OFF; flipping it
+  is non-destructive both ways. **`aome/store/resolve.py` is the
+  decision table, executable** — its docstring plus
+  `tests/unit/test_store_resolve.py` / `test_store_keys.py` are the spec.
+- **Miss semantics:** a miss applies nothing UNTIL the addon has acted
+  on the session, then it zero-resets stale residue (silent for our own,
+  "Offset not saved" toast when discarding an unstored manual value).
+  `delete`/`clear` leave **reset markers** that force 0 at the next
+  resolve regardless — silently (the deletion is the authorization; a
+  confirmation toast was tried and removed, do not reintroduce it).
+- **Write rule — zero history-dependence:** the watcher always writes
+  the single key derived at store instant from the current profile + the
+  current toggle, NEVER conditional on what the lookup hit. This is the
+  sparse-store form of the classic stale-key doctrine.
+- **Immediate effect:** a settings save and a store-changing mutation
+  are resolve moments — the applier re-runs its decision for the live
+  session, so mid-playback edits act at once. A save never wipes the
+  user's hand (only our own orphaned residue is reset).
+- **Increment/range guarantee:** `delay_ms` is the verbatim signed
+  integer Kodi reports, 1 ms resolution, bounded only by Kodi's ±10 s.
+  Never reintroduce step (25 ms/5 ms) or range assumptions anywhere —
+  store, views, tests, or any future nudge UI. Custom-build sliders just
+  work because nothing quantizes.
+
+## The mutation channel (two processes, one writer)
+
+The management/transfer views run in the script process and **never
+write the store file**. They read it through the read-only reader and
+mutate over a `JSONRPC.NotifyAll` channel to the service, whitelisted to
+`delete` / `clear` / `import` — no `set` op and no value field exists, so
+the channel structurally cannot carry a value write. Acks are
+request_id-matched; no ack means "service not running", reported to the
+user with deliberately NO fallback write path. `import` is the backup
+restore: replace-all semantics, values only ever from a staged backup
+file (`offsets.json.import` — the one sibling file the script process
+may write), no path and no value on the wire, service re-validates and
+refuses an empty stage. Do not shortcut any of this with "the script
+just edits the JSON."
+
+## Settings doctrine (behavior settings only)
+
+`settings.xml` (~180 lines, 14 settings) holds behavior knobs only:
+`remember_adjustments` / `apply_offsets` (the orthogonal learn/apply
+pair — the watcher never consults the apply toggle, so apply-off +
+learn-on is the legal re-teach state), `per_fps_offsets`, the
+`seek_back_events` multiselect (option values = `SeekScheduler.REASONS`
+verbatim, contract-test-pinned) + shared `seek_back_seconds`,
+`notify_apply` / `notify_learn` / `notification_seconds`,
+`enable_debug_logging`, the action buttons, and the hidden
+`coexistence_warned` once-flag. The classic settings-state doctrine
+survives for these, unchanged and binding:
+
+- The settings object is a **live shared proxy**, not a snapshot; it is
+  live only while its parent `xbmcaddon.Addon` stays alive — keep the
+  `Addon` on `self`, never `xbmcaddon.Addon(...).getSettings()` a
+  temporary.
 - **Never write a setting from Python while the settings dialog is open**
-  (its save-on-close clobbers you); action buttons that lead to writes use
-  `<close>true</close>` and let the write settle.
+  (its save-on-close clobbers you); action buttons that lead anywhere
+  use `<close>true</close>` and let the write settle. Service-side
+  writes go through the `store_*_if_changed` helpers.
 - Offset **data** is exempt from all of this because it never lives in
-  settings — that hazard class is deleted, not managed (P4).
+  settings — that hazard class is deleted, not managed.
+
+## Kodi packaging constraints
+
+- Only shippable files are tracked without `export-ignore`; dev tooling
+  (this file, `.github/`, `tests/`, `tools/`, `.claude/`) is excluded.
+  Verify anytime: `git archive --format=zip -o /tmp/pkg.zip HEAD` and
+  inspect. The package is `aome/` + slim XML + resources under the
+  dotted id.
+- Requires `xbmc.python` **3.0.1** (Kodi Nexus floor → Python 3.8
+  syntax everywhere).
+- `addon.xml` `<news>` is schema-capped at 1500 characters — keep only
+  the last couple of versions; older changelogs live in git history.
+- CI (`ci.yml`) is **manual-dispatch only** — the local pytest suite
+  gates every commit, so CI runs as part of cutting a beta:
+  `gh workflow run ci.yml --ref main`, then `gh run watch`.
 
 ## Conventions
 
-- Match existing style: module docstrings, constructor dependency
-  injection, no globals; new runtime files under `resources/lib/aome/`.
-- Kodi I/O through the gateway adapters; logging through the injected
-  sinks with `AOMe_`-prefixed messages (the `e` distinguishes Evolved's
-  lines from classic AOM's in a shared kodi.log); Python 3.8 syntax.
+- Match existing style: module docstrings state design intent and
+  behavior (never construction history), constructor dependency
+  injection with required args, no globals, no singletons; runtime code
+  under `resources/lib/aome/`.
+- Kodi I/O through the gateway adapters only; logging through the
+  injected sinks with `AOMe_`-prefixed messages (the `e` distinguishes
+  Evolved's lines from classic AOM's in a shared kodi.log). The debug
+  toggle escalates the addon's LOGDEBUG lines to LOGINFO; the Advanced
+  "Export addon log" button produces the redacted support report.
+- `strings.po`: retired string ids are never reused; new strings get
+  translator context comments; contract tests pin id parity and
+  fallback defaults.
+- User-facing text: plain and succinct, describe the behavior and the
+  off-state, no em dashes, no marketing framing.
 - Small imperative commits with the
-  `Co-authored-by: Claude <noreply@anthropic.com>` trailer; annotated
-  `evolved-N` tags at phase boundaries; full pytest green before every
-  commit.
+  `Co-authored-by: Claude <noreply@anthropic.com>` trailer; full pytest
+  green (984 tests, seconds to run: `python -m pytest tests -q`) before
+  every commit.
