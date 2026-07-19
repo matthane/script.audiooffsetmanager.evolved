@@ -4,6 +4,8 @@ Constructs the REAL ServiceRuntime under Kodistubs. Dispatch follows subscriptio
 event type, so the order pins here are behavioral guarantees, not style.
 """
 
+import threading
+
 import pytest
 
 from resources.lib.aome.app import events
@@ -42,6 +44,13 @@ def test_service_runtime_graph_wiring(runtime):
                       runtime.notifier, runtime.seek_scheduler,
                       runtime.adjustment_watcher):
         assert component._sessions is runtime.session_tracker
+
+    # The per-fps advisor reads the same live settings proxy and presents
+    # through the runtime's thread-handing presenter (the dispatcher must
+    # never block on a modal).
+    assert runtime.per_fps_advisor._settings is runtime.settings
+    assert runtime.per_fps_advisor._gui is runtime.gui
+    assert runtime.per_fps_advisor._present == runtime._present_advisory
 
     # The settle/save split: the seek scheduler's 'change' replay
     # rides the SETTLE (user-action) fact; the notifier's saved toast
@@ -91,6 +100,9 @@ def test_runtime_subscription_order_is_pinned(runtime):
     assert settings_changed[0] is runtime
     assert settings_changed.index(runtime.offset_applier) < \
         settings_changed.index(runtime.adjustment_watcher)
+    # The advisor's explainer runs LAST — commentary on a save the
+    # applier/watcher have already reconciled, never sequencing.
+    assert settings_changed[-1] is runtime.per_fps_advisor
 
     # OffsetApplied AND DelayReset: the watcher's structural supersede
     # subscribes to both — every delay the applier sets (apply or silent
@@ -226,3 +238,54 @@ class TestCoexistenceWarning:
 
         assert len(oks) == 1
         assert writes == []
+
+
+# --- advisory presenter ---------------------------------------------------------
+
+class TestAdvisoryPresenter:
+    """The per-fps explainer's modal must never block the dispatcher: the
+    runtime presenter hands it to a display-only thread, and a request
+    landing under a still-open advisory is skipped, not stacked."""
+
+    def test_presents_off_the_calling_thread(self, runtime, monkeypatch):
+        shown = []
+
+        def recording_ok(heading, body):
+            shown.append((heading, body, threading.current_thread()))
+            return True
+
+        monkeypatch.setattr(runtime.gui, 'ok', recording_ok)
+
+        caller = threading.current_thread()
+        runtime._present_advisory('heading', 'body')
+        runtime._advisory_thread.join(timeout=5.0)
+
+        assert shown[0][:2] == ('heading', 'body')
+        assert shown[0][2] is not caller           # never the caller's thread
+        assert not runtime._advisory_thread.is_alive()
+
+    def test_open_advisory_skips_a_stacked_explainer(self, runtime,
+                                                     monkeypatch):
+        release = threading.Event()
+        shown = []
+
+        def blocking_ok(heading, body):
+            shown.append((heading, body))
+            release.wait(timeout=5.0)              # the user reading the dialog
+            return True
+
+        monkeypatch.setattr(runtime.gui, 'ok', blocking_ok)
+
+        runtime._present_advisory('first', 'body')
+        first_thread = runtime._advisory_thread
+        runtime._present_advisory('second', 'body')  # flipped again under it
+
+        assert runtime._advisory_thread is first_thread   # no second thread
+        release.set()
+        first_thread.join(timeout=5.0)
+        assert shown == [('first', 'body')]
+
+        # With the advisory dismissed, the next flip presents normally.
+        runtime._present_advisory('third', 'body')
+        runtime._advisory_thread.join(timeout=5.0)
+        assert shown == [('first', 'body'), ('third', 'body')]

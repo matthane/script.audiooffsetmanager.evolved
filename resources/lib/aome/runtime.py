@@ -30,13 +30,18 @@ Subscription order is load-bearing (dispatch follows it, per event type):
    the applier sets announces itself (``OffsetApplied`` for applies,
    ``DelayReset`` for silent resets), whose watcher pass drops an
    in-flight observation (the supersede corollary, enforced
-   structurally).
+   structurally);
+7. per-fps advisor — its SettingsChanged pass runs last, after the
+   applier/watcher have already reconciled the very save it explains
+   (the dialog is commentary on a done deed, never sequencing).
 
 One exception precedes the numbered order: the runtime's own
 ``SettingsChanged`` debug-flag refresh subscribes before everything, so
 the passes for the very save that toggles debug logging already log at
 the fresh escalation level.
 """
+
+import threading
 
 import xbmcvfs
 
@@ -45,6 +50,7 @@ from resources.lib.aome.app.adjustment_watcher import AdjustmentWatcher
 from resources.lib.aome.app.dispatcher import Dispatcher
 from resources.lib.aome.app.notifier import Notifier
 from resources.lib.aome.app.offset_applier import OffsetApplier
+from resources.lib.aome.app.per_fps_advisor import PerFpsAdvisor
 from resources.lib.aome.app.seek_scheduler import (ExternalSeekCoordinator,
                                                   SeekScheduler)
 from resources.lib.aome.app.session import SessionTracker
@@ -124,6 +130,12 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, self.offsets, log_debug=self.logger.debug,
             log_warning=self.logger.warning)
+        # The mode-change explainer; its presenter hands the modal to a
+        # display-only thread so the dispatcher never blocks on it.
+        self._advisory_thread = None
+        self.per_fps_advisor = PerFpsAdvisor(
+            self.dispatcher, self.settings, self.gui,
+            present=self._present_advisory, log_debug=self.logger.debug)
         # The cross-process mutation channel's executor: requests
         # arrive via the monitor bridge as typed events, mutate the store
         # on this dispatcher (single-writer doctrine), and ack back over
@@ -149,6 +161,28 @@ class ServiceRuntime:
         debug = self.settings.debug_logging_enabled()
         self.logger.debug_escalation = debug
         self.dispatcher.log_runtimes = debug
+
+    def _present_advisory(self, heading, body):
+        """Hand a modal explainer to a short-lived display-only thread.
+
+        The advisor calls this from the dispatcher thread, and a modal
+        ``ok`` blocks until dismissed — run it there and every event and
+        timer of the addon stalls behind the user's OK press. Nothing but
+        the pre-resolved strings crosses to the helper thread (display
+        only, no shared state), so the single-threaded-state doctrine
+        holds. A request landing while a previous advisory is still on
+        screen is skipped: it can only mean the toggle flipped again
+        under an open explainer, and a second stacked modal teaches
+        nothing the fresh flip's own state does not.
+        """
+        if self._advisory_thread is not None and \
+                self._advisory_thread.is_alive():
+            self.logger.debug("AOMe_Runtime: advisory dialog still showing; "
+                              "skipping a stacked explainer")
+            return
+        self._advisory_thread = threading.Thread(
+            target=self.gui.ok, args=(heading, body), daemon=True)
+        self._advisory_thread.start()
 
     def _maybe_warn_coexistence(self):
         """One-time warning when the original addon is enabled alongside.
