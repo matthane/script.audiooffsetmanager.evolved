@@ -1,12 +1,10 @@
-"""Kodi monitor bridge: settings-change + NotifyAll callbacks post to the dispatcher.
+"""Kodi monitor bridge: settings-change and NotifyAll callbacks post to the dispatcher.
 
-Also serves as the service's abort monitor (the runtime blocks on
-``waitForAbort()`` of this instance). Near-zero logic, like the player
-bridge: ``onNotification`` only FILTERS (own addon id, mutation message)
-and decodes the JSON payload via the shared transport helpers — the fields
+Also the service's abort monitor (the runtime blocks on this instance's
+``waitForAbort()``). Near-zero logic: ``onNotification`` filters for the
+addon's own mutation message and decodes the JSON payload; the fields
 travel verbatim on the typed event and the StoreMutationHandler owns all
-validation, so a malformed payload is rejected loudly there instead of
-vanishing here.
+validation.
 """
 
 import xbmc
@@ -28,15 +26,14 @@ class MonitorBridge(xbmc.Monitor):
         self._dispatcher.post(events.SettingsChanged())
 
     def onNotification(self, sender, method, data):
-        # Only the addon's own mutation channel; everything else on the bus
-        # (including the service's own acks, which use a different message
-        # name) is not ours to handle.
+        # Only the addon's own mutation channel (the acks use a different
+        # message name); everything else on the bus is not ours.
         if sender != ADDON_ID or method != _MUTATION_METHOD:
             return
         payload = decode_payload(data)
         if payload is None:
-            # Undecodable request: post it anyway (op=None) so the handler
-            # rejects it LOUDLY instead of the channel silently eating it.
+            # Undecodable request: post it (op=None) so the handler rejects
+            # it loudly instead of the channel silently dropping it.
             self._dispatcher.post(events.StoreMutationRequested(op=None))
             return
         self._dispatcher.post(events.StoreMutationRequested(

@@ -1,22 +1,20 @@
-"""Playback sessions: one object owns ALL per-playback state.
+"""Playback sessions: one object owns all per-playback state.
 
 A ``PlaybackSession`` is created on ``PlaybackStarted`` and destroyed on
 stop/end. A new playback while one is live (in-place reopen) tears the old
-session down and starts a fresh one — so "reset logic" does not exist: a new
-session IS the reset, and anything still referencing the old ``session_id``
-is inert by construction.
+session down and starts a fresh one, so there is no "reset logic": a new
+session is the reset, and anything still referencing the old ``session_id``
+is inert.
 
-``SessionTracker`` owns the current session and its lifecycle. Its
-``PlaybackStarted``/``PlaybackStopped``/``PlaybackEnded`` handlers must be
-subscribed BEFORE any component that reads the session for the same events
-(the runtime constructs it first, and dispatcher dispatch follows
-subscription order; tests/contract pin this). Note the stop/end ordering
-consequence: by the time other PLAYBACK_STOPPED/ENDED handlers run, the
-session is already gone — the ending session is deliberately not exposed.
+``SessionTracker`` owns the current session. Its lifecycle handlers must be
+subscribed before any component that reads the session for the same events
+(the runtime constructs it first, and dispatch follows subscription order;
+a contract test pins this). One ordering consequence: by the time other
+stop/end handlers run, the session is already gone.
 
 Stream-state transitions go through the ``mark_*`` methods so the legal
-diagram (see aome.domain.stream_state) lives in ONE place; illegal requests
-are ignored and reported via the return value instead of corrupting state.
+diagram (see aome.domain.stream_state) lives in one place; illegal requests
+are ignored and reported via the return value rather than corrupting state.
 
 Pure Python: no Kodi imports; logging callables are injected.
 """
@@ -50,15 +48,13 @@ class PlaybackSession:
     # codec blip that reverted).
     profile_changed_since_stabilized: bool = False
     # (store_key, delay_ms) — what we believe Kodi's audio delay is set to.
-    # The key is None after a baseline zero-reset (the 0 in
-    # force belongs to no stored profile). Writers, all on the dispatcher
-    # thread: the OffsetApplier records it BEFORE each apply/reset RPC
-    # (restoring on failure), and the AdjustmentWatcher updates it when it
-    # stores a user's manual value (the user's value IS the applied value;
-    # skipping this would make the next same-profile AV event re-apply and
-    # re-notify). It is the applier's dedupe guard, the watcher's self-echo
-    # reference, AND the miss policy's "has the addon acted on this session"
-    # flag (None = untouched, so a miss must leave Kodi's delay alone).
+    # The key is None after a baseline zero-reset (the 0 belongs to no stored
+    # profile). Writers, all on the dispatcher thread: the OffsetApplier
+    # records it before each apply/reset RPC (restoring on failure), and the
+    # AdjustmentWatcher updates it when it stores a user's manual value. It
+    # is the applier's dedupe guard, the watcher's self-echo reference, and
+    # the miss policy's "has the addon acted on this session" flag (None =
+    # untouched, so a miss must leave Kodi's delay alone).
     applied: tuple = None
     pending_notification: tuple = None      # (held profile, delay_ms) awaiting STABLE
     # The applier's miss-dedupe: the last consulted-key chain announced as a
@@ -68,33 +64,29 @@ class PlaybackSession:
     paused: bool = False
     # How many times this session has earned STABLE. Written only by
     # mark_stable() (the diagram's one edge into STABLE); the detector stamps
-    # StreamStabilized.initial from it, which replaced the scheduler's
-    # startup-skip latch (initial_av_change_consumed) — the "is this startup
-    # settling?" question is now answered by the state machine itself.
+    # StreamStabilized.initial from it, so "is this startup settling?" is
+    # answered by the state machine itself.
     stabilized_count: int = 0
     # Monotonic timestamps; None = never (a 0.0 sentinel would be wrong for
     # monotonic clocks, whose epoch is arbitrary).
     last_seek_activity: Optional[float] = None
     seek_history: dict = field(default_factory=dict)  # reason -> monotonic ts
     # AdjustmentWatcher observation state. The baseline is the last delay
-    # value accounted for (ours, or already stored): only a CHANGE away from
-    # it can become a user adjustment, so a pre-existing delay the watcher
-    # first observes (e.g. left behind by a failed apply RPC) is adopted
-    # silently, never stored. watch_pending is the quiescence candidate:
-    # (observed_ms, first_seen_monotonic). watch_settled_ms is the value
-    # the current observation episode last posted UserOffsetSettled for:
-    # the store-failure retry path deliberately re-settles the same value
-    # (baseline kept so the store retries), and the marker keeps the EVENT
-    # at one per user action — without it every retry cycle would fire
-    # another 'change' seek-back.
+    # value accounted for (ours, or already stored): only a change away from
+    # it can become a user adjustment, so a pre-existing delay first observed
+    # (e.g. a failed apply RPC's leftover) is adopted silently, never stored.
+    # watch_pending is the quiescence candidate (observed_ms,
+    # first_seen_monotonic). watch_settled_ms is the value this observation
+    # episode last posted UserOffsetSettled for, keeping the event at one per
+    # user action even when the store-failure path re-settles the same value.
     watch_baseline_ms: Optional[int] = None
     watch_pending: tuple = None
     watch_settled_ms: Optional[int] = None
 
     def describe(self):
-        """One-line state snapshot for field logs (replaces debug_snapshot).
+        """One-line state snapshot for logs.
 
-        Emitted by the applier after each apply decision so field logs keep a
+        Emitted by the applier after each apply decision so logs keep a
         greppable state line at the moments that matter.
         """
         described = (self.profile.describe()
@@ -121,12 +113,11 @@ class PlaybackSession:
     def mark_stable(self):
         """STABILIZING -> STABLE (the diagram's only edge into STABLE).
 
-        A confirmation landing on STARTING means no verification was ever
-        requested for this session — refuse rather than jump states; the
-        caller logs it. Returns True when the transition happened. A failed
-        verification no longer strands STABILIZING: the StreamDetector
-        re-schedules verification until the profile settles (the recovery
-        edge).
+        A confirmation landing on STARTING means no verification was
+        requested for this session, so refuse rather than jump states (the
+        caller logs it). Returns True when the transition happened. A failed
+        verification does not strand STABILIZING: the StreamDetector
+        re-schedules verification until the profile settles.
         """
         if self.stream_state is StreamState.STABILIZING:
             self.stream_state = StreamState.STABLE
@@ -156,10 +147,9 @@ class SessionTracker:
     def is_alive(self, session_id):
         """True while the given session is still the live one.
 
-        Every caller — and since the AdjustmentWatcher replaced ActiveMonitor,
-        every reader of session state at all — runs on the dispatcher thread.
-        The single read of self.current is kept: it is free, and it makes the
-        method safe for any future off-thread caller without a change here.
+        Every caller runs on the dispatcher thread. The single read of
+        self.current is kept anyway: it is free and keeps the method safe
+        for any future off-thread caller.
         """
         current = self.current
         return current is not None and current.session_id == session_id

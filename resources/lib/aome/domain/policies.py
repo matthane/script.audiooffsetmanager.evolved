@@ -9,21 +9,17 @@ from resources.lib.aome.domain import formats
 
 
 def parse_delay_ms(delay_str):
-    """Parse Kodi's localized `Player.AudioDelay` infolabel string to ms.
+    """Parse Kodi's localized ``Player.AudioDelay`` string to ms, or None.
 
-    Handles '-0.075 s', comma decimals ('-0,075 s'), a Unicode minus sign
-    (U+2212, used by some CLDR locales), and narrow no-break spaces anywhere
-    around the unit. Clamps to +/-10 s. Returns None on unparseable input.
+    Handles '-0.075 s', comma decimals ('-0,075 s'), a Unicode minus
+    (U+2212, some CLDR locales), and narrow no-break spaces around the
+    unit. Clamps to +/-10 s.
 
-    Parsing details that matter:
-
-    - A narrow no-break space as the SOLE separator before the unit
-      ('-0.075<U+202F>s', the CLDR unit-separator convention) parses:
-      NNBSP is normalized to a regular space BEFORE the unit is stripped,
-      never deleted (deleting it would leave '-0.075s' for float()).
-    - The ms conversion rounds instead of truncating: float('-0.115') * 1000
-      is -114.999..., and truncation would report -114 for a slider value
-      of -115 ms.
+    Two non-obvious choices: a narrow no-break space (the CLDR unit
+    separator) is normalized to a regular space before the unit is
+    stripped, not deleted (deleting it would leave '-0.075s' for float);
+    and the ms conversion rounds, since float('-0.115') * 1000 is
+    -114.999... and truncation would report -114 for a -115 ms value.
     """
     try:
         normalized = (delay_str.replace('\u202f', ' ')  # narrow no-break space
@@ -47,13 +43,11 @@ def parse_delay_ms(delay_str):
 def is_complete(profile):
     """True when the profile carries enough facts to key the store.
 
-    Under the open vocabulary the HDR axis always resolves (the detector
-    defaults an absent reading to 'sdr'), so completeness is: an audio
-    format was reported, and the fps rate parsed. Requiring fps keeps
-    discovery patient during startup renegotiation (probing continues
-    until the fps axis settles — a stream whose rate is still unreadable
-    is not ready to act on) and guarantees the per-fps write key is
-    always composable for a complete profile.
+    The HDR axis always resolves (the detector defaults an absent reading
+    to 'sdr'), so completeness means an audio format was reported and the
+    fps rate parsed. Requiring fps keeps discovery patient while a stream's
+    rate is still unreadable, and guarantees the per-fps write key is always
+    composable for a complete profile.
     """
     if profile is None:
         return False
@@ -63,12 +57,11 @@ def is_complete(profile):
 
 
 def stream_identity(profile, per_fps):
-    """The "same stream" comparison key, at the granularity that matters.
+    """The "same stream" comparison key at the granularity that matters.
 
-    With the per-fps toggle OFF the fps axis does not exist for offsets, so
-    it is excluded — a VFR rate wiggle between gathers must not read as a
-    stream change. With the toggle ON the truncated rate is part of the
-    identity, exactly like the lookup key.
+    With per_fps off the fps axis is excluded, so a VFR rate wiggle between
+    gathers does not read as a stream change. With it on, the truncated rate
+    is part of the identity, exactly like the lookup key.
     """
     if per_fps:
         return (profile.hdr_type, profile.fps_int(), profile.audio_format)
@@ -77,52 +70,38 @@ def stream_identity(profile, per_fps):
 
 def seek_decision(now, requested_at, last_activity, last_own_seek,
                   quiet_window, deadline, yield_to_activity=False):
-    """The seek quiet-window policy: one rule for every seek-back request.
+    """Decide one seek-back request: 'seek' | 'defer' | 'abandon' | 'yield'.
 
-    Do not seek until there has been no seek activity — ours, another
-    addon's, or the user's — for ``quiet_window`` seconds; defer otherwise;
-    give up ``deadline`` seconds after the request. A request that another
-    of our own seeks has already served (executed AT or AFTER the moment
-    this request was made — same-instant counts as served, the safe side
-    against a double rewind) is abandoned: its purpose — replaying the
-    glitched seconds — is done.
+    The rule: do not seek until there has been no seek activity (ours,
+    another addon's, or the user's) for ``quiet_window`` seconds; defer
+    until then; give up ``deadline`` seconds after the request. A request
+    already served by one of our own seeks (executed at or after the
+    request; same-instant counts as served) is abandoned.
 
     ``yield_to_activity`` is the stronger rule for triggers an external
-    actor may mirror (the scheduler passes it for 'unpause'): ANY seek
-    activity at or after ``requested_at`` yields the request instead of
-    deferring it. Someone else moved the playhead after the trigger —
-    another addon's own unpause seek-back, a repositioning, the user
-    scrubbing — and replaying on top of their seek would double it.
-    Activity strictly BEFORE the request never yields (the quiet window
-    handles it): the rule is about the playhead having been touched since
-    the trigger, not about recent busyness. One sampling nuance the
-    caller owns: vendor busyness is stamped when PROBED, so an external
-    actor still busy at attempt time reads as at-trigger activity and
-    yields — deliberate, since busyness spanning the trigger IS the
-    playhead being handled externally. Vendor-agnostic by construction:
-    the caller's activity view is the generic aggregate (SeekOccurred,
-    the vendor busy list, our own seeks), never a specific addon.
+    actor may mirror (the scheduler passes it for 'unpause'): any seek
+    activity at or after ``requested_at`` yields the request rather than
+    deferring it, because someone else moved the playhead since the trigger
+    and replaying would double their seek. Activity strictly before the
+    request never yields (the quiet window handles it). The caller's
+    activity view is a generic aggregate (SeekOccurred, the vendor busy
+    list, our own seeks), never a specific addon.
 
-    Args (all timestamps monotonic; the caller resolves them):
+    Args (timestamps monotonic; the caller resolves them):
         now: current time.
         requested_at: when this seek was requested.
-        last_activity: most recent seek-like activity — any SeekOccurred,
-            vendor busy signal, our own executed seek, or session start
-            (session start counting as activity gives playback a settle
-            window after start without a bespoke constant).
-        last_own_seek: when WE last executed a seek this session, or None.
+        last_activity: most recent seek-like activity, including session
+            start (which gives playback a settle window after start).
+        last_own_seek: when we last executed a seek this session, or None.
         quiet_window: required quiet seconds before seeking.
         deadline: max seconds after requested_at before giving up.
         yield_to_activity: apply the yield rule above (default off).
 
-    Returns:
-        'seek' | 'defer' | 'abandon' | 'yield'. Evaluated in a fixed
-        order: served, then yielded, then deadline, then quietness.
-        Deadline before quietness: a request that aged past the deadline
-        is abandoned even if the window happens to be quiet now — a very
-        late replay would itself be the disruption it was meant to
-        repair. 'yield' is its own verdict (not folded into 'abandon')
-        so the caller's log states WHY the replay stood down.
+    Verdicts are evaluated in a fixed order: served, yielded, deadline,
+    quietness. Deadline before quietness means a request that aged out is
+    abandoned even if the window is quiet now, since a very late replay
+    would itself be disruptive. 'yield' is its own verdict so the caller's
+    log can state why the replay stood down.
     """
     if last_own_seek is not None and last_own_seek >= requested_at:
         return 'abandon'
@@ -138,14 +117,12 @@ def seek_decision(now, requested_at, last_activity, last_own_seek,
 def should_apply(profile, apply_enabled):
     """Decide whether an offset may be applied for this profile.
 
-    Applying requires the 'Apply audio offsets' toggle (it gates applying
-    only, never learning) and a profile complete enough to key the store.
-    An empty store needs no gate of its own: a lookup miss is already a
-    no-op.
+    Applying requires the apply toggle (which gates applying only, never
+    learning) and a profile complete enough to key the store.
 
     Args:
         profile: StreamProfile or None.
-        apply_enabled: bool — the apply toggle (caller resolves it).
+        apply_enabled: bool, the apply toggle (caller resolves it).
 
     Returns:
         (allowed, reason) — reason is None when allowed, else one of

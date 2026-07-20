@@ -1,60 +1,47 @@
 """Stream detection: scheduled single-shot probes + whole-profile verification.
 
-Replaces StreamInfo's blocking gather (RPC retry sleeps, formerly on the Kodi
-pump / dispatcher thread) and AvChangeFilter's codec-only verify thread.
-Patience lives HERE, expressed as budgeted, session-stamped, cancelable
-scheduled events — never as sleeps:
+Patience lives here, expressed as budgeted, session-stamped, cancelable
+scheduled events rather than sleeps:
 
 - ``PlaybackStarted`` starts a discovery chain: ``ProbeStream(attempt=n)``
   every ~0.5s (jittered) until the profile is complete or the budget runs
-  out (~10s — sized to outlast slow player-id and codec reporting at
-  playback start).
-- A complete profile is adopted (this component is the SOLE writer of
-  ``session.profile`` and the owner of every stream-state transition), then
-  verified: ``VerifyStream`` re-gathers after 1s and requires the WHOLE
-  profile — HDR, FPS and audio, not just the codec — to have held before
-  marking the session STABLE and posting ``StreamStabilized``.
+  out (~10s, sized to outlast slow player-id and codec reporting at start).
+- A complete profile is adopted (this component is the sole writer of
+  ``session.profile`` and owns every stream-state transition), then
+  verified: ``VerifyStream`` re-gathers after 1s and requires the whole
+  profile (HDR, FPS, and audio) to have held before marking the session
+  STABLE and posting ``StreamStabilized``.
 - A failed verification (profile changed or went incomplete inside the
-  window) re-adopts or re-schedules verification instead of stranding the
-  session STABILIZING.
+  window) re-adopts or re-schedules instead of stranding STABILIZING.
 - ``AvChanged`` triggers an immediate single-shot re-probe: unchanged
-  profile → ignored (judged on the WHOLE profile, so HDR/FPS-only changes
-  re-verify too);
-  changed → re-adopt + re-verify; lost → regress to STABILIZING and let the
-  verify loop chase it.
+  profile ignored; changed re-adopts and re-verifies; lost regresses to
+  STABILIZING for the verify loop to chase.
 
-Every gather posts ``StreamProbed`` platform facts — log-only
-observability.
+Every gather posts ``StreamProbed`` platform facts (log-only).
 
-"Same stream" is judged on the OFFSET-RELEVANT identity
-(``policies.stream_identity``, consulted at compare instant with the live
-``per_fps_offsets`` toggle) — not raw dataclass equality: incidental fields
-(player_id, audio_channels, and — when the toggle is off — the fps rate)
-can wiggle between gathers (channel-count flicker during passthrough sync,
-VFR fps re-reads) without the stream changing for offset purposes. An
-identity-equal gather silently refreshes ``session.profile`` (so downstream
-readers see fresh incidental fields) with no events and no state change;
-comparing raw equality instead would strand verification in a perpetual
-re-adopt loop.
+"Same stream" is judged on the offset-relevant identity
+(``policies.stream_identity`` with the live ``per_fps_offsets`` toggle), not
+raw dataclass equality: incidental fields (player_id, audio_channels, and,
+with the toggle off, the fps rate) can wiggle between gathers without the
+stream changing for offset purposes. An identity-equal gather silently
+refreshes ``session.profile`` with no events and no state change; comparing
+raw equality would strand verification in a perpetual re-adopt loop.
 
-Verbatim acceptance: the audio and HDR axes carry what
-Kodi reported, normalized by ``aome.store.keys`` (case-fold/trim; absence to
-'unknown'; on the HDR axis also the cross-build canonicalization — whitespace
-strip plus the field-observed aliases). No whitelist, no fps buckets, no
-per-HDR override collapse — the per-fps granularity question lives at the
-store's lookup/write instant. The HDR chain-of-evidence runs primary -> fallback ->
-sdr default -> HLG-gamut sniff.
+Verbatim acceptance: the audio and HDR axes carry what Kodi reported,
+normalized by ``aome.store.keys`` (case-fold/trim, absence to 'unknown', and
+on the HDR axis the cross-build canonicalization). The per-fps granularity
+question lives at the store's lookup/write instant. The HDR chain-of-evidence
+runs primary -> fallback -> sdr default -> HLG-gamut sniff.
 
-Timing choices worth knowing:
-- Offsets re-apply EAGERLY on mid-play changes: adoption posts
+Timing:
+- Offsets re-apply eagerly on mid-play changes: adoption posts
   ``ProfileChanged`` immediately (the apply is provisional; notifications
-  still wait for STABLE) — A/V sync matters before the stream settles.
+  wait for STABLE), because A/V sync matters before the stream settles.
 - HDR- or FPS-only mid-play changes are full change episodes (offset
-  re-apply, notification, the 'adjust' seek-back trigger) — every axis of
-  the profile participates, not just the codec.
+  re-apply, notification, the 'adjust' seek-back), not just codec changes.
 
-Pure app layer: Kodi I/O goes through the injected gateway, settings reads
-through the injected facade; no Kodi imports, log sinks are injected.
+Pure app layer: Kodi I/O through the injected gateway, settings through the
+injected facade; no Kodi imports, log sinks injected.
 """
 
 import math
@@ -78,9 +65,8 @@ class StreamFacts:
     """One detection pass: the derived profile plus platform observations.
 
     ``hdr_source`` records which branch of the chain-of-evidence produced
-    the HDR type ('primary', 'fallback', 'default-sdr', or 'gamut-hlg') —
-    surfaced in the probe log line so field logs show WHICH detection path
-    fired.
+    the HDR type ('primary', 'fallback', 'default-sdr', or 'gamut-hlg'),
+    surfaced in the probe log line.
     """
     profile: StreamProfile
     platform_hdr_full: bool
@@ -99,16 +85,11 @@ def derive_stream_facts(player_id, raw_codec, raw_channels, raw_fps, raw_hdr,
                         raw_hdr_fallback, raw_gamut):
     """Pure derivation of a StreamProfile from raw single-shot readings.
 
-    The HDR chain-of-evidence runs primary -> fallback -> sdr default,
-    with an HLG-via-gamut sniff and echo guards (a reading that merely
-    echoes the infolabel name back is treated as absent; the
-    post-normalization echo check compares against the PRIMARY label —
-    the fallback returns '' rather than an echo when unresolved, so only
-    the primary echo shape occurs in practice). Acceptance is verbatim:
-    audio strings key the store as reported; HDR strings additionally get
-    the key codec's cross-build canonicalization (whitespace strip plus
-    the observed-spelling aliases); fps is the exact parsed rate with no
-    bucket check and no override collapse.
+    The HDR chain-of-evidence runs primary -> fallback -> sdr default, with
+    an HLG-via-gamut sniff and echo guards (a reading that merely echoes the
+    infolabel name back is treated as absent). Acceptance is verbatim: audio
+    strings key the store as reported, HDR strings additionally get the key
+    codec's cross-build canonicalization, and fps is the exact parsed rate.
     """
     audio_format = keys.audio_segment(raw_codec)
 
@@ -172,14 +153,12 @@ class StreamDetector:
     # and codec to both come up on slow starts.
     PROBE_BUDGET = 20
     VERIFY_WINDOW_SECONDS = 1.0
-    # Attempt at which a discovery still missing ONLY the frame rate logs
-    # its one diagnostic line (~2s in). That shape is the field signature
-    # of a file that declares no frame rate, leaving Kodi to measure it
-    # from the stream: Player.Process(videofps) reads 0.000 for ~6s while
-    # every other axis is ready (field-observed on demo .m2ts files).
-    # The line turns the resulting "slow toast" report into a one-grep
-    # diagnosis. Threshold, not attempt 1: a rate that is merely a probe
-    # or two behind the codec is ordinary startup, not the signature.
+    # Attempt at which a discovery still missing only the frame rate logs
+    # its one diagnostic line (~2s in). That shape is the signature of a
+    # file that declares no frame rate, leaving Kodi to measure it:
+    # Player.Process(videofps) reads 0.000 for ~6s while every other axis
+    # is ready. Threshold, not attempt 1: a rate a probe or two behind the
+    # codec is ordinary startup, not the signature.
     FPS_WAIT_LOG_ATTEMPT = 5
 
     _PROBE_KEY = 'aome.detector.probe'
@@ -338,12 +317,11 @@ class StreamDetector:
     # -- internals ----------------------------------------------------------------
 
     def _same_stream(self, profile, adopted):
-        """Offset-relevant identity, at the granularity in force RIGHT NOW.
+        """Offset-relevant identity at the granularity in force now.
 
-        The per-fps toggle is read at compare instant (never captured):
-        with it off, an fps wiggle is an incidental-field refresh; with it
-        on, the truncated rate is part of the identity exactly like the
-        lookup key.
+        The per-fps toggle is read at compare instant: with it off, an fps
+        wiggle is an incidental-field refresh; with it on, the truncated
+        rate is part of the identity like the lookup key.
         """
         if adopted is None:
             return False
@@ -388,9 +366,8 @@ class StreamDetector:
             raw_hdr_fallback=raw_hdr_fallback,
             raw_gamut=raw_gamut,
         )
-        # The raw gateway strings are logged VERBATIM: under the open
-        # vocabulary they are the store's key material, and field logs are
-        # how key fragmentation would ever be observed and diagnosed.
+        # The raw gateway strings are logged verbatim: they are the store's
+        # key material, and logs are how key fragmentation gets diagnosed.
         self._log(f"AOMe_StreamDetector: probed {facts.profile} "
                   f"(hdr_source={facts.hdr_source}, "
                   f"platform_hdr_full={facts.platform_hdr_full}, "

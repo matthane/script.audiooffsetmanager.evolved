@@ -1,13 +1,12 @@
 """Kodi JSON-RPC gateway: every method is a single RPC round-trip.
 
-This is single-shot BY DESIGN. Each call performs exactly one JSON-RPC
-round-trip (or one InfoLabel / window-property read) and returns — no retry
-loops, no sleeps, no jitter. Patience lives UP
-in the app-layer scheduler, where a retry is a cancelable *scheduled
-event* rather than a blocking loop that stalls the dispatcher thread. Budgets
-and back-off live there, not here.
+Single-shot by design: each call performs exactly one JSON-RPC round-trip
+(or one InfoLabel / window-property read) and returns, with no retry loops,
+sleeps, or jitter. Patience lives up in the app-layer scheduler, where a
+retry is a cancelable scheduled event rather than a blocking loop that
+stalls the dispatcher thread.
 
-This is the only ``aome`` layer permitted to import ``xbmc``/``xbmcgui``.
+The only ``aome`` layer permitted to import ``xbmc``/``xbmcgui``.
 """
 
 import json
@@ -24,12 +23,9 @@ class KodiGateway:
     """Single-shot wrapper over Kodi's JSON-RPC, InfoLabels, and window props."""
 
     def __init__(self, *, log):
-        """``log`` is a REQUIRED ``(message, level)`` sink — production
-        injects the ``aome.kodi.log.KodiLogger`` callable. Injection (rather
-        than importing a logger module) keeps the wiring explicit and one
-        instance per process, and preserves the addon-wide
-        LOGDEBUG->LOGINFO escalation the logger applies when the debug
-        toggle is on.
+        """``log`` is a required ``(message, level)`` sink (production
+        injects the ``KodiLogger`` callable), so one instance per process
+        carries the addon-wide LOGDEBUG->LOGINFO escalation.
         """
         self._log = log
         # Home-window handle, created LAZILY on first window-property use:
@@ -178,13 +174,13 @@ class KodiGateway:
             return False
 
     def addon_enabled(self, addon_id):
-        """True when ``addon_id`` is installed AND enabled; False otherwise.
+        """True when ``addon_id`` is installed and enabled; False otherwise.
 
-        Single ``Addons.GetAddonDetails`` call (the coexistence probe,
-        §3.6). A missing addon is a JSON-RPC error response — that and any
-        exception answer False: "not enabled" is the safe reading of every
-        failure (the once-flag is only set after a warning actually shows,
-        so a transient error just retries next service start).
+        Single ``Addons.GetAddonDetails`` call (the coexistence probe). A
+        missing addon is a JSON-RPC error response; that and any exception
+        answer False, the safe reading of every failure (the once-flag is
+        only set after a warning shows, so a transient error just retries
+        next start).
         """
         try:
             response = self._execute_rpc({
@@ -243,17 +239,16 @@ class KodiGateway:
 
     # Kodi's WINDOW_DIALOG_ADDON_SETTINGS. While it is open, its working copy
     # of our settings is saved back on close, clobbering programmatic writes
-    # made underneath it (settings-state doctrine) — writers defer past it.
+    # made underneath it, so writers defer past it.
     _SETTINGS_DIALOG_ID = 10140
 
     def settings_dialog_open(self):
         """True while an addon-settings dialog is the active dialog.
 
-        The window-id knowledge lives HERE (the Kodi layer): the app-layer
-        writers (adjustment watcher, platform recorder) only ask the
-        doctrine-level question. ``getCurrentWindowDialogId()`` reports 9999
-        when no dialog is open; the error fallback answers False — a
-        transient read failure must not wedge a store forever.
+        The window-id knowledge lives here (the Kodi layer) so callers only
+        ask the question. ``getCurrentWindowDialogId()`` reports 9999 when no
+        dialog is open; the error fallback answers False, since a transient
+        read failure must not wedge a write forever.
         """
         try:
             return xbmcgui.getCurrentWindowDialogId() == self._SETTINGS_DIALOG_ID

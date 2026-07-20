@@ -1,49 +1,34 @@
 """Profile-key algebra for the sparse offset store.
 
-DESIGN DOCTRINE — VERBATIM ACCEPTANCE.
+Keys are derived from what Kodi reports, accepted verbatim: no whitelist,
+no substring matching, no alias table gating which codecs or HDR types are
+known. A codec or HDR string this code has never seen becomes a working key
+with no code change. Normalization is minimal: case-fold + trim, plus a
+defensive ``|`` substitution; the HDR axis also strips internal whitespace
+and unifies known cross-build spelling splits (see ``hdr_segment``).
 
-Evolved stores audio offsets against stream-profile keys derived from what
-Kodi REPORTS, exactly as presented. There is NO whitelist, NO substring
-matching, and NO alias table gating which codecs or HDR types are "known." A
-codec or HDR string this code has never encountered becomes a working key with
-zero code changes — that is the whole point. Normalization is deliberately
-minimal: case-fold + trim, plus a defensive `|` substitution (see below); the
-HDR axis additionally strips internal whitespace and unifies the observed
-cross-build spelling splits (see `hdr_segment`).
+Aliases never grow speculatively. Each exists because the same format was
+reported under two spellings by different Kodi builds, where a fragmented
+key would strand a learned offset: ``hlghdr`` -> ``hlg`` and ``hdr10+`` ->
+``hdr10plus`` (Kodi 21's HDR infolabel says 'HDR10+', Kodi 22's native
+detection says 'hdr10plus'). Spaced title-case reports ('Dolby Vision' vs
+'dolbyvision') are the same class, handled by the whitespace strip rather
+than per-variant aliases.
 
-Aliases never grow speculatively. Each entry exists because the SAME format
-was observed reported under two spellings by different Kodi builds, where a
-fragmented key strands a learned offset on the other build: `hlghdr` -> `hlg`
-(shipped detection behaviour) and `hdr10+` -> `hdr10plus` (Kodi 21's primary
-HDR infolabel says 'HDR10+' where Kodi 22's native detection says
-'hdr10plus'). Spaced title-case reports ('Dolby Vision' on Kodi 21 vs
-'dolbyvision' on Kodi 22) are the same fragmentation class, handled wholesale
-by the whitespace strip instead of per-variant aliases. Real fragmentation
-observed in the field remains the only justification for any future addition.
+Key shape: ``<hdr>|<fps>|<audio>`` (e.g. ``dolbyvision|23|truehd``,
+``hdr10plus|all|aac``). The ``|`` joiner is why ``normalize_segment`` maps
+any stray ``|`` inside a raw string to ``_``, so ``split_key`` always
+recovers exactly three parts.
 
-KEY SHAPE: ``<hdr>|<fps>|<audio>`` — e.g. ``dolbyvision|23|truehd`` or
-``hdr10plus|all|aac``. The `|` joiner is why `normalize_segment` maps any stray
-`|` inside a raw string to `_`: the separator must never appear inside a
-segment, so `split_key` can always recover exactly three parts.
+Absence (empty, 'none', 'unknown') collapses to the UNKNOWN sentinel; every
+other string passes through verbatim. ``hdr_segment`` maps a blank HDR to
+'unknown', not 'sdr': choosing 'sdr' for an absent flag is a
+chain-of-evidence decision that belongs to the detector, not this pure
+module. FPS uses integer truncation, keeping NTSC fractional rates distinct
+from their integer siblings (23.976 -> 23 vs 24.0 -> 24); with per-fps off
+the segment is the literal 'all'.
 
-Absence handling (in `audio_segment`) is NOT a whitelist: an empty string,
-'none', or 'unknown' all mean "Kodi reported nothing," so they collapse to the
-UNKNOWN sentinel. Every other audio string passes through verbatim.
-
-The empty-HDR default is intentionally split across layers: `hdr_segment`
-maps a blank HDR to 'unknown', NOT to 'sdr'. Choosing 'sdr' for an absent HDR
-flag is a chain-of-evidence decision (fallback flags, colour-gamut echoes)
-that belongs to the stream detector, which has that context — deliberately not
-this pure key module.
-
-FPS uses integer TRUNCATION (`str(int(float(fps)))`). Truncation — not
-rounding — is what keeps NTSC fractional rates on their own keys: 23.976 -> 23
-stays distinct from 24.0 -> 24, 29.97 -> 29 from 30.0 -> 30, and so on. When
-the per-FPS override is off, the fps segment is the literal 'all'.
-
-Pure Python: stdlib only, no xbmc* imports. The lone cross-module reference is
-the UNKNOWN sentinel from aome.domain.formats, kept in lockstep so absence reads
-the same everywhere.
+Pure Python: stdlib only, no xbmc* imports.
 """
 
 import math
@@ -53,25 +38,20 @@ from resources.lib.aome.domain.formats import UNKNOWN
 # Segment joiner for the composite profile key.
 SEPARATOR = '|'
 
-# Strings that mean "Kodi reported nothing here" — one absence rule for
-# every axis (a 'none' HDR and a 'none' audio are the same fact; splitting
-# the rule per axis is how one absent value fragments into several keys).
+# Strings meaning "Kodi reported nothing" — one absence rule for every axis.
 _ABSENT = ('', 'none', UNKNOWN)
 
-# Field-observed cross-build spellings of the SAME format, unified so a
-# learned offset matches on every build (see module docstring). Never grow
-# this speculatively.
+# Cross-build spellings of the same format, unified so a learned offset
+# matches on every build (see module docstring). Never grow speculatively.
 _HDR_ALIASES = {
-    # Shipped detection behaviour.
     'hlghdr': 'hlg',
-    # Kodi 21's primary HDR infolabel vs Kodi 22's native detection;
-    # canonical is the forward spelling.
+    # Kodi 21's HDR infolabel vs Kodi 22's native detection.
     'hdr10+': 'hdr10plus',
 }
 
 # --- Display names (used by the management view) ----------------------------
-# The fallback for an unrecognised segment is ALWAYS the raw segment itself,
-# never a rejection — verbatim acceptance extends to how keys are shown.
+# The fallback for an unrecognized segment is the raw segment itself, never
+# a rejection.
 
 HDR_DISPLAY = {
     'dolbyvision': 'Dolby Vision',
@@ -85,13 +65,12 @@ HDR_DISPLAY = {
     UNKNOWN: 'Unknown',
 }
 
-# Commercial display names for the codec vocabulary Kodi can actually report.
-# Sourced from Kodi's StreamUtils::GetCodecName (the profile-mapped names the
-# JSON-RPC `currentaudiostream.codec` carries — the gateway strips the `pt-`
-# passthrough prefix first) plus FFmpeg's canonical names on its fallback
-# path. DISPLAY-only: these never participate in key matching, and an
-# unlisted codec renders verbatim, so this table can grow or shrink without
-# touching stored data.
+# Commercial display names for the codecs Kodi can report. Sourced from
+# Kodi's StreamUtils::GetCodecName (the names JSON-RPC
+# `currentaudiostream.codec` carries; the gateway strips the `pt-`
+# passthrough prefix first) plus FFmpeg's canonical names. Display-only:
+# these never participate in key matching, and an unlisted codec renders
+# verbatim, so this table can grow or shrink without touching stored data.
 AUDIO_DISPLAY = {
     # Dolby family, consistently branded ('truehd_atmos' and
     # 'eac3_ddp_atmos' are Kodi's verbatim profile reports).
@@ -147,13 +126,11 @@ AUDIO_DISPLAY = {
 }
 
 # --- Toast short names (profile_summary only) --------------------------------
-# The offset toast is a single narrow line in Kodi's toast label: the full
-# commercial names ('Dolby Digital Plus Atmos') force Estuary's auto-scroll,
-# so the toast renders standard AV shorthand instead. OVERLAYS: a segment
-# missing here falls back to the full display table, then verbatim — the
-# management view keeps the full names (it has the width, and inspection
-# wants them). Only names with an established shorter form appear; nothing
-# is invented ('TrueHD Atmos' is the honest floor, never 'THD').
+# The offset toast is a single narrow line: the full commercial names
+# ('Dolby Digital Plus Atmos') force Estuary's auto-scroll, so the toast
+# uses standard AV shorthand. A segment missing here falls back to the full
+# display table, then verbatim. Only names with an established shorter form
+# appear; nothing is invented.
 
 HDR_DISPLAY_SHORT = {
     'dolbyvision': 'DV',
@@ -197,19 +174,14 @@ def audio_segment(raw):
 
 
 def hdr_segment(raw):
-    """Normalise an HDR string; whitespace strip, proven aliases, absence to UNKNOWN.
+    """Normalize an HDR string: whitespace strip, aliases, absence to UNKNOWN.
 
-    The absence rule is the SAME one audio uses ('', 'none', 'unknown' →
-    UNKNOWN): an HDR axis Kodi reported nothing for must collapse to one
-    sentinel, not fragment across 'none'/'unknown' keys. Choosing 'sdr' for
-    absent HDR is the stream detector's chain-of-evidence job, not this
-    module's.
-
-    HDR-only hardening against cross-build report drift (the observed
-    cases live in the module docstring): internal whitespace is stripped,
-    then `_HDR_ALIASES` unifies the spellings that differ by more than
-    spacing. The audio axis has shown no such drift and keeps pure
-    verbatim acceptance.
+    Absence follows the same rule as audio ('', 'none', 'unknown' ->
+    UNKNOWN). Choosing 'sdr' for an absent HDR axis is the detector's
+    chain-of-evidence job, not this module's. Internal whitespace is
+    stripped and ``_HDR_ALIASES`` unifies the cross-build spellings that
+    differ by more than spacing (see the module docstring); the audio axis
+    needs neither.
     """
     segment = ''.join(normalize_segment(raw).split())
     if segment in _ABSENT:
@@ -268,19 +240,15 @@ def split_key(key):
 
 
 def canonical_key(key):
-    """Re-express a stored key in this codec's canonical spelling.
+    """Re-express a stored key in the current canonical spelling.
 
-    The store runs every key that crosses its boundary (file load, the
-    other-process reader, import) through this, so the spelling rules
-    reach data written by an older codec exactly as they reach live
-    composition — one canonicalization, wherever a key comes from. The
-    segments re-run their own segment functions, which keeps the open
-    vocabulary intact: a format string this code has never seen
-    round-trips verbatim, so future Kodi formats need no code change
-    here. The fps segment is already composed ('all' or a truncated
-    integer) and passes through untouched; an unsplittable key returns
-    unchanged (the store tolerates scribbles, and a scribble is not
-    ours to rewrite). Idempotent by construction.
+    The store runs every key crossing its boundary (file load, the
+    other-process reader, import) through this, so the spelling rules reach
+    data written by an older codec exactly as they reach live composition.
+    Segments re-run their own segment functions, so a format this code has
+    never seen round-trips verbatim. The fps segment ('all' or a truncated
+    integer) passes through untouched, and an unsplittable key returns
+    unchanged. Idempotent by construction.
     """
     try:
         hdr, fps, audio = split_key(key)
@@ -291,15 +259,10 @@ def canonical_key(key):
 
 def _display_fps(segment, video_fps=None, per_fps=False):
     if segment == 'all':
-        # Under the per-fps toggle an 'all' entry is dormant — the lookup
-        # consults only the fps-specific key — so 'All FPS' states its
-        # true scope (it covers every rate, in the other mode) and the
-        # dormancy tag carries the not-in-effect part. With the toggle
-        # off, 'all' is the only key consulted, so the axis carries no
-        # information and the segment is OMITTED (None) — any dormant
-        # exact-rate siblings keep their rate and are tagged inactive, so
-        # the unlabelled row cannot be misread as one of them.
-        # 'FPS' (not 'rates') to match the '<n> fps' unit on sibling rows.
+        # With per_fps on, an 'all' entry is dormant, so 'All FPS' states
+        # its scope (every rate, in the other mode). With per_fps off, 'all'
+        # is the only key consulted, so the axis carries no information and
+        # the segment is omitted (None).
         return 'All FPS' if per_fps else None
     if isinstance(video_fps, (int, float)) and \
             not isinstance(video_fps, bool) and math.isfinite(video_fps):
@@ -311,16 +274,11 @@ def describe_key(key, video_fps=None, per_fps=False):
     """Human-readable label, e.g. 'Dolby Vision | 23.976 fps | TrueHD'.
 
     HDR and audio segments use the display tables, falling back to the raw
-    segment verbatim when unrecognised. The 'all' fps segment renders as
-    'All FPS' when ``per_fps`` says the toggle is on (a dormant entry
-    covering every rate in the other mode) and is OMITTED when off
-    ('Dolby Vision | Dolby TrueHD') — with the toggle off 'all' is the
-    only key consulted, so the axis says nothing. A numeric segment
-    renders the EXACT reported rate from the entry's ``video_fps``
-    metadata when the caller supplies a finite number ('23' is a key
-    identity, not a rate a user recognises), degrading to the truncated
-    segment ('<n> fps') when the metadata is absent or malformed
-    (hand-edited file).
+    segment when unrecognized. The 'all' fps segment renders as 'All FPS'
+    when ``per_fps`` is on and is omitted when off. A numeric segment
+    renders the exact reported rate from the entry's ``video_fps`` metadata
+    when the caller supplies a finite number, degrading to the truncated
+    segment ('<n> fps') when it is absent or malformed.
     """
     hdr, fps, audio = split_key(key)
     parts = [HDR_DISPLAY.get(hdr, hdr)]
@@ -334,14 +292,10 @@ def describe_key(key, video_fps=None, per_fps=False):
 def describe_key_in_group(key, video_fps=None, per_fps=False):
     """In-group row label, e.g. 'Dolby TrueHD · 23.976 fps'.
 
-    The management view's grouped drill-down lists one HDR type at a time,
-    so its entry rows drop the redundant HDR name and lead with the codec
-    (the stable-width part a user scans by). Same display vocabulary, fps
-    semantics, and verbatim fallbacks as ``describe_key`` — including the
-    omitted 'all' axis when the toggle is off, where the row is just the
-    codec name; an unsplittable key raises ValueError exactly like
-    ``describe_key`` does — callers show those keys as themselves (the
-    view's 'Other' bucket).
+    The grouped drill-down lists one HDR type at a time, so rows drop the
+    redundant HDR name and lead with the codec. Same display vocabulary,
+    fps semantics, and verbatim fallbacks as ``describe_key``, and it
+    raises ValueError on an unsplittable key the same way.
     """
     _hdr, fps, audio = split_key(key)
     audio_name = AUDIO_DISPLAY.get(audio, audio)
@@ -354,14 +308,12 @@ def describe_key_in_group(key, video_fps=None, per_fps=False):
 def sort_key(key):
     """Deterministic display ordering: HDR type, then codec, then rate.
 
-    Groups the management view's rows the way a user scans them — all of
-    one HDR mode together, codecs alphabetical within it, and each codec's
-    'all' entry before its per-fps entries in NUMERIC rate order
-    (string-sorting '119' before '23' is exactly the bug this avoids).
-    Display names (case-folded) drive the alpha ordering so the on-screen
-    grouping matches the sort. Total over hand-edited files: an
-    unsplittable key sorts by its raw text; a non-numeric fps segment
-    sorts after the numeric rates; the raw key is the final tie-break.
+    Groups the view's rows the way a user scans them: one HDR mode
+    together, codecs alphabetical within it, each codec's 'all' entry
+    before its per-fps entries in numeric rate order (string-sorting '119'
+    before '23' is the bug this avoids). Total over hand-edited files: an
+    unsplittable key sorts by its raw text, a non-numeric fps segment sorts
+    after the numeric rates, and the raw key is the final tie-break.
     """
     try:
         hdr, fps, audio = split_key(key)
@@ -386,10 +338,9 @@ def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
     """Toast/log summary straight from profile facts (no key needed).
 
     E.g. 'DV | 23.976 fps | TrueHD Atmos'; without a rate, 'DV | TrueHD'.
-    Uses the SHORT display overlays (this is the one single-line surface;
-    the management view keeps the full names), falling back to the full
-    table and then verbatim — verbatim acceptance extends to display. The
-    exact reported rate is shown (it is the management-view metadata too).
+    Uses the short display overlays (the toast is one narrow line), falling
+    back to the full table and then verbatim. The exact reported rate is
+    shown.
     """
     parts = [HDR_DISPLAY_SHORT.get(
         hdr_segment_value,

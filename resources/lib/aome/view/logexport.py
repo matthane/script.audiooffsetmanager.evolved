@@ -1,50 +1,43 @@
 """LogExportView: the script-process filtered-log export surface.
 
-The transfer view's sibling for support reports: it reads the Kodi log
-files (previous session first, then the current one), keeps only this
-addon's entries, and writes them as one file to a folder the user picks.
-The point is a file that is safe to hand to a stranger: AOMe lines carry
-stream profiles, offsets and session ids, never media titles or library
-paths, and the two leaks the wider net below could reintroduce are
-scrubbed at render time (absolute install paths fold back to their
-``special://`` form, URL credentials are masked the way Kodi itself
-masks them). The disclaimer lives in the button's help text: some
-problems still need a full Kodi debug log, this export is the first
-step, not the last.
+The transfer view's sibling for support reports: it reads the Kodi log files
+(previous session first, then the current one), keeps only this addon's
+entries, and writes them as one file to a folder the user picks. The goal is
+a file safe to hand to a stranger: AOMe lines carry stream profiles, offsets
+and session ids, never media titles or library paths, and the two leaks the
+wider net could reintroduce are scrubbed at render time (absolute install
+paths fold back to their ``special://`` form, URL credentials are masked the
+way Kodi masks them). The disclaimer lives in the button's help text: some
+problems still need a full Kodi debug log.
 
-Filtering works on log ENTRIES, not lines: a Kodi log line starts with a
-timestamp, and continuation lines (Python traceback bodies) belong to
-the timestamped line before them. An entry is kept when any of its lines
-mentions the ``AOMe_`` prefix or the addon id — the id is what catches
-unhandled-exception tracebacks and Kodi's own lifecycle lines about the
-addon, which carry no AOMe prefix. Each file's opening entries also
-contribute the Kodi version/platform lines every report wants, matched
-by a whitelist within the first few dozen lines only, so lookalike text
+Filtering works on log entries, not lines: a Kodi log line starts with a
+timestamp, and continuation lines (traceback bodies) belong to the
+timestamped line before them. An entry is kept when any of its lines mentions
+the ``AOMe_`` prefix or the addon id (the id catches unhandled-exception
+tracebacks and Kodi's own lifecycle lines, which carry no AOMe prefix). Each
+file's opening entries also contribute the Kodi version/platform lines every
+report wants, matched only within the first few dozen lines so lookalike text
 deep in a log cannot smuggle itself in.
 
-The export is bounded: both files stream through a constant-size pass
-(a debug log on a long-uptime box can run to hundreds of MB and must
-never be loaded whole), and once the kept entries pass the size cap the
-OLDEST are dropped and the file says so — the newest activity is what a
-report is about, and the cap sits far above anything a real session
-produces.
+The export is bounded: both files stream through a constant-size pass (a
+debug log can run to hundreds of MB and must never be loaded whole), and once
+the kept entries pass the size cap the oldest are dropped and the file says
+so.
 
 The seams are injected callables, wired by the script router:
 
 * ``read_old_log()`` / ``read_current_log()`` — an iterable of raw lines
-  over ``kodi.old.log`` / ``kodi.log``, or ``None`` when that file does
-  not exist. A reader that fails mid-stream (rotation underneath the
-  read) surrenders what it produced so far rather than the whole export.
-* ``write_export(destination, text)`` — write the rendered file (the
-  router wires ``xbmcvfs.File`` so network/USB destinations work).
-* ``redactions`` — ``(resolved_prefix, special_form)`` pairs computed by
-  the router (``translatePath`` is a Kodi touch); applied longest-first
-  so ``special://profile`` folds before its ``special://home`` parent
-  swallows the match.
+  over ``kodi.old.log`` / ``kodi.log``, or ``None`` when that file does not
+  exist. A reader that fails mid-stream surrenders what it produced so far
+  rather than the whole export.
+* ``write_export(destination, text)`` — write the rendered file
+  (``xbmcvfs.File``, so network/USB destinations work).
+* ``redactions`` — ``(resolved_prefix, special_form)`` pairs computed by the
+  router, applied longest-first so ``special://profile`` folds before its
+  ``special://home`` parent swallows the match.
 
 Every dialog string carries an English fallback and the manage/transfer
-views' format guards — a blank or placeholder-swallowing dialog teaches
-nothing.
+views' format guards.
 """
 
 import re
@@ -100,9 +93,9 @@ def _noop(_message):
 
 
 def _join(folder, name):
-    """Append ``name`` to a browsed folder path (the transfer view's
-    guard: Kodi's folder browser answers WITH a trailing separator, the
-    fallback covers hand-fed paths without one)."""
+    """Append ``name`` to a browsed folder path (the transfer view's guard:
+    Kodi's folder browser answers with a trailing separator, the fallback
+    covers hand-fed paths without one)."""
     if folder.endswith('/') or folder.endswith('\\'):
         return folder + name
     return folder + '/' + name
@@ -111,15 +104,11 @@ def _join(folder, name):
 def _entries(lines, on_error=None):
     """Group raw lines into ``(entry_lines, start_index)`` tuples.
 
-    A timestamped line opens a new entry; non-timestamped lines attach to
-    the entry above them. Lines before the first timestamp (a file cut
-    mid-entry) form a headless first entry rather than being lost — if a
-    traceback body got cut, its remainder should still export.
-
-    The line pull is guarded: a source failing mid-stream (rotation
-    underneath the read) ends the file where it stands, the buffered
-    entry still flushes, and the error goes to ``on_error`` — a partial
-    log still carries the report.
+    A timestamped line opens a new entry; non-timestamped lines attach to the
+    entry above them. Lines before the first timestamp form a headless first
+    entry rather than being lost. The line pull is guarded: a source failing
+    mid-stream ends the file where it stands, the buffered entry still
+    flushes, and the error goes to ``on_error``.
     """
     iterator = iter(lines)
     current = []
@@ -251,14 +240,13 @@ class LogExportView:
 
     def _render(self, sources):
         """One text blob: preamble, then each file's kept entries behind a
-        labeled divider, oldest file first, redacted line by line. The
-        size cap drops whole entries OLDEST-first (never mid-entry — a
-        halved traceback is noise) and announces the trim up top.
+        labeled divider, oldest file first, redacted line by line. The size
+        cap drops whole entries oldest-first (never mid-entry) and announces
+        the trim up top.
 
         The blob leads with a UTF-8 BOM: log lines carry multi-byte
-        characters (the notifier's em dash), and without the BOM an
-        editor that sniffs encoding can guess ANSI and render them as
-        mojibake. The BOM is the one signal those editors honor.
+        characters (the notifier's em dash), and without the BOM an editor
+        that sniffs encoding can guess ANSI and render them as mojibake.
         """
         combined = deque()
         total = 0

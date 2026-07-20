@@ -1,97 +1,63 @@
 """Adjustment watching: poll the audio-delay infolabel, store user changes.
 
 The watcher polls ``Player.AudioDelay`` on the dispatcher thread via
-self-scheduled ``WatchTick`` events. No threads, no dialog IDs, no
-open/close state machine — watching the VALUE rather than the OSD slider
-dialog catches every source of an adjustment: a keymap, a remote app, or a
-JSON-RPC ``Player.SetAudioDelay`` all change the delay without ever
-opening a dialog.
+self-scheduled ``WatchTick`` events. Watching the value rather than the OSD
+slider dialog catches every source of an adjustment: a keymap, a remote app,
+or a JSON-RPC ``Player.SetAudioDelay`` all change the delay without opening
+a dialog.
 
-WATCHING and STORING are separately gated. Watchability
-(``_watchable``) is just "a profile exists": the watcher observes and
-settles adjustments whenever something plays, because the settle is a
-USER-ACTION fact with its own consumers — every quiesced foreign value
-posts ``UserOffsetSettled`` (the seek scheduler's 'change' replay rides
-it), independent of the learn loop. STORING is the separately-gated learn
-half (``_store_eligible``: "Learn audio offsets" on — the core of the
-product — and the store writable): only then does the settle
-also store and post ``UserOffsetSaved``. A settle that cannot store still
-advances the baseline (no re-detect/re-fail loop: the settled value is
-accounted for without a store attempt), and the ``watch_settled_ms``
-marker keeps the EVENT at one per adjustment even on the store-failure
-retry path, which deliberately keeps the baseline so the store retries.
-The apply toggle is consulted by NEITHER half: with applying
-off the addon stops setting the offset, but dials still settle and — with
-learning on — still store (the re-teach mode). No axis-gating happens here
-— the store path (``_store``) re-validates the WHOLE profile
-(``policies.is_complete``) before writing, so an incomplete stream is
-watched, settles, but never stores.
+Watching and storing are separately gated. Watchability (``_watchable``) is
+just "a profile exists": the settle is a user-action fact with its own
+consumers (every quiesced value posts ``UserOffsetSettled``, which the seek
+scheduler's 'change' replay rides), independent of the learn loop. Storing
+is the learn half (``_store_eligible``: "Learn audio offsets" on and the
+store writable); only then does the settle also store and post
+``UserOffsetSaved``. A settle that cannot store still advances the baseline
+(no re-detect/re-fail loop), and the ``watch_settled_ms`` marker keeps the
+event at one per adjustment even on the store-failure retry path. The apply
+toggle gates neither half: with applying off, dials still settle and, with
+learning on, still store (the re-teach mode). The store path re-validates
+the whole profile before writing, so an incomplete stream is watched and
+settles but never stores.
 
-Baseline rule: ``session.watch_baseline_ms`` is the last delay value we have
-ACCOUNTED FOR (our own apply, or a value already stored). Only a CHANGE away
-from the baseline observed WHILE watching can become a user adjustment. The
-first non-ours value a session sees is ADOPTED as the baseline silently,
-never stored — this is the failed-RPC-leftover guard: a delay left behind by
-an apply RPC that failed, or pre-existing player state, must not be written
-over the user's configured offset.
+Baseline rule: ``session.watch_baseline_ms`` is the last delay value
+accounted for (our own apply, or a value already stored). Only a change away
+from it observed while watching can become a user adjustment. The first
+non-ours value a session sees is adopted as the baseline silently, never
+stored — the failed-RPC-leftover guard: a delay left by a failed apply RPC
+or pre-existing player state must not overwrite the user's configured offset.
 
-Quiescence stands in for a "user is done" signal: a foreign value must
-hold unchanged for ``QUIESCENCE_SECONDS`` before it is stored (the tick
-cadence tightens to ``ACTIVE_TICK_SECONDS`` while a candidate is pending).
-Two teardown-phantom defenses back this up:
-during a slow stop — field-measured at 0.3-1.15s across external-player
-flows and natural end-of-media — Kodi's delay infolabel reads a parseable 0 while the
-session is still alive, which is indistinguishable from a user dialing to
-0. ``QUIESCENCE_SECONDS`` is sized to outrun that window, and the store
-path re-checks ``gateway.active_player_id()`` at store time, discarding
-the observation chain when the player is already gone (a native stop
-empties the player list before ``OnStop`` even fires).
-Acknowledged trade-off: without a dialog-close edge we cannot know the user
-is "done", so we wait out a short quiet window instead — a user who dials
-through several values only stores the one they settle on, and an
-adjust-back-to-the-original before quiescence stores nothing.
+Quiescence stands in for a "user is done" signal: a foreign value must hold
+unchanged for ``QUIESCENCE_SECONDS`` before it is stored (the tick cadence
+tightens to ``ACTIVE_TICK_SECONDS`` while a candidate is pending). Two
+teardown-phantom defenses back this up: during a slow stop (measured at
+0.3-1.15s) Kodi's delay infolabel reads a parseable 0 while the session is
+still alive, indistinguishable from a user dialing to 0. QUIESCENCE_SECONDS
+outruns that window, and the store path re-checks
+``gateway.active_player_id()`` at store time, discarding the observation
+when the player is already gone.
 
 Self-echo suppression: an automatic apply is a JSON-RPC player call, so our
-own applied value shows up in the infolabel just like a user's would. The
-applier records ``session.applied = (store_key, delay_ms)`` BEFORE issuing
-the RPC precisely so ``observed == session.applied[1]`` here is always
-current; a match is our own value — baseline-refresh, never store. A
-corollary: an automatic apply landing INSIDE a pending
-quiescence window supersedes the candidate — the pending value was dialed
-against the resolution that just changed, so its target is ambiguous and
-dropping beats storing it under the wrong key. The
-corollary is enforced STRUCTURALLY, not just implied by the echo
-comparison — the infolabel can lag our RPC by a beat, and a stale reading
-crossing quiescence right then would store the pre-change value and then
-chase our own value as a fresh adjustment. Three
-enforcement points: ``OffsetApplied`` (every apply trigger — adoption,
-retry, the settings-save/mutation re-applies) and ``DelayReset``
-(every successful silent reset) both clear the observation here; and the
-StoreMutationHandler clears it SYNCHRONOUSLY at the mutation itself,
-because queued events leave timer-interleave windows and the
-already-0/failed-RPC reset branches post no event at all — without that,
-a candidate dialed just before a delete could quiesce and re-store the
-very entry the user deleted.
+own applied value shows up in the infolabel like a user's would. The applier
+records ``session.applied`` before issuing the RPC precisely so
+``observed == session.applied[1]`` here is always current; a match is our
+own value (baseline-refresh, never store). An automatic apply landing inside
+a pending quiescence window supersedes the candidate, since its target is
+ambiguous. This is enforced structurally at three points: ``OffsetApplied``
+and ``DelayReset`` both clear the observation here, and the
+StoreMutationHandler clears it synchronously at the mutation itself (queued
+events leave timer-interleave windows, and the already-0/failed-RPC reset
+branches post no event) — without which a candidate dialed just before a
+delete could quiesce and re-store the very entry the user deleted.
 
-No settings-dialog deferral exists: offsets
-live in the sparse store file, never in settings.xml, so the dialog's
-save-on-close cannot clobber a store write.
+Adoption (StreamDetector) and store (here) are serialized on one thread, and
+the write key is derived from ``session.profile`` plus the live ``per_fps``
+toggle at store instant, so a store can never interleave with a concurrent
+profile re-adoption.
 
-Adoption (StreamDetector) and store (here) are serialized on ONE thread and
-the write key is derived from ``session.profile`` + the live ``per_fps``
-toggle at the store instant (one rule, never conditional on lookup
-history — the OffsetTable routes through ``resolve.write_key``), so a
-store can never interleave with a concurrent profile re-adoption.
-
-Every settle posts a session-stamped ``UserOffsetSettled`` (the
-user-action fact — the seek scheduler's 'change' replay rides it); a
-successful store additionally posts ``UserOffsetSaved`` (profile + ms +
-resolved key captured at store time).
-
-Pure app layer: Kodi I/O via the injected gateway, eligibility reads via the
-injected settings adapter, offset reads/writes via the injected OffsetTable
-(the store adapter — key derivation is its concern), log sinks injected;
-no Kodi imports.
+Pure app layer: Kodi I/O via the injected gateway, eligibility via the
+injected settings adapter, offset reads/writes via the injected OffsetTable,
+log sinks injected; no Kodi imports.
 """
 
 import time
@@ -106,10 +72,9 @@ class AdjustmentWatcher:
     IDLE_TICK_SECONDS = 1.0     # poll cadence when nothing is happening
     ACTIVE_TICK_SECONDS = 0.25  # tightened cadence while observing a change
     # Foreign value must hold this long to be stored. 2.0s outruns the
-    # teardown phantom: field-measured stop windows where the delay
-    # infolabel reads a parseable 0 while the session is still alive ran
-    # 0.3-1.15s, and a shorter quiescence let that phantom 0 quiesce and
-    # store over the user's offset.
+    # teardown phantom: stop windows where the delay infolabel reads a
+    # parseable 0 while the session is still alive ran 0.3-1.15s, and a
+    # shorter quiescence let that phantom 0 store over the user's offset.
     QUIESCENCE_SECONDS = 2.0
     INFOLABEL_AUDIO_DELAY = 'Player.AudioDelay'
     _TICK_KEY = 'aome.watcher.tick'
@@ -136,21 +101,21 @@ class AdjustmentWatcher:
     # -- watchability and the learn gate ----------------------------------------
 
     def _watchable(self, profile):
-        """Watch whenever a profile exists — settling is a user-action
-        fact with its own consumers, so neither the learn toggle nor the
-        store's writability gates the watch (module docstring; the
+        """Watch whenever a profile exists.
+
+        Settling is a user-action fact with its own consumers, so neither
+        the learn toggle nor the store's writability gates the watch (the
         settle-time ``_store_eligible`` check owns those). Profile
-        completeness is the STORE path's concern.
+        completeness is the store path's concern.
         """
         return profile is not None
 
     def _store_eligible(self):
         """The learn half's gate, read fresh at settle instant.
 
-        Learning on, and the store writable — a permanently unwritable
-        store (newer-schema file after a downgrade) must never reach a
-        store attempt (the settle path's baseline
-        advance is what prevents the re-detect loop).
+        Learning on and the store writable — a permanently unwritable store
+        must never reach a store attempt (the settle path's baseline advance
+        prevents the re-detect loop).
         """
         return (self._settings.remember_adjustments_enabled()
                 and not self._offsets.read_only)
@@ -162,11 +127,10 @@ class AdjustmentWatcher:
             return
         session = self._sessions.current
         # A (re)adoption makes any in-flight observation ambiguous: a pending
-        # candidate was dialed against the PREVIOUS profile (storing it under
-        # the new key would be the adopt-vs-store hazard), and the baseline
-        # belongs to that profile's episode too. Drop both; the next tick
-        # re-establishes them — the applier (ordered before us) has already
-        # recorded its apply, so our own value reads as self-echo.
+        # candidate was dialed against the previous profile, and the baseline
+        # belongs to that episode too. Drop both; the next tick re-establishes
+        # them (the applier, ordered before us, has recorded its apply, so our
+        # own value reads as self-echo).
         self._clear_observation(session)
         self._evaluate(session)
 
@@ -177,19 +141,16 @@ class AdjustmentWatcher:
         self._evaluate(session)
 
     def _on_automatic_delay_set(self, event):
-        """The supersede corollary, enforced structurally (module docstring).
+        """Drop any in-flight observation on our own automatic delay change.
 
-        Handles BOTH ``OffsetApplied`` and ``DelayReset`` — every RPC of
-        ours that sets the delay. ANY automatic delay change makes an
-        in-flight observation ambiguous: the pending candidate was dialed
-        against the superseded resolution, and the baseline belongs to it
-        too. Relying on the next tick's echo comparison instead would
-        leave a hole — the infolabel can lag the RPC by a beat, and a
-        stale pre-change reading crossing quiescence at that tick would be
-        stored (for a reset, re-storing the very value the user just
-        deleted), after which our own value reads as a fresh foreign
-        change. Dropping the chain here makes the first post-change
-        observation re-adopt (or echo-match) cleanly.
+        Handles both ``OffsetApplied`` and ``DelayReset``. Any automatic
+        delay change makes an in-flight observation ambiguous: the pending
+        candidate was dialed against the superseded resolution. Relying on
+        the next tick's echo comparison would leave a hole, since the
+        infolabel can lag the RPC and a stale pre-change reading crossing
+        quiescence then would be stored (for a reset, re-storing the value
+        the user just deleted). Dropping the chain here makes the first
+        post-change observation re-adopt or echo-match cleanly.
         """
         if not self._sessions.is_alive(event.session_id):
             return
@@ -271,12 +232,10 @@ class AdjustmentWatcher:
         if now - pending[1] < self.QUIESCENCE_SECONDS:
             return self.ACTIVE_TICK_SECONDS
         if self._gateway.active_player_id() == -1:
-            # Teardown phantom guard: during a slow stop
-            # the delay infolabel can read a parseable 0 while PlaybackStopped
-            # hasn't landed yet, so the quiesced "adjustment" belongs to a
-            # dying player. Never store an adjustment for a player that no
-            # longer exists — discard the whole observation chain (the
-            # baseline is teardown-tainted too).
+            # Teardown phantom guard: during a slow stop the delay infolabel
+            # can read a parseable 0 before PlaybackStopped lands, so the
+            # quiesced "adjustment" belongs to a dying player. Discard the
+            # whole observation chain (the baseline is tainted too).
             self._clear_observation(session)
             self._log("AOMe_AdjustmentWatcher: no active player at store "
                       "time; discarding pending adjustment")
@@ -289,16 +248,13 @@ class AdjustmentWatcher:
     def _settle(self, session, observed_ms):
         """A foreign value held through quiescence: the user-action fact.
 
-        ``UserOffsetSettled`` posts before and independent of storage —
-        the 'change' seek replay follows the user's hand, not the learn
-        loop — but at most ONCE per adjustment: the store-failure branch
-        deliberately keeps the baseline so the store retries, and without
-        the ``watch_settled_ms`` marker every ~2s retry cycle would
-        re-post the event and rewind playback in a loop.
-        The marker is episode state: ``_clear_observation`` resets it, so
-        a re-dial of the same value after a gap/supersede posts fresh.
-        The store step is the separately-gated learn half; when it is
-        gated off, the settled value is ACCOUNTED FOR immediately.
+        ``UserOffsetSettled`` posts before and independent of storage, but
+        at most once per adjustment: the store-failure branch keeps the
+        baseline so the store retries, and without the ``watch_settled_ms``
+        marker every retry cycle would re-post the event and rewind playback
+        in a loop. The marker is episode state, reset by
+        ``_clear_observation``. When the learn half is gated off, the settled
+        value is accounted for immediately.
         """
         if session.watch_settled_ms != observed_ms:
             session.watch_settled_ms = observed_ms
@@ -313,9 +269,8 @@ class AdjustmentWatcher:
 
     def _store(self, session, observed_ms):
         session.watch_pending = None
-        # Read the profile FRESH at store time, on the dispatcher thread — the
-        # write key is derived from whatever profile (and toggle value) is in
-        # force NOW (see the module docstring's store-time-derivation note).
+        # Read the profile fresh at store time: the write key is derived from
+        # whatever profile and toggle value is in force now.
         profile = session.profile
         if not policies.is_complete(profile):
             # Watched but not persistable: account for the value so we don't
@@ -371,27 +326,24 @@ class AdjustmentWatcher:
     # -- internals --------------------------------------------------------------
 
     def _account(self, session, observed_ms):
-        """The settled value is ACCOUNTED FOR: it can never re-detect.
+        """Account for the settled value so it can never re-detect.
 
-        One helper for the invariant's two halves (candidate dropped AND
-        baseline advanced) — a re-detect loop is exactly what one
-        half without the other reintroduces. The store-failure branch is
-        the deliberate exception: it keeps the baseline so the store
-        retries (the settled marker keeps the EVENT from repeating).
+        One helper for both halves of the invariant (candidate dropped and
+        baseline advanced) — a re-detect loop is what either half alone
+        reintroduces. The store-failure branch is the exception: it keeps the
+        baseline so the store retries.
         """
         session.watch_pending = None
         session.watch_baseline_ms = observed_ms
 
     def _clear_observation(self, session):
-        """Drop ALL observation state whenever the watch chain stops.
+        """Drop all observation state whenever the watch chain stops.
 
         The baseline must not survive a not-watching gap: a delay changed
-        while monitoring was disabled would otherwise compare against the
-        stale baseline on re-enable and be stored as a fresh adjustment —
-        but only a change observed WHILE watching is an adjustment. Clearing
-        makes the first post-gap observation re-adopt silently, as a fresh
-        start would. The settled marker is
-        episode state and falls with the rest.
+        while watching was off would otherwise compare against the stale
+        baseline on re-enable and be stored as a fresh adjustment. Clearing
+        makes the first post-gap observation re-adopt silently. The settled
+        marker is episode state and falls with the rest.
         """
         session.watch_pending = None
         session.watch_baseline_ms = None

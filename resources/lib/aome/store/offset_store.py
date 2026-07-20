@@ -1,49 +1,44 @@
 """OffsetStore: the sparse JSON offset database (addon_data/offsets.json).
 
-The addon keeps learned audio offsets here, keyed by stream profile, instead of
-in settings.xml. This module is the whole persistence surface for that file.
+Learned audio offsets are kept here, keyed by stream profile, rather than in
+settings.xml. This module is the whole persistence surface for that file.
 
-Design decisions worth stating up front:
+Design points:
 
-* **Single-writer doctrine, no locking.** At runtime the store is owned by the
-  one dispatcher thread; every read and mutation happens there. The class is
-  therefore plain synchronous Python with no locks, no threads, and no global
-  state — the injected file path, clock, and log sinks are all it depends on.
-* **Verbatim signed integers.** ``delay_ms`` is a signed integer at 1 ms
-  resolution and is stored EXACTLY as given. There is deliberately NO step /
-  increment snapping (no 25 ms or 5 ms quantization) and NO range clamping
-  (not ±1000, not ±10000) — deciding what values are legal is the caller's
-  parser's job, not the store's. Any ``int`` round-trips bit-for-bit.
-* **Corruption is survivable, the future is sacred.** A file we cannot parse
-  is moved aside to ``<path>.bad`` and we start empty (data loss is preferable
-  to a jammed addon). A file from a NEWER schema is left completely untouched
-  and the store goes read-only, so an older build downgraded onto newer data
-  can never clobber it.
-* **Atomic-swap durability.** Every persist writes a sibling ``.tmp`` file,
-  flushes and ``fsync``s it, then ``os.replace``s it over the target — the
-  swap is atomic on POSIX and NTFS, so a power loss on an HTPC box leaves
-  either the old file or the new one, never a half-written one.
-* **The store speaks canonical keys.** Every key that crosses the store
-  boundary — file load, the other-process reader, a restored backup — is
-  re-expressed through ``keys.canonical_key``, so entries and reset markers
-  written by an older key codec keep resolving after the codec's spelling
-  rules evolve (live lookups only ever compose canonical keys). On a
-  spelling collision the canonically-spelled entry wins — it was written
-  by the current codec and is the fresher teaching by construction; a
-  marker whose canonical key holds an entry is superseded, exactly as
-  ``set`` supersedes markers.
-* **Deletion leaves a reset marker.** ``delete``/``clear`` — and an import
-  (``replace_all``) that drops keys — record the removed key(s) in a
-  ``resets`` section: the user who deletes a
-  profile expects 0 the NEXT time that format plays, but Kodi's own per-file
-  memory still holds the old applied value — the marker lets the applier
-  force the 0 once, bypassing the "never act first" guard for exactly the
-  keys the user removed. Markers are consumed by the applier, superseded by
-  a new ``set`` for the key, and invisible to the management view (they are
-  not offsets). The section is additive: absent in old files, ignored (and
-  dropped on next persist) by older builds — no schema bump.
+* **Single writer, no locking.** At runtime the store is owned by the one
+  dispatcher thread; every read and mutation happens there. The class is
+  plain synchronous Python with no locks, threads, or global state — the
+  injected file path, clock, and log sinks are all it depends on.
+* **Verbatim signed integers.** ``delay_ms`` is stored exactly as given, at
+  1 ms resolution, with no step snapping and no range clamping — deciding
+  what values are legal is the caller's parser's job. Any ``int``
+  round-trips bit-for-bit.
+* **Corruption survivable, the future sacred.** An unparseable file is moved
+  aside to ``<path>.bad`` and we start empty (data loss beats a jammed
+  addon). A file from a newer schema is left untouched and the store goes
+  read-only, so an older build downgraded onto newer data cannot clobber it.
+* **Atomic-swap durability.** Every persist writes a sibling ``.tmp``,
+  flushes and ``fsync``s it, then ``os.replace``s it over the target. The
+  swap is atomic on POSIX and NTFS, so a power loss leaves either the old
+  file or the new one, never a half-written one.
+* **Canonical keys.** Every key crossing the store boundary (file load, the
+  other-process reader, a restored backup) is re-expressed through
+  ``keys.canonical_key``, so entries and reset markers written by an older
+  key codec keep resolving after the spelling rules evolve. On a spelling
+  collision the canonically-spelled entry wins (it is the fresher teaching),
+  and a marker whose canonical key holds an entry is superseded, like
+  ``set``.
+* **Deletion leaves a reset marker.** ``delete``/``clear`` (and an import
+  that drops keys) record the removed key(s) in a ``resets`` section: the
+  user expects 0 the next time that profile plays, but Kodi's own per-file
+  memory still holds the old value, so the marker lets the applier force the
+  0 once, bypassing the "never act first" guard. Markers are consumed by the
+  applier, superseded by a new ``set``, and invisible to the management view.
+  The section is additive: absent in old files, ignored by older builds, no
+  schema bump.
 
-No disk I/O happens in the constructor; ``load()`` is the single explicit read.
+No disk I/O happens in the constructor; ``load()`` is the single explicit
+read.
 """
 
 import json
@@ -65,8 +60,8 @@ def _noop(_message):
 def _is_int(value):
     """True for real ints only — bool is an int subclass and must not pass.
 
-    The single definition of the doctrine guard, shared by every validation
-    site so write-path and load-path rules can never drift apart.
+    The single guard shared by every validation site, so the write-path and
+    load-path rules never drift apart.
     """
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -86,12 +81,11 @@ def _shape_ok(data):
 
 
 def _load_entries(profiles, log_debug):
-    """Filter entries by the doctrine rules; shared with the reader.
+    """Filter entries by the load rules; shared with the reader.
 
-    Keys are re-expressed through ``keys.canonical_key`` on the way in
-    (see the module docstring): the canonically-spelled entry wins any
-    spelling collision, and among legacy spellings of one canonical key
-    the last in file order wins.
+    Keys are re-expressed through ``keys.canonical_key`` on the way in: the
+    canonically-spelled entry wins any spelling collision, and among legacy
+    spellings of one canonical key the last in file order wins.
     """
     loaded = {}
     rekeyed = {}
@@ -128,15 +122,15 @@ def _load_entries(profiles, log_debug):
 class StoreUnreadable(Exception):
     """The offsets file exists but cannot be presented.
 
-    Raised ONLY by :func:`read_profiles` (the other-process reader): the
-    script process must never quarantine or mutate the file, so instead of
-    load()'s .bad rename it reports WHY the view cannot render — corrupt
-    JSON, wrong shape, an unreadable file, or a newer schema version.
+    Raised by the read-only readers (the script process must never
+    quarantine or mutate the file): instead of load()'s .bad rename it
+    reports why the view cannot render — corrupt JSON, wrong shape, an
+    unreadable file, or a newer schema version.
 
-    ``future`` is True for the newer-schema case, which the view must word
-    DIFFERENTLY from corruption: the service preserves such a file
-    untouched (read-only, "the future is sacred") and never quarantines
-    it, so corruption wording would falsely promise a reset.
+    ``future`` is True for the newer-schema case, which the view words
+    differently: the service preserves such a file untouched (read-only)
+    and never quarantines it, so corruption wording would falsely promise a
+    reset.
     """
 
     def __init__(self, message, *, future=False):
@@ -186,15 +180,13 @@ def _load_reset_keys(raw, log_debug):
 
 
 def read_profiles(path, log_debug=None):
-    """Read-only entry snapshot for ANOTHER process (the management view).
+    """Read-only entry snapshot for another process (the management view).
 
-    Deliberately NOT OffsetStore.load(): the single-writer doctrine means
-    only the service's dispatcher thread may touch the file, so this
-    function has no quarantine, no corruption flag, and no instance state —
-    it opens, parses, filters (same shape rules as load(), dropped entries
-    named through ``log_debug`` just like load() does), and returns.
-    A missing file is an empty store ({}); anything unpresentable raises
-    :class:`StoreUnreadable`.
+    Not OffsetStore.load(): only the service's dispatcher thread may touch
+    the file, so this has no quarantine, no corruption flag, and no instance
+    state — it opens, parses, filters (same shape rules as load()), and
+    returns. A missing file is an empty store ({}); anything unpresentable
+    raises :class:`StoreUnreadable`.
     """
     try:
         with open(path, "r", encoding="utf-8") as handle:
@@ -207,21 +199,17 @@ def read_profiles(path, log_debug=None):
 
 
 def read_import_document(path, log_debug=None):
-    """Validated ``(entries, reset_keys)`` of an offsets BACKUP file.
+    """Validated ``(entries, reset_keys)`` of an offsets backup file.
 
-    The restore source reader, used by BOTH channel ends: the script
-    process pre-validates the staged backup before asking for the import,
-    and the service validates again before replacing the store. Same
-    shape/version/entry rules as :func:`read_profiles`, with one deliberate
-    divergence: a MISSING file raises :class:`StoreUnreadable` instead of
-    reading as an empty store — an absent offsets.json means "nothing
-    learned yet", but a restore source that is not there is a failed
-    import, never "replace everything with nothing".
+    The restore-source reader, used by both channel ends: the script process
+    pre-validates the staged backup and the service validates again before
+    replacing the store. Same rules as :func:`read_profiles`, with one
+    divergence: a missing file raises :class:`StoreUnreadable` rather than
+    reading as an empty store — a restore source that is not there is a
+    failed import, never "replace everything with nothing".
 
-    The backup's ``resets`` section rides along (validated by the same
-    rules ``load()`` applies) so a restore preserves pending "expect 0"
-    promises: export copies the file verbatim, and import must not
-    silently drop the one section that is not an offset.
+    The backup's ``resets`` section rides along so a restore preserves
+    pending "expect 0" promises.
     """
     log = log_debug or _noop
     try:
@@ -241,14 +229,12 @@ def read_import(path, log_debug=None):
 
 
 def discard_import(path, log_warning=None):
-    """Best-effort removal of a consumed/stale staged backup file.
+    """Best-effort removal of a consumed or stale staged backup file.
 
-    Lives HERE so the app-layer mutation handler performs no direct file
-    I/O of its own — the store layer is the one home of store-adjacent
-    disk access. A missing file is the normal case (already consumed);
-    any other failure is logged and swallowed, because a stale staging
-    file is inert (the script process overwrites it before every import
-    request).
+    Lives here so the app-layer mutation handler does no direct file I/O.
+    A missing file is the normal case (already consumed); any other failure
+    is logged and swallowed, since a stale staging file is inert (the script
+    process overwrites it before every import request).
     """
     try:
         os.remove(path)
@@ -431,12 +417,11 @@ class OffsetStore:
         """Remove ``key`` if present and persist; True only when both happen.
 
         The removed key is recorded as a reset marker (see the module
-        docstring): the applier forces the delay to 0 the next time the
-        key is consulted and misses. A miss touches no disk (returns
-        False). Refused when read-only. A persist failure also returns
-        False — the entry would resurrect from disk on the next load, and
-        the mutation-channel ack must not claim otherwise (the removal
-        stays in memory, consistent with ``set``).
+        docstring), so the applier forces the delay to 0 the next time the
+        key is consulted and misses. A missing key touches no disk (returns
+        False). Refused when read-only. A persist failure also returns False
+        — the entry would resurrect on the next load — while the removal
+        stays in memory, consistent with ``set``.
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing delete({1!r})"
@@ -451,14 +436,11 @@ class OffsetStore:
     def clear(self):
         """Remove all entries; return how many were durably removed.
 
-        Every removed key is recorded as a reset marker, same as
-        ``delete`` (the "expect 0 next time" contract holds for clear-all
-        too). Persists only when something was actually removed. Refused
-        (returns 0) when read-only. A persist failure also returns 0 — the
-        entries would resurrect from disk on the next load, and the
-        mutation-channel ack must not tell the user "cleared N" when the
-        file still holds them (the in-memory removal stands, consistent
-        with set/delete).
+        Every removed key is recorded as a reset marker, same as ``delete``.
+        Persists only when something was removed. Refused (returns 0) when
+        read-only. A persist failure also returns 0 — the entries would
+        resurrect on the next load — while the in-memory removal stands,
+        consistent with set/delete.
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing clear()".format(_PREFIX))
@@ -476,18 +458,15 @@ class OffsetStore:
         """Replace the whole store with ``entries`` (import/restore) and persist.
 
         Restore semantics, not merge: after this call the store holds
-        EXACTLY the given entries, filtered by the same doctrine rules as
-        ``load()`` (the caller normally passes the backup reader's output,
-        but the write path re-filters so it stays safe on its own). The
-        reset markers merge three sources, all minus the imported keys:
-        the live pending markers, every live key the import drops (a
-        restore that drops a profile means "expect 0 the next time it
-        plays", exactly like ``delete``/``clear``), and ``resets`` — the
-        BACKUP's own pending markers, so a restore preserves promises the
-        backup carried. A marker whose key the import (re)fills is
-        superseded, like ``set``. Refused (False) when read-only. A
-        persist failure returns False with the in-memory replacement
-        standing, consistent with set/delete/clear.
+        exactly the given entries, filtered by the same rules as ``load()``.
+        The reset markers merge three sources, all minus the imported keys:
+        the live pending markers, every live key the import drops (a restore
+        that drops a profile means "expect 0 next time", like
+        ``delete``/``clear``), and ``resets`` — the backup's own pending
+        markers. A marker whose key the import (re)fills is superseded, like
+        ``set``. Refused (False) when read-only; a persist failure returns
+        False with the in-memory replacement standing, consistent with
+        set/delete/clear.
         """
         if self._read_only:
             self._log_warning("{0} read-only; refusing replace_all()"
@@ -532,10 +511,10 @@ class OffsetStore:
     def _persist(self):
         """Serialize and atomically swap the file into place.
 
-        On OSError the in-memory state is left AS MUTATED (the caller already
-        acted on the new value; rolling back the dict would surprise a
-        single-threaded caller more than a stale-on-disk file does) and False
-        is returned so the caller can react to the durability miss.
+        On OSError the in-memory state is left as mutated (rolling back the
+        dict would surprise a single-threaded caller more than a
+        stale-on-disk file does) and False is returned so the caller can
+        react to the durability miss.
         """
         payload = {"version": _SCHEMA_VERSION, "profiles": self._profiles}
         if self._resets:

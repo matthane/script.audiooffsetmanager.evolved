@@ -1,55 +1,45 @@
-"""Store mutation handler — the service side of the cross-process channel.
+"""Store mutation handler: the service side of the cross-process channel.
 
-The management view runs in the SCRIPT process and must never write the
-store file (single-writer doctrine): its mutations travel as
-``JSONRPC.NotifyAll`` messages that the monitor bridge turns into typed
-``StoreMutationRequested`` events, and THIS component executes them on the
-dispatcher thread — the same thread that owns every other store write.
+The management view runs in the script process and must never write the
+store file (single writer): its mutations travel as ``JSONRPC.NotifyAll``
+messages that the monitor bridge turns into typed ``StoreMutationRequested``
+events, and this component executes them on the dispatcher thread, the same
+thread that owns every other store write.
 
-The op whitelist is the security boundary of the channel: only
-``delete``, ``clear``, and ``import`` exist. There is no value field on the
-event and no ``set`` op, so the channel STRUCTURALLY cannot carry a value
-write; an unknown op (or a malformed payload the bridge posted verbatim) is
-rejected loudly — one warning line plus a failed ack — never silently
-dropped.
+The op whitelist is the channel's security boundary: only ``delete``,
+``clear``, and ``import`` exist. There is no value field and no ``set`` op,
+so the channel structurally cannot carry a value write; an unknown op or a
+malformed payload is rejected loudly (a warning line plus a failed ack).
 
-``import`` is the backup-restore op and keeps the no-value-entry rule
-intact: it transports values that were LEARNED during playback (on this box
-or another), it never lets anyone type one. The wire carries no path and no
-payload — the script process stages the user's chosen backup file at the
-well-known ``<store>.import`` sibling path (a staging file, NOT the store
-file, so the single-writer doctrine holds) and the service reads it from
-there, re-validates it with the same reader the script used, REPLACES the
-whole store (restore semantics, never merge — user call; the backup's
-reset markers ride along), and discards the staging file whatever the
-outcome. The window a spoofed ``import`` could exploit is structurally
-small: the view stages the file for its pre-flight read, discards it
-BEFORE the confirmation dialog, and re-stages only after the user
-confirmed, milliseconds before the send — so outside that instant a
-spoofed request finds no staged file and fails, and a valid-but-empty
-staged file is refused HERE regardless (never a disguised clear-all).
+``import`` is the backup-restore op and keeps the no-value rule intact: it
+transports values learned during playback, never typed ones. The wire
+carries no path and no payload; the script process stages the chosen backup
+at the well-known ``<store>.import`` sibling path (a staging file, not the
+store file), and the service reads it there, re-validates it with the same
+reader, replaces the whole store (restore semantics, never merge; the
+backup's reset markers ride along), and discards the staging file whatever
+the outcome. The window a spoofed ``import`` could exploit is small: the
+view stages the file for its pre-flight read, discards it before the
+confirmation dialog, and re-stages only after the user confirmed; outside
+that instant a spoofed request finds no staged file, and a valid-but-empty
+staged file is refused here regardless.
 
-Every request is acknowledged through the injected ``ack`` callable (the
-runtime wires it to ``KodiGateway.notify_all`` under ``ACK_MESSAGE``),
-echoing ``request_id`` so the script process can match the reply; no ack
-within the script's timeout is its "service not running" signal
-(report-only — there is no direct-write fallback).
+Every request is acknowledged through the injected ``ack`` callable (wired
+to ``KodiGateway.notify_all`` under ``ACK_MESSAGE``), echoing ``request_id``
+so the script process can match the reply; no ack within its timeout is the
+"service not running" signal (report-only, no direct-write fallback).
 
-After a STORE-CHANGING mutation the handler runs ``_store_changed``:
-synchronous session-state invalidation (miss dedupe + watcher
-observation) plus a typed ``StoreMutated`` the applier consumes as a
-resolve moment for the live session — deleting
-the PLAYING profile's offset takes effect immediately, the marked miss
-forcing its promised 0 at the deletion itself. "Store-changing" means the
-IN-MEMORY store the live session resolves against: a delete that removed
-an entry, a clear with entries, or an import that replaced the store,
-INCLUDING their persist-failed variants (OffsetStore keeps the in-memory
-mutation when only the disk write failed — the ack reports the durability
-truth, the live session follows the in-memory truth). A missing-key
-delete, an empty clear, refused ops, and an import whose staged backup
-failed validation changed nothing and trigger nothing. Nothing HERE touches
-Kodi's live delay; the applier owns that reaction, behind its standing
-gates.
+After a store-changing mutation the handler runs ``_store_changed``:
+synchronous session-state invalidation (miss dedupe + watcher observation)
+plus a typed ``StoreMutated`` the applier consumes as a resolve moment, so
+deleting the playing profile's offset takes effect immediately.
+"Store-changing" means the in-memory store the live session resolves
+against: a delete that removed an entry, a clear with entries, or an import
+that replaced the store, including their persist-failed variants (OffsetStore
+keeps the in-memory mutation when only the disk write failed; the ack reports
+the durability truth). A missing-key delete, an empty clear, refused ops, and
+an import whose staged backup failed validation trigger nothing. Nothing here
+touches Kodi's live delay; the applier owns that, behind its standing gates.
 
 Protocol constants live here (pure Python) so the monitor bridge and the
 script-process client share one definition.
@@ -85,13 +75,13 @@ class StoreMutationHandler:
 
     def __init__(self, dispatcher, session_tracker, store, ack, *,
                  import_path, log_debug=None, log_warning=None):
-        """``store`` is the raw ``OffsetStore`` (mutations bypass the
-        ``OffsetTable`` resolve/write-key algebra — they target literal
-        keys the view listed). ``ack`` is a REQUIRED callable taking the
-        reply payload dict. ``import_path`` is the REQUIRED local staging
-        path the script process copies a backup to (store path +
-        ``IMPORT_SUFFIX``; the runtime derives it, keeping this module
-        pure of Kodi path translation)."""
+        """``store`` is the raw ``OffsetStore`` (mutations target literal
+        keys the view listed, bypassing the ``OffsetTable`` algebra).
+        ``ack`` is a required callable taking the reply payload dict.
+        ``import_path`` is the required local staging path the script
+        process copies a backup to (store path + ``IMPORT_SUFFIX``; the
+        runtime derives it, keeping this module free of Kodi path
+        translation)."""
         self._dispatcher = dispatcher
         self._sessions = session_tracker
         self._store = store
@@ -140,11 +130,9 @@ class StoreMutationHandler:
             return {'ok': False, 'detail': 'missing'}
         if not self._store.delete(key):
             # Present, writable, but the persist failed: the entry would
-            # resurrect from disk on the next load — the ack must not
-            # claim durability the store does not have. The IN-MEMORY
-            # removal stands, though (OffsetStore doctrine), so the live
-            # session's store DID change: reconcile it like any other
-            # mutation; only durability failed.
+            # resurrect on the next load, so the ack must not claim
+            # durability. The in-memory removal stands, so the live store
+            # changed: reconcile it like any other mutation.
             self._store_changed(op='delete', key=key)
             return {'ok': False, 'detail': 'persist_failed'}
         self._log(f"AOMe_StoreMutations: deleted stored offset {key}")
@@ -175,18 +163,14 @@ class StoreMutationHandler:
         """Replace the whole store from the staged backup file (restore).
 
         The staging file is validated by the same reader the script process
-        already ran (defense in depth: the file sat on disk between the two
-        reads, and the service must never trust another process's
-        validation), then the store is REPLACED — restore semantics, with
-        reset markers for every key the backup drops AND every marker the
-        backup itself carried (OffsetStore doctrine — a restore preserves
-        the backup's pending "expect 0" promises). A valid-but-EMPTY
-        backup is refused HERE, not just in the view: "restore nothing,
-        deleting everything" is clear-all wearing a costume, and the
-        service is the choke point — the view's identical refusal is only
-        the friendly pre-flight. The staging file is discarded whatever
-        the outcome: it is a copy the script made for exactly one
-        request, and the user's original backup is untouched.
+        ran (defense in depth: it sat on disk between the two reads, and the
+        service must not trust another process's validation), then the store
+        is replaced, with reset markers for every key the backup drops and
+        every marker the backup carried. A valid-but-empty backup is refused
+        here, not just in the view ("restore nothing" is clear-all in a
+        costume, and the service is the choke point). The staging file is
+        discarded whatever the outcome; the user's original backup is
+        untouched.
         """
         try:
             if self._store.read_only:
@@ -207,10 +191,9 @@ class StoreMutationHandler:
                            "view, never here)")
                 return {'ok': False, 'detail': 'empty'}
             if not self._store.replace_all(entries, resets=resets):
-                # Read-only was already excluded above, so False here is a
-                # persist failure: the in-memory replacement stands
-                # (OffsetStore doctrine) and the live session must
-                # reconcile against it; only durability failed.
+                # Read-only was excluded above, so False is a persist
+                # failure: the in-memory replacement stands and the live
+                # session reconciles against it; only durability failed.
                 self._store_changed(op='import')
                 return {'ok': False, 'detail': 'persist_failed'}
             count = len(self._store)
@@ -226,33 +209,29 @@ class StoreMutationHandler:
     def _store_changed(self, op, key=None):
         """The store changed under the session: reconcile and re-log.
 
-        Three consequences, the first two SYNCHRONOUS on purpose:
+        Three consequences, the first two synchronous on purpose:
 
-        - ``miss_announced`` is cleared (same rule as the watcher's store
-          path: it dedupes the
-          applier's "no stored offset" line per consulted chain, and a
-          mutation makes any remembered chain stale).
-        - The watcher's observation state is cleared (the supersede
-          corollary at its root): an in-flight candidate was dialed
-          against the store that no longer exists. This CANNOT ride on a
-          queued event — the dispatcher fires due timers between queue
-          items, so a quiescence-deadline WatchTick can land between this
-          handler and any event it posts and store the stale candidate
-          under the just-deleted key (resurrecting it, marker discarded
-          by set()); and the applier's already-0/failed-RPC reset
-          branches deliberately post no DelayReset at all.
-          Synchronous assignment on the dispatcher
-          thread is race-free by construction.
+        - ``miss_announced`` is cleared: it dedupes the applier's "no stored
+          offset" line per consulted chain, and a mutation makes any
+          remembered chain stale.
+        - The watcher's observation state is cleared: an in-flight candidate
+          was dialed against a store that no longer exists. This cannot ride
+          on a queued event, because the dispatcher fires due timers between
+          queue items, so a quiescence-deadline WatchTick could land between
+          this handler and any event it posts and store the stale candidate
+          under the just-deleted key; and the applier's already-0/failed-RPC
+          reset branches post no DelayReset. Synchronous assignment on the
+          dispatcher thread is race-free.
         - A typed ``StoreMutated`` is posted so the applier re-runs its
-          decision for the live session — the deletion acts NOW when its
+          decision for the live session, acting now when the deleted
           profile is playing.
         """
         session = self._sessions.current
         if session is not None:
             session.miss_announced = None
-            # The watcher's _clear_observation doctrine, applied inline
-            # (baseline and pending fall together — a baseline from the
-            # pre-mutation store must not classify post-mutation readings).
+            # The watcher's _clear_observation logic, applied inline
+            # (baseline and pending fall together — a pre-mutation baseline
+            # must not classify post-mutation readings).
             session.watch_pending = None
             session.watch_baseline_ms = None
         self._dispatcher.post(events.StoreMutated(op=op, key=key))

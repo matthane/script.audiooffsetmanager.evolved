@@ -1,84 +1,58 @@
 """Seek-back scheduling: the quiet-window policy, enforced by rescheduling.
 
-ONE rule, decided by the
-pure ``policies.seek_decision`` and enforced by ``ExecuteSeek`` events that
-re-check every 0.5s instead of blocking the dispatcher:
+One rule, decided by the pure ``policies.seek_decision`` and enforced by
+``ExecuteSeek`` events that re-check every 0.5s instead of blocking the
+dispatcher:
 
-    Do not seek until there has been no seek activity — ours, another
-    addon's, or the user's — for QUIET_WINDOW seconds. Defer by
+    Do not seek until there has been no seek activity (ours, another
+    addon's, or the user's) for QUIET_WINDOW seconds. Defer by
     rescheduling. Give up DEADLINE seconds after the request.
 
-Every attempt runs the same pipeline: probe the vendor list (a busy vendor
-is recorded as activity, so the quiet window itself defers past it — no
-separate vendor gate), ask the policy (sole owner of the quiet/deadline/
-served math), then apply the stability preference: a 'seek' verdict is
-downgraded to defer while the session is not yet STABLE, for up to
-STABILITY_GRACE seconds — after which the quiet window alone decides, so a
-stream whose profile never completes still gets its replay (holding the
-user's replay hostage to detection success would punish exactly the
-streams that need it).
+Every attempt probes the vendor list (a busy vendor is recorded as activity,
+so the quiet window itself defers past it), asks the policy, then applies
+the stability preference: a 'seek' verdict is downgraded to defer while the
+session is not yet STABLE, for up to STABILITY_GRACE seconds, after which
+the quiet window alone decides (so a stream whose profile never completes
+still gets its replay).
 
 Behavior:
 
 - Triggers: PlaybackStarted -> 'resume'; Resumed -> 'unpause'; a
-  change-announcing, non-initial StreamStabilized (the detector stamps
-  ``initial`` on the session's first stabilization — startup settling gets
-  no 'adjust' replay) -> 'adjust'; UserOffsetSettled (a manual adjustment
-  held through quiescence — the USER-ACTION fact, not the store: the
-  replay follows the user's hand, so it fires with learning off too;
-  session-stamped, so a settle racing an in-place reopen can never seek
-  the new session) -> 'change'.
-- Per-reason trigger debounce: a trigger within DEBOUNCE_SECONDS of that
-  reason's last EXECUTED seek is dropped;
-  a re-trigger while pending key-replaces the attempt chain (and its
-  event-carried requested_at restarts the deadline). The enabled check
-  runs at trigger time; an enabled-but-zero
-  length warns.
+  change-announcing, non-initial StreamStabilized -> 'adjust';
+  UserOffsetSettled -> 'change' (the user-action fact, not the store, so it
+  fires with learning off too; session-stamped, so a settle racing an
+  in-place reopen cannot seek the new session).
+- Per-reason debounce: a trigger within DEBOUNCE_SECONDS of that reason's
+  last executed seek is dropped; a re-trigger while pending key-replaces the
+  attempt chain (its requested_at restarts the deadline).
 - Cross-type suppression: a request served by one of our own seeks
-  (executed at/after the request) is abandoned by the policy;
-  a genuinely-new trigger arriving just after an own seek defers and
-  executes — a fresh user action gets its replay.
-- Unpause yields to the playhead: 'unpause' is the one trigger an
-  external actor may mirror (a vendor's own unpause seek-back), so its
-  first attempt waits the detection grace — giving a reactor to the
-  same unpause time to reveal itself — and ANY seek activity observed
-  at or after the trigger cancels the replay instead of deferring it
-  (someone else already moved the playhead since the unpause; replaying
-  on top would double their seek). Vendor-agnostic: the signals are the
-  generic activity view (SeekOccurred plus the busy-property list),
-  never a specific addon. The yield is single-shot by design (a
-  cancelled replay never revives; the next unpause is a fresh trigger),
-  and the grace closes only the pre-execution race — an external seek
-  landing after our committed replay is the accepted residual, because
-  a corrective seek would itself be a third jump, worse than the double
-  it repairs. The other reasons deliberately do NOT yield: 'resume'
-  keeps defer-past semantics (Kodi's and vendors' start-of-playback
-  seeks are POSITIONING, not replays, and cancelling past them would
-  kill the resume replay everywhere), and 'adjust'/'change' ride
-  internal facts (a profile change stabilized, a manual offset settled)
-  that no external actor mirrors — a nearby external seek there is a
-  coincident user scrub to wait out, and yielding would eat the replay
-  the adjustment just earned.
+  (executed at/after the request) is abandoned by the policy; a genuinely
+  new trigger just after an own seek defers and executes.
+- Unpause yields to the playhead: 'unpause' is the one trigger an external
+  actor may mirror (a vendor's own unpause seek-back), so its first attempt
+  waits the detection grace (letting a reactor reveal itself) and any seek
+  activity at or after the trigger cancels the replay rather than deferring
+  it. The signals are the generic activity view, never a specific addon; the
+  yield is single-shot, and an external seek landing after our committed
+  replay is the accepted residual (a corrective seek would be a worse third
+  jump). The other reasons do not yield: 'resume' keeps defer-past semantics
+  (start-of-playback seeks are positioning, not replays), and
+  'adjust'/'change' ride internal facts no external actor mirrors.
 - Session start counts as seek activity, so playback always gets a settle
-  window before the first replay: Kodi's own resume-position seek defers
-  the replay past itself, and a start under a sustained seek storm
-  abandons at the deadline rather than rewinding under an actively
-  seeking user.
-- Pause cancels the pending seek at fire time — a replay never fires
-  into a paused player.
+  window before the first replay (Kodi's resume-position seek defers the
+  replay past itself; a start under a sustained seek storm abandons at the
+  deadline).
+- Pause cancels the pending seek at fire time.
 - Stale requests are inert: ExecuteSeek is session-stamped and stop/end/
-  reopen cancels the (closed, per-reason) timer keys. There is no side
-  bookkeeping to strand: the request state IS the key-replaced timer and
-  its event payload.
+  reopen cancels the per-reason timer keys. The request state is the
+  key-replaced timer and its event payload; there is no side bookkeeping.
 
-``ExternalSeekCoordinator`` owns the inter-addon seek protocol, both
-directions: the read side (vendor busy-property list as DATA; busy
-recency is deliberately cross-session — aggregated with session activity
-into the policy's ``last_activity`` view) and the write side (the seek
-actuator, which sets our reciprocal
-``script.audiooffsetmanager.evolved.seeking`` property
-around the seek so other addons get the courtesy we consume from the
-vendor list).
+``ExternalSeekCoordinator`` owns the inter-addon seek protocol both ways:
+the read side (the vendor busy-property list as data, aggregated
+cross-session into the policy's ``last_activity`` view) and the write side
+(the seek actuator, which sets our reciprocal
+``script.audiooffsetmanager.evolved.seeking`` property around the seek so
+other addons get the courtesy we consume from the vendor list).
 
 Pure app layer: Kodi I/O through the injected gateway, settings through the
 injected facade, log sinks injected; no Kodi imports.
@@ -138,9 +112,8 @@ class ExternalSeekCoordinator:
         """Run one seek with the reciprocity property set around it.
 
         ``player_id=None`` means the caller has no detected profile to read
-        it from (a stream seeking past the stability grace): query the
-        player directly and let the
-        gateway's default (player 1) absorb a -1 answer.
+        it from: query the player directly and let the gateway's default
+        (player 1) absorb a -1 answer.
         """
         if player_id is None:
             player_id = self._gateway.active_player_id()
@@ -161,12 +134,11 @@ class SeekScheduler:
     RECHECK_SECONDS = 0.5
     DEBOUNCE_SECONDS = 2.0
     # The yielding reasons' first-attempt delay. Numerically equal to
-    # RECHECK_SECONDS today but deliberately its own knob: RECHECK tunes
-    # the re-poll cadence, this tunes the safety window in which an
-    # external reactor to the same trigger can reveal itself (observed
-    # reactions: a busy flag within milliseconds, a mirrored seek within
-    # ~200ms — 0.5s covers both with margin). Retune THIS, never
-    # RECHECK, if a slower reactor surfaces in a field log.
+    # RECHECK_SECONDS today but its own knob: RECHECK tunes the re-poll
+    # cadence, this tunes the window in which an external reactor to the same
+    # trigger can reveal itself (a busy flag within ms, a mirrored seek
+    # within ~200ms; 0.5s covers both). Retune this, never RECHECK, if a
+    # slower reactor surfaces.
     DETECTION_GRACE_SECONDS = 0.5
     # How long a 'seek' verdict defers waiting for STABLE before the quiet
     # window alone decides (never-stabilizing streams keep their replay).
@@ -222,9 +194,8 @@ class SeekScheduler:
         if not event.profile_changed:
             return  # pure re-confirmation: nothing changed, nothing to replay
         if event.initial:
-            # Startup settling, not an adjustment — stamped by the detector
-            # from the state machine's own stabilization count (this replaced
-            # the per-session initial_av_change_consumed latch).
+            # Startup settling, not an adjustment (stamped by the detector
+            # from the state machine's stabilization count).
             self._log("AOMe_SeekScheduler: Skipping initial AV change (startup)")
             return
         self._request('adjust')
@@ -257,9 +228,9 @@ class SeekScheduler:
                       f"{event.reason} seek back")
             return
 
-        # Probe vendors on EVERY attempt (a busy sighting during
+        # Probe vendors on every attempt (a busy sighting during
         # stabilization must count): the recording feeds last_activity, so
-        # the policy's quiet window is the only vendor gate needed.
+        # the quiet window is the only vendor gate needed.
         self._coordinator.vendor_busy()
 
         decision = policies.seek_decision(
@@ -335,11 +306,9 @@ class SeekScheduler:
                        f"({seek_seconds}) for {reason}")
             return
         # A re-trigger while pending key-replaces the attempt chain; the
-        # fresh requested_at restarts the deadline (the newest user action
-        # is the one served). A yielding reason's first attempt waits the
-        # detection grace: an external reactor to the same trigger gets
-        # time to raise its busy flag or land its seek before we commit —
-        # firing instantly is what raced ahead of it.
+        # fresh requested_at restarts the deadline. A yielding reason's first
+        # attempt waits the detection grace so an external reactor can raise
+        # its busy flag or land its seek before we commit.
         delay = (self.DETECTION_GRACE_SECONDS
                  if reason in self.YIELDING_REASONS else 0.0)
         self._dispatcher.schedule(

@@ -1,89 +1,55 @@
 """ManageView: the script-process stored-offsets management surface.
 
-This is the user-facing half of the store mutation channel whose service
-half is :mod:`resources.lib.aome.app.store_mutations`. It runs in the SCRIPT
-process and honours the same boundary from the other side: inspection
-plus delete/clear ONLY. There is no value entry anywhere in this module —
-offsets are learned during playback (the watcher), never typed here — and
-it NEVER writes the store file. It READS the file directly through the
-injected read-only reader and asks the service to mutate over the channel.
+Runs in the script process and honours the store mutation channel's boundary
+from the view side: inspection plus delete/clear only. No value entry exists
+anywhere here (offsets are learned during playback, never typed), and it
+never writes the store file. It reads the file through the injected read-only
+reader and asks the service to mutate over the channel.
 
 The seam is three injected callables, wired by the script router:
 
 * ``read_entries()`` returns a ``{key: entry}`` snapshot (each entry has
   ``delay_ms``, ``updated``, ``source``, optional ``video_fps``) and may
-  raise :class:`StoreUnreadable` — the file exists but cannot be presented.
+  raise :class:`StoreUnreadable`.
 * ``gui`` is the plain-dialog surface (``select``/``yesno``/``ok`` +
   ``localized``); ``select`` takes plain-string rows and/or
-  ``(label, detail)`` tuples (two-line detail rows) and returns the chosen
-  index, -1 on cancel.
+  ``(label, detail)`` tuples and returns the chosen index, -1 on cancel.
 * ``send_mutation(op, key=None)`` posts a delete/clear over the channel and
-  returns the service's ack dict, or ``None`` on timeout — the
-  report-only signal that the service is not running. There is deliberately
-  NO fallback write path: a missing service is reported, never worked around.
+  returns the service's ack dict, or ``None`` on timeout (the report-only
+  "service not running" signal). There is no fallback write path.
 
-``run()`` is a re-read-and-render loop. Every pass reads the store fresh, so
-a delete's effect is the next render (a cleared store lands on the empty
-state and exits) — the refreshed list IS the feedback. Values render
-VERBATIM: the odd signed millisecond integers the store keeps (-115, +9999)
-are shown exactly, never rounded or step-snapped. The empty state is the
-first-run education: nothing is stored until the user fixes lipsync once.
+``run()`` is a re-read-and-render loop: every pass reads the store fresh, so
+a delete's effect is the next render. Values render verbatim (the signed
+millisecond integers the store keeps, shown exactly, never rounded). The
+empty state is the first-run education.
 
-When the store spans MORE THAN ONE HDR group, the top level renders as a
-group index instead of one flat list: one single-line row per HDR type
-present — display name plus entry count, with the group's inactive
-share suffixed when it has one ('3 entries (2 inactive)') — with
-hand-edited keys that cannot claim an HDR name (unsplittable, or a blank
-hdr segment) bucketed under 'Other', sorted last (verbatim acceptance
-extends to grouping: a scribbled key still lists and still deletes, and
-it never gets to render a nameless group row or a blank dialog heading).
-A single-group store renders the flat list — its index would be one row
-of pure overhead, and the flat list IS that group's contents. The mode
-derives from the GROUP count, never the entry count (an entry-count
-threshold would let one delete silently dissolve the categories into a
-flat list whose visible rows all share one HDR name — reading as being
-trapped inside a category with no way back). A delete can never flip the
-mode;
-it flips only when a whole group appears or empties — a transition the
-user just caused and can see.
-Selecting a group lists only its entries, headed by the group name, with
-the redundant HDR name dropped from the row copy ('Dolby TrueHD ·
-23.976 fps'); Back from a group returns to the top level, Back from the
-top level exits. The whole-store clear-all lives ONLY at the top level,
-where the whole store it deletes is represented; each open group carries
-its own scoped clear row instead, implemented as LOOPED SINGLE DELETES
-over the channel — the channel whitelist stays delete/clear, no batch op
-exists on the wire — with a confirmation that restates the scope exactly
-as the index row did ('Dolby Vision — 6 entries'). Counts include dormant rows — the index
-inherits never-under-represent: every stored entry is countable there and
-reachable from it. Every pass at either level re-reads the store. An open
-group survives external mutations that leave it the only group (deleting
-inside 'Dolby Vision' must not teleport the user into a flat list
-mid-flow), while the top level re-evaluates fresh on every render; delete
-confirmations always show the FULL profile line, never the shortened
-in-group copy — a confirmation must not depend on which list the user
-came from.
+When the store spans more than one HDR group the top level renders as a
+group index (one row per HDR type, with display name and entry count, and an
+inactive share suffixed when it has one); a single-group store renders the
+flat list instead. The mode derives from the group count, never the entry
+count, so a delete can never dissolve the categories into a flat list whose
+rows all share one HDR name. Keys that cannot claim an HDR name
+(unsplittable, or a blank hdr segment) bucket under 'Other', sorted last.
+Selecting a group lists only its entries, headed by the group name, with the
+redundant HDR name dropped from the row copy; Back returns to the top level.
+The whole-store clear-all lives only at the top level; each open group
+carries its own scoped clear, implemented as looped single deletes over the
+channel (no batch op on the wire). An open group survives external mutations
+that leave it the only group, while the top level re-evaluates fresh each
+render; delete confirmations always show the full profile line.
 
-Display is toggle-aware but NEVER filtered: dormancy is symmetric with
-the lookup rule (an offset applies only in the mode it was saved in),
-so the injected ``per_fps`` flag decides which rows are tagged. Toggle
-ON: 'all' rows render their axis as 'All FPS' and are dormant. Toggle
-OFF: the fps axis is OMITTED from 'all' rows ('All FPS' would restate
-the only semantics that mode has) and per-fps rows keep their rate and
-are dormant. Dormant rows are tagged '— inactive', never hidden, and
-sink below the active rows of their HDR group (what applies right now
-reads first; what is merely kept reads last). Every
-stored entry always lists — this view is the store's only inspection
-surface, and clear-all's confirmation must never under-represent what
-it deletes.
+Display is toggle-aware but never filtered: dormancy is symmetric with the
+lookup rule (an offset applies only in the mode it was saved in), so the
+injected ``per_fps`` flag decides which rows are tagged. Dormant rows are
+tagged '— inactive', never hidden, and sink below the active rows of their
+HDR group. Every stored entry always lists, so clear-all's confirmation
+never under-represents what it deletes.
 
-List rows carry Kodi label markup, applied at RENDER time only: dormant
-rows are dimmed gray (Kodi's idiom for present-but-not-in-effect; the
-'— inactive' tag stays for skins where color alone reads poorly) and the
-group index bolds the group name against its count. The ``_Row`` strings
-stay plain so confirmations — which reuse them — render unstyled; bold
-degrades to regular weight on skins without a bold list font, so no
-information may live in markup alone.
+List rows carry Kodi label markup applied at render time only: dormant rows
+are dimmed gray and the group index bolds the group name against its count.
+The ``_Row`` strings stay plain so confirmations, which reuse them, render
+unstyled; bold degrades to regular weight on skins without a bold list font,
+so no information lives in markup alone.
 """
 
 from collections import namedtuple
@@ -111,15 +77,12 @@ _MSG_CONFIRM_CLEAR_GROUP = 32139
 _LABEL_INACTIVE = 32167       # "{0} — inactive" — the dormant row's value line
 _LABEL_GROUP_INACTIVE = 32170  # "({0} inactive)" — group-row count suffix
 
-# English fallbacks for the strings that must never render blank:
-# localized() degrades to '' on a transient failure, and a blank
-# information dialog teaches nothing (same doctrine as the corruption and
-# coexistence notices). Confirmations keep the raw localized
-# text: they carry the entry description alongside it. The group-index
-# strings are here too — 'Other' is a row's ENTIRE label (blank would
-# render a nameless group), the count templates are the only content
-# beside the group name, and the inactive tag is the dormant row's whole
-# explanation.
+# English fallbacks for strings that must never render blank: localized()
+# degrades to '' on a transient failure, and a blank dialog teaches nothing.
+# Confirmations keep the raw localized text (they carry the entry
+# description alongside it). The group-index strings are here too: 'Other' is
+# a row's entire label, the count templates are the only content beside the
+# group name, and the inactive tag is the dormant row's whole explanation.
 _FALLBACKS = {
     _MSG_EMPTY: ("Nothing is stored yet. Adjust Kodi's audio offset during "
                  "playback and the value will be saved for that stream "
@@ -142,18 +105,17 @@ _FALLBACKS = {
     _LABEL_GROUP_INACTIVE: "({0} inactive)",
 }
 
-# One presentable entry: the full profile line (flat rows AND the first
-# line of the delete confirmation), the in-group line (drill-down rows —
-# the redundant HDR name dropped, codec leading), the value/meta detail
-# line, the literal store key the delete mutation targets, and the
-# dormancy flag that dims the row at render time. All strings PLAIN —
-# markup is a list-render concern, and these feed confirmations too.
+# One presentable entry: the full profile line (flat rows and the delete
+# confirmation's first line), the in-group line (drill-down rows, codec
+# leading), the value/meta detail line, the literal store key the delete
+# targets, and the dormancy flag. All strings plain; markup is a list-render
+# concern, and these feed confirmations too.
 _Row = namedtuple("_Row", "describe short detail key dormant")
 
-# Kodi label markup for the list renders. COLOR is skin-independent;
-# [B] needs the skin's bold list font (Estuary has one) and silently
-# renders regular weight without it — acceptable, because the bold
-# carries no information the text does not.
+# Kodi label markup for the list renders. Color is skin-independent; [B]
+# needs the skin's bold list font (Estuary has one) and silently renders
+# regular weight without it, which is fine since the bold carries no
+# information the text does not.
 _DIM = "[COLOR gray]{0}[/COLOR]"
 _BOLD = "[B]{0}[/B]"
 
@@ -168,12 +130,11 @@ class ManageView:
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
                  log_debug=None):
         """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
-        change while the view is open — the settings dialog is closed). It
-        drives DISPLAY only: 'All FPS' vs an omitted fps axis for the
-        'all' segment, and the '— inactive' tag on whichever rows the
-        lookup will not consult right now (per-fps rows while the toggle
-        is off, 'all' rows while it is on). Never filtering: this view is
-        the store's only inspection surface, so every entry always lists.
+        change while the view is open). It drives display only: 'All FPS' vs
+        an omitted fps axis for the 'all' segment, and the '— inactive' tag
+        on whichever rows the lookup will not consult now. Never filtering:
+        this view is the store's only inspection surface, so every entry
+        always lists.
         """
         self._read_entries = read_entries
         self._gui = gui
@@ -248,10 +209,9 @@ class ManageView:
     def _index_pass(self, heading, groups):
         """The group index: one single-line row per HDR type + clear-all.
 
-        ``groups`` is run()'s ordered ``(segment, count, inactive)`` list —
-        the same one that decided the mode. Clear-all stays on this level
-        (and only this level) when grouped: its confirmation covers the
-        whole store, so it belongs where the whole store is represented.
+        ``groups`` is run()'s ordered ``(segment, count, inactive)`` list.
+        Clear-all stays on this level when grouped: its confirmation covers
+        the whole store, so it belongs where the whole store is represented.
         """
         self._log("AOMe_ManageView: rendering group index ({0} group(s))"
                   .format(len(groups)))
@@ -272,14 +232,11 @@ class ManageView:
     def _group_pass(self, heading, rows):
         """One open group's entries; Back returns to the top level.
 
-        The open group survives external mutations that leave it the
-        only group — deleting inside a group must not teleport the user
-        into a flat list mid-flow — but a group that emptied under us
-        (last delete, or another session) falls back to the top level,
-        which re-evaluates flat vs grouped fresh. The select is headed by
-        the group name so the user always knows which drill-down they are
-        in; confirmations keep the main heading and the FULL profile
-        line.
+        The open group survives external mutations that leave it the only
+        group, but a group that emptied under us falls back to the top
+        level, which re-evaluates flat vs grouped fresh. The select is
+        headed by the group name; confirmations keep the main heading and
+        the full profile line.
         """
         group_rows = [row for row in rows
                       if self._group_of(row.key) == self._group]
@@ -306,17 +263,13 @@ class ManageView:
     def _clear_group(self, heading, group_rows, *, whole_store):
         """Batch-delete every entry of the open group.
 
-        LOOPED SINGLE DELETES over the existing channel — there is no
-        batch op on the wire, so the channel whitelist (delete/clear) is
-        untouched and the service side needs no change. The confirmation
-        restates the scope exactly as the index row did (group name —
-        count). Per-delete semantics mirror the single-delete flow: a
-        'missing' ack is satisfied intent (the entry raced away) and the
-        batch continues; a timeout or hard failure reports ONCE and stops
-        — the re-rendered list is the truth about what remains. Clearing
-        a group that was the ENTIRE store at render exits quietly like
-        clear-all (looping would land on the first-run education dialog
-        right after a deliberate wipe).
+        Looped single deletes over the existing channel (no batch op on the
+        wire, so the whitelist is untouched). The confirmation restates the
+        scope as the index row did. Per-delete semantics mirror the
+        single-delete flow: a 'missing' ack is satisfied intent and the
+        batch continues; a timeout or hard failure reports once and stops.
+        Clearing a group that was the entire store exits quietly like
+        clear-all.
         """
         message = (self._text(_MSG_CONFIRM_CLEAR_GROUP) + "\n"
                    + self._group_row(self._group, len(group_rows),
@@ -341,9 +294,8 @@ class ManageView:
         """Post-confirmation tail shared by every pass.
 
         A declined confirmation just loops; a real ack is reported, and a
-        deliberate clear closes the view — looping would land on the
-        first-run education empty state, which reads as "nothing was ever
-        stored" right after the user emptied the store on purpose.
+        deliberate clear closes the view (looping would land on the
+        first-run empty state right after the user emptied the store).
         """
         if ack is _DECLINED:
             return None
@@ -359,14 +311,11 @@ class ManageView:
         """Rows for every entry, in the grouped display order.
 
         ``keys.sort_key`` groups by HDR type, then codec, then rate ('all'
-        first, numeric order) — total even over hand-edited keys, so the
-        list never shuffles between renders. Dormancy splits each HDR
-        group in two: the rows the lookup consults right now list first,
-        the dormant ones sink below them, and each stratum keeps the
-        codec/rate order. The split stays INSIDE the group — dormancy
-        must never move an entry between groups, or the index's
-        first-appearance order and the drill-down membership would
-        shuffle with the toggle.
+        first, numeric order), total even over hand-edited keys. Dormancy
+        splits each HDR group in two: the active rows list first, the
+        dormant ones sink below, each stratum keeping the codec/rate order.
+        The split stays inside the group, so dormancy never moves an entry
+        between groups.
         """
         rows = []
         for key, entry in entries.items():
@@ -388,9 +337,9 @@ class ManageView:
     def _list_row(label, row):
         """One two-line select option; a dormant row is dimmed whole.
 
-        Markup lives HERE, not in the ``_Row`` strings: confirmations
-        reuse those and must render unstyled. Both lines dim — half a
-        gray row would read as two different states.
+        Markup lives here, not in the ``_Row`` strings, which confirmations
+        reuse unstyled. Both lines dim; half a gray row would read as two
+        states.
         """
         if row.dormant:
             return (_DIM.format(label), _DIM.format(row.detail))
@@ -399,14 +348,11 @@ class ManageView:
     def _is_dormant(self, key):
         """True for an entry the lookup will not consult right now.
 
-        Dormancy mirrors the lookup rule symmetrically: with the toggle
-        off, resolution only ever reads the 'all' key, so an exact-rate
-        entry is stored-but-dormant; with it on, only the fps-specific
-        key is read, so an 'all' entry is dormant. The row is tagged
-        rather than hidden (hiding would misstate clear-all's scope and
-        strand the entries with no way to prune them). Unsplittable
-        hand-edited keys are never tagged — nothing is known about how
-        they resolve.
+        Dormancy mirrors the lookup rule symmetrically: with per_fps off
+        only the 'all' key is read, so an exact-rate entry is dormant; with
+        it on, only the fps-specific key is read, so an 'all' entry is
+        dormant. The row is tagged rather than hidden (hiding would misstate
+        clear-all's scope). Unsplittable keys are never tagged.
         """
         try:
             fps_segment = split_key(key)[1]
@@ -426,14 +372,12 @@ class ManageView:
         return self._render_key(describe_key_in_group, key, entry)
 
     def _render_key(self, describe_fn, key, entry):
-        """One describe function + THE verbatim fallback, written once.
+        """One describe function plus the verbatim fallback, written once.
 
-        A key that does not split into three segments raises; the store
-        doctrine is verbatim acceptance, so an unrecognised key is SHOWN
-        as itself rather than crashing the view on a scribbled file (in
-        the 'Other' bucket there is no name to drop anyway). The entry's
-        ``video_fps`` metadata renders the EXACT reported rate for
-        per-fps keys (the truncated segment is identity, not display).
+        A key that does not split into three segments raises; verbatim
+        acceptance means an unrecognized key is shown as itself rather than
+        crashing the view. The entry's ``video_fps`` metadata renders the
+        exact reported rate for per-fps keys.
         """
         try:
             return describe_fn(key, video_fps=entry.get("video_fps"),
@@ -442,12 +386,11 @@ class ManageView:
             return key
 
     def _detail(self, entry, *, inactive):
-        """The value line: '-115 ms', run through the localized inactive
+        """The value line ('-115 ms'), run through the localized inactive
         template when dormant.
 
-        Just the verbatim signed value — the store's source/updated
-        metadata stays in the file but out of the row (field feedback:
-        it is noise at this altitude).
+        Just the verbatim signed value; the store's source/updated metadata
+        stays in the file but out of the row.
         """
         delay = entry.get("delay_ms")
         sign = "+" if isinstance(delay, int) and delay > 0 else ""
@@ -462,13 +405,10 @@ class ManageView:
     def _group_of(key):
         """The index bucket for a key: its hdr segment, or the Other bucket.
 
-        Verbatim acceptance extends to grouping — a key that does not
-        split still lists, still counts, and still deletes; it just
-        cannot claim an HDR group. A splittable key with a BLANK hdr
-        segment ('|all|truehd' — hand-edited; the store's writers map an
-        absent HDR to the 'unknown' sentinel, never '') joins the same
-        bucket: its display name would be empty, and a nameless group row
-        with a blank drill-down heading represents nothing.
+        A key that does not split still lists, counts, and deletes; it just
+        cannot claim an HDR group. A splittable key with a blank hdr segment
+        (hand-edited) joins the same bucket, since a nameless group row
+        represents nothing.
         """
         try:
             hdr = split_key(key)[0]
@@ -480,11 +420,9 @@ class ManageView:
         """Ordered ``(segment, count, inactive)`` triples for the group index.
 
         Rows arrive display-sorted, so first appearance yields the same
-        HDR-display order the flat list scans in; the Other bucket is
-        forced last regardless of where its raw keys interleave. Counts
-        include dormant rows — never-under-represent: every stored entry
-        is countable from the index — and each group carries its dormant
-        share so the split shows before the drill-down.
+        HDR-display order the flat list scans in; the Other bucket is forced
+        last. Counts include dormant rows (every stored entry is countable
+        from the index), and each group carries its dormant share.
         """
         order = []
         counts = {}
@@ -512,13 +450,11 @@ class ManageView:
     def _group_row(self, segment, count, inactive=0, *, emphasize=False):
         """One index row: 'Dolby Vision — 6 entries (2 inactive)'.
 
-        The inactive suffix appears only when the group has dormant
-        entries — an all-active group reads as before, and the count
-        always states the TOTAL (never-under-represent; the suffix
-        splits it, it never replaces it). ``emphasize`` bolds the group
-        name against its count — the index list only; the clear-group
-        confirmation reuses this row PLAIN (dialog message text, same
-        content, no list to stand out in).
+        The inactive suffix appears only when the group has dormant entries,
+        and the count always states the total (the suffix splits it, never
+        replaces it). ``emphasize`` bolds the group name against its count
+        for the index list; the clear-group confirmation reuses this row
+        plain.
         """
         string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
         counted = self._template(string_id, count)
@@ -533,8 +469,7 @@ class ManageView:
 
     def _confirm_delete(self, heading, row):
         # Both row lines, not just the profile: the confirmation must show
-        # WHAT value is being deleted. Always the
-        # FULL describe line — never the shortened in-group copy.
+        # what value is being deleted, always the full describe line.
         message = (self._gui.localized(_MSG_CONFIRM_DELETE)
                    + "\n" + row.describe + "\n" + row.detail)
         if not self._gui.yesno(heading, message):
@@ -557,10 +492,9 @@ class ManageView:
         if not ack.get("ok"):
             detail = ack.get("detail")
             if detail == "missing":
-                # The entry was already gone (raced away by playback
-                # learning or another session): the user's intent is
-                # satisfied — the refreshed list is the feedback, not an
-                # error dialog for a no-op.
+                # Already gone (raced away by playback learning or another
+                # session): intent satisfied, so the refreshed list is the
+                # feedback, not an error dialog.
                 self._log("AOMe_ManageView: delete target already gone")
                 return
             self._log("AOMe_ManageView: mutation refused ({0})".format(detail))
@@ -576,15 +510,12 @@ class ManageView:
         return self._gui.localized(string_id) or _FALLBACKS[string_id]
 
     def _template(self, string_id, *values):
-        """A format template with translation guards (the transfer view
-        carries the same helper): a translation missing ANY of the
-        expected ``{0}..{n}`` placeholders would not raise — format()
-        silently ignores unused arguments, swallowing the value
-        (never-under-represent) — and one malformed enough to raise
-        degrades to the English fallback rather than crashing the view.
-        Deliberately broad except: which exception a bad template raises
-        is the translator's choice ('{0' ValueError, '{1}' IndexError,
-        '{x}' KeyError, '{0.n}' AttributeError, '{0[x]}' TypeError...).
+        """A format template with translation guards (shared shape with the
+        transfer view): a translation missing any expected ``{0}..{n}``
+        placeholder degrades to the English fallback rather than silently
+        swallowing the value, and one malformed enough to raise degrades
+        too. The except is deliberately broad, since which exception a bad
+        template raises is the translator's choice.
         """
         template = self._text(string_id)
         if any('{' + str(index) + '}' not in template

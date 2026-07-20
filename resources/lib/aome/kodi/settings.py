@@ -1,34 +1,25 @@
 """Kodi settings adapter: typed reads/writes plus intent-level accessors.
 
-A plain, injected class — no singleton:
-the runtime constructs exactly one ``Settings`` and injects it into every
-component that needs settings (required constructor deps are the house rule,
-same as ``KodiGateway``).
+A plain, injected class, no singleton: the runtime constructs exactly one
+``Settings`` and injects it everywhere. One instance is enough because
+Kodi's ``xbmcaddon.Addon(ADDON_ID).getSettings()`` returns a live proxy onto
+the in-process settings store, not a frozen snapshot: every read sees
+current values and every write is visible everywhere at once.
 
-Why one instance is enough — and not a correctness barrier: Kodi's
-``xbmcaddon.Addon(ADDON_ID).getSettings()`` returns a LIVE proxy onto the
-in-process settings store, not a frozen snapshot (see the repo CLAUDE.md
-settings doctrine). Every read sees current values and every write is visible
-everywhere at once, so the store cannot drift out of sync with itself. Holding
-one proxy per process is a tidiness convenience, not the thing that makes
-reads/writes consistent.
+Lifetime rule: the proxy is live only while the ``xbmcaddon.Addon`` it came
+from stays alive. A ``Settings`` whose parent ``Addon`` was a
+garbage-collected temporary degrades into a detached copy that reports
+write success but never persists, and never sees outside changes.
+``__init__`` therefore keeps the ``Addon`` on ``self``; never rewrite it as
+``xbmcaddon.Addon(...).getSettings()``.
 
-LIFETIME RULE (field-verified): the proxy is
-live ONLY while the ``xbmcaddon.Addon`` it came from stays alive. A
-``Settings`` object whose parent ``Addon`` was a garbage-collected temporary
-degrades into a detached copy — writes report success but never persist to
-the real store or ``settings.xml``, and outside changes (settings dialog
-edits) never arrive. ``__init__`` therefore keeps the ``Addon`` on ``self``;
-never rewrite it as ``xbmcaddon.Addon(...).getSettings()``.
-
-The
-``store_*_if_changed`` helpers apply a read-before-write skip for BEHAVIOR
-settings (the only kind that lives here — offsets live in the sparse
-store): no write means nothing for a dialog save-on-close to fight
-over. Their one runtime caller is the coexistence once-flag.
+The ``store_*_if_changed`` helpers skip a write that would not change the
+stored value, so a dialog's save-on-close has nothing to fight over. Only
+behavior settings live here (offsets live in the sparse store); the one
+runtime caller is the coexistence once-flag.
 
 This layer may import ``xbmc*``/``xbmcaddon`` and ``resources.lib.aome.*``
-only; anything else fails ``tests/contract/test_architecture.py``.
+only.
 """
 
 import xbmc
@@ -49,10 +40,9 @@ STORE_PATH = f'special://profile/addon_data/{ADDON_ID}/offsets.json'
 def import_staging_path():
     """The import channel's staged-backup path, translated and ready.
 
-    Derived HERE, once, because the protocol depends on BOTH processes
-    computing the identical path (the script stages, the service reads):
-    the suffix is the channel's constant, the base is the translated
-    store path, and neither composition root repeats the derivation.
+    Derived here once because both processes must compute the identical path
+    (the script stages, the service reads): the channel's suffix on the
+    translated store path.
     """
     return xbmcvfs.translatePath(STORE_PATH) + IMPORT_SUFFIX
 
@@ -91,11 +81,10 @@ class Settings:
             return default
 
     def get_string_list(self, setting_id):
-        """Read a list-of-strings setting; on ANY error, log and return ``[]``.
+        """Read a list-of-strings setting; on any error, log and return ``[]``.
 
-        The empty-list fallback reads as "no options selected", which is
-        every list setting's do-nothing state — same fail-quiet doctrine
-        as the other primitives.
+        The empty-list fallback reads as "no options selected", every list
+        setting's do-nothing state.
         """
         try:
             return list(self._settings.getStringList(setting_id))
@@ -152,11 +141,11 @@ class Settings:
         return self.get_bool('per_fps_offsets')
 
     def apply_enabled(self):
-        """The apply toggle: gates the applier ONLY, never the watcher.
+        """The apply toggle: gates the applier only, never the watcher.
 
-        Learn and Apply are orthogonal toggles; this is the apply half.
-        Defaults ON like the learn toggle: applying is the
-        product, so an unreadable setting must never silently disable it.
+        Learn and Apply are orthogonal; this is the apply half. Defaults on:
+        applying is the product, so an unreadable setting must not silently
+        disable it.
         """
         return self.get_bool('apply_offsets', True)
 

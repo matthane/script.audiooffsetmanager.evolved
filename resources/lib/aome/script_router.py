@@ -1,13 +1,13 @@
 """Script-process entry routing (the ``RunScript`` half of the addon).
 
-Like ``runtime.py`` it sits at the ``aome`` package root, outside the
-layered subpackages, and composes the Kodi pieces for its own process: the
-service and the script run as SEPARATE processes whose only shared state is
-the on-disk store — the script READS ``offsets.json`` through the read-only
-reader and mutates it ONLY over the NotifyAll channel (single-writer
-doctrine; report-only when the service is absent). The import route
-additionally writes the ``.import`` STAGING file — a sibling the service
-consumes, never the store file itself.
+Like ``runtime.py`` it sits at the ``aome`` package root, outside the layered
+subpackages, and composes the Kodi pieces for its own process. The service
+and the script run as separate processes whose only shared state is the
+on-disk store: the script reads ``offsets.json`` through the read-only reader
+and mutates it only over the NotifyAll channel (single writer; report-only
+when the service is absent). The import route additionally writes the
+``.import`` staging file, a sibling the service consumes, never the store
+file itself.
 
 Routes:
 
@@ -18,18 +18,14 @@ Routes:
   restore over the mutation channel's ``import`` op.
 - ``export_log`` — the support-report surface (the LogExportView): the
   addon's entries from both Kodi log files, filtered and redacted, to a
-  picked folder. Read-only everywhere: it never touches the store or the
-  channel.
-- anything else / no argument — open the addon settings (launching
-  the addon opens the full settings dialog, the natural hub).
+  picked folder. Read-only: it never touches the store or the channel.
+- anything else / no argument — open the addon settings (the natural hub).
 
 Every route ends in the settings dialog: the action buttons close it on
-press (``<close>true</close>``, the write-ordering doctrine), so reopening
-after the view exits returns the user to where they came from instead of
-dropping them back into Kodi. The transfer routes reopen FOCUSED on the
-Advanced category (their buttons' home) — a plain ``openSettings()``
-always lands on the first category, which field-read as being teleported
-away from where you were.
+press (``<close>true</close>``), so reopening after the view exits returns
+the user where they came from. The transfer routes reopen focused on the
+Advanced category (their buttons' home), since a plain ``openSettings()``
+always lands on the first category, which reads as being teleported away.
 """
 
 import os
@@ -63,9 +59,9 @@ def handle_script_call(argv=None):
     if route == 'manage_offsets':
         _manage_offsets()
         # ...then fall through: the button closed the settings dialog, so
-        # every exit from a view lands back in it. The manage button
-        # lives in the FIRST category, which is where a plain reopen
-        # lands anyway; the transfer routes reopen focused on Advanced.
+        # every exit from a view lands back in it. The manage button lives in
+        # the first category, where a plain reopen lands anyway; the transfer
+        # routes reopen focused on Advanced.
     elif route == 'export_offsets':
         _transfer_view().run_export()
         _reopen_settings_at_advanced()
@@ -82,13 +78,12 @@ def handle_script_call(argv=None):
 
 
 # The settings dialog assigns its category buttons the control ids
-# CONTROL_SETTINGS_START_BUTTONS + category index — created by
-# CGUIDialogSettingsBase itself, so skin-independent. The base is -200
-# (verified in xbmc source for BOTH field versions: Kodi 21 Omega and
-# Kodi 22 master; focusing the button is what switches the displayed
-# category — the GUI_MSG_FOCUSED handler). Advanced is the THIRD
-# category in settings.xml (index 2) -> -198; the router test derives
-# this constant from the XML so a category reorder fails loudly.
+# CONTROL_SETTINGS_START_BUTTONS + category index, created by
+# CGUIDialogSettingsBase, so skin-independent. The base is -200 (verified in
+# xbmc source for Kodi 21 Omega and Kodi 22 master; focusing the button is
+# what switches the displayed category). Advanced is the third category in
+# settings.xml (index 2) -> -198; the router test derives this constant from
+# the XML so a category reorder fails loudly.
 CONTROL_SETTINGS_START_BUTTONS = -200
 ADVANCED_CATEGORY_FOCUS = CONTROL_SETTINGS_START_BUTTONS + 2
 
@@ -101,18 +96,16 @@ _FOCUS_SETTLE_MS = 100       # one beat for the dialog's controls to build
 
 
 def _reopen_settings_at_advanced():
-    """Reopen the settings dialog landed on Advanced — the category the
-    export/import buttons live in, where the user last was.
+    """Reopen the settings dialog focused on Advanced, where the user was.
 
-    The builtin form is used because ``openSettings()`` always lands on
-    the first category. ``Addon.OpenSettings`` only QUEUES the dialog
-    open: a ``SetFocus`` issued back-to-back fires while the previous
-    window is still active and is silently dropped (field-observed on
-    Kodi 22), so this waits until the addon-settings dialog is actually
-    the active dialog, lets its controls build for a beat, and only then
-    focuses the Advanced category button. Every bail-out path (dialog
-    never appears, Kodi shutting down) degrades to the dialog's default
-    first-category landing — the plain-reopen behavior, never an error.
+    The builtin form is used because ``openSettings()`` always lands on the
+    first category. ``Addon.OpenSettings`` only queues the dialog open: a
+    ``SetFocus`` issued back-to-back fires while the previous window is still
+    active and is silently dropped (observed on Kodi 22), so this waits until
+    the addon-settings dialog is the active dialog, lets its controls build
+    for a beat, and only then focuses the Advanced category button. Every
+    bail-out (dialog never appears, Kodi shutting down) degrades to the
+    default first-category landing, never an error.
     """
     xbmc.executebuiltin('Addon.OpenSettings({0})'.format(ADDON_ID))
     monitor = xbmc.Monitor()
@@ -129,9 +122,9 @@ def _reopen_settings_at_advanced():
 
 def _script_graph():
     """The per-route composition preamble, written once for every route:
-    one logger (with the same debug escalation the service uses), the
-    live settings proxy, the plain-dialog gui, and the mutation client as
-    the ONLY write path to the store."""
+    one logger (with the same debug escalation the service uses), the live
+    settings proxy, the plain-dialog gui, and the mutation client as the
+    only write path to the store."""
     logger = KodiLogger()
     settings = Settings(log=logger)
     logger.debug_escalation = settings.debug_logging_enabled()
@@ -157,10 +150,10 @@ def _transfer_view():
     """Compose the backup surface's process graph (export/import routes).
 
     The shared preamble plus the file seams: the read-only readers on the
-    shared store/staging paths, and ``xbmcvfs`` as the copy/delete engine
-    so VFS sources and destinations (smb://, nfs://, USB mounts) all
-    work. The staging path comes from ``import_staging_path()`` — the one
-    derivation both processes share.
+    shared store/staging paths, and ``xbmcvfs`` as the copy/delete engine so
+    VFS sources and destinations (smb://, nfs://, USB mounts) work. The
+    staging path comes from ``import_staging_path()``, shared by both
+    processes.
     """
     logger, _settings, gui, client = _script_graph()
     store_path = xbmcvfs.translatePath(STORE_PATH)
@@ -181,11 +174,10 @@ def _transfer_view():
 def _log_export_view():
     """Compose the filtered-log export surface (the ``export_log`` route).
 
-    The shared preamble minus the mutation client (the flow never touches
-    the store), plus the log seams: line streams over the two Kodi log
-    files, an ``xbmcvfs`` writer so VFS destinations (smb://, nfs://, USB
-    mounts) all work, and the redaction pairs that fold resolved
-    ``special://`` roots back to their portable form.
+    The shared preamble minus the mutation client (the flow never touches the
+    store), plus the log seams: line streams over the two Kodi log files, an
+    ``xbmcvfs`` writer so VFS destinations work, and the redaction pairs that
+    fold resolved ``special://`` roots back to their portable form.
     """
     logger, _settings, gui, _client = _script_graph()
     log_dir = xbmcvfs.translatePath('special://logpath/')
@@ -231,16 +223,13 @@ def _write_text(destination, text):
 def _path_redactions():
     """``(resolved_prefix, folded_form)`` pairs for the export's path
     redaction: the profile root and the Kodi home fold to their
-    ``special://`` forms, and the OS user profile folds to ``~/``:
-    a user-picked export destination
-    (Desktop, Downloads) sits under the OS profile but OUTSIDE Kodi's
-    home, and the addon logs such destinations in its own AOMe lines, so
-    without this pair the username rides into the next export. Every
-    prefix also appears in its alternate-separator spelling (Windows
-    logs mix ``\\`` and ``/`` depending on which component wrote the
-    line). The view orders all pairs longest-first, so the Kodi roots
-    (under the OS profile on a default install) fold before the ``~/``
-    pair swallows their prefix."""
+    ``special://`` forms, and the OS user profile folds to ``~/``. A picked
+    export destination (Desktop, Downloads) sits under the OS profile but
+    outside Kodi's home, and the addon logs such destinations in its own
+    lines, so without this pair the username rides into the next export.
+    Every prefix also appears in its alternate-separator spelling (Windows
+    logs mix ``\\`` and ``/``). The view orders all pairs longest-first, so
+    the Kodi roots fold before the ``~/`` pair swallows their prefix."""
     pairs = []
     for special in ('special://profile/', 'special://home/'):
         resolved = xbmcvfs.translatePath(special)

@@ -1,14 +1,12 @@
 """Typed events dispatched on the aome dispatcher.
 
-Events are frozen dataclasses dispatched by type (subscribe registers against
-the class). Payloads are explicit fields — never positional *args.
+Events are frozen dataclasses dispatched by type (subscribe registers
+against the class); payloads are explicit fields, never positional *args.
 
-Every event has a live producer; SeekChapter and SpeedChanged are posted by
-the player bridge but currently have no consumer — kept deliberately so the
-bridge covers Kodi's full playback-callback surface (DESIGN marks them
-reserved; note that chapter jumps also fire onPlayBackSeek, so the seek
-quiet window already sees them via SeekOccurred). Pure Python: no Kodi
-imports.
+SeekChapter and SpeedChanged are posted by the player bridge but currently
+have no consumer, kept so the bridge covers Kodi's full playback-callback
+surface (chapter jumps also fire onPlayBackSeek, so the seek quiet window
+already sees them via SeekOccurred). Pure Python: no Kodi imports.
 """
 
 from dataclasses import dataclass
@@ -70,7 +68,7 @@ class SettingsChanged:
     """Kodi Monitor.onSettingsChanged: refresh cached flags; never write here."""
 
 
-# --- Detection events (posted/consumed from the StreamDetector phase on) ----
+# --- Detection events (posted/consumed by the StreamDetector) ---------------
 
 @dataclass(frozen=True)
 class ProbeStream:
@@ -88,13 +86,11 @@ class VerifyStream:
 
 @dataclass(frozen=True)
 class StreamProbed:
-    """A detection pass observed the platform (log-only observability).
+    """A detection pass observed the platform (log-only).
 
-    Posted on EVERY gather — probes, AV-change re-probes, and verifications.
-    The fields are facts about what the platform reported; nothing stores
-    them. They stay on the
-    event because field logs showing WHICH detection path fired are the
-    debugging lifeline.
+    Posted on every gather (probes, AV-change re-probes, verifications). The
+    fields are facts about what the platform reported; nothing stores them,
+    but they show which detection path fired in the logs.
     """
     session_id: int
     platform_hdr_full: bool
@@ -106,17 +102,15 @@ class StreamStabilized:
     """The session's profile held for the verification window.
 
     ``profile_changed`` is False for a pure re-confirmation (a blip that
-    reverted with no adoption in between): the state machine re-earned
-    STABLE, but no stream change is being announced. The seek scheduler
-    skips the 'adjust' replay for those. The default is True
-    (announce) so hand-posted events keep the announcing behavior.
+    reverted with no adoption): the state machine re-earned STABLE, but no
+    stream change is announced, so the seek scheduler skips the 'adjust'
+    replay. Defaults True so hand-posted events announce.
 
-    ``initial`` is True on the session's FIRST stabilization — startup
-    settling, not a mid-play change. The detector stamps it from
-    ``session.stabilized_count`` (owned by the state machine's only edge
-    into STABLE), and the seek scheduler skips the 'adjust' replay for it —
-    what used to be a consumer-side latch on the session. The default is
-    False (the mid-play case) so hand-posted change events act like changes.
+    ``initial`` is True on the session's first stabilization (startup
+    settling, not a mid-play change); the detector stamps it from
+    ``session.stabilized_count``, and the seek scheduler skips the 'adjust'
+    replay for it. Defaults False so hand-posted change events act like
+    changes.
     """
     session_id: int
     profile_changed: bool = True
@@ -144,17 +138,12 @@ class OffsetApplied:
 class DelayReset:
     """A zero-reset RPC landed (baseline or deleted-profile).
 
-    Posted by the applier's reset paths on a SUCCESSFUL reset only — the
-    already-0, preserve, and failed-RPC branches move nothing and post
-    nothing (mutation-time observation invalidation is therefore handled
-    SYNCHRONOUSLY in the StoreMutationHandler, not here). The watcher
-    consumes it to drop any in-flight observation: a reset is an
-    automatic delay change exactly like an apply, so the supersede
-    corollary applies. No OffsetApplied fires for resets — that event
-    drives the notifier's apply toast, which resets never raise; note
-    the diverged-baseline reset is not otherwise silent (it posts
-    UnsavedOffsetDiscarded for the "Offset not saved" toast), while the
-    deleted-profile reset is fully silent.
+    Posted by the applier's reset paths on a successful reset only (the
+    already-0, preserve, and failed-RPC branches post nothing). The watcher
+    consumes it to drop any in-flight observation, since a reset is an
+    automatic delay change like an apply. No OffsetApplied fires for a reset,
+    so no apply toast; the diverged-baseline reset separately posts
+    UnsavedOffsetDiscarded, while the deleted-profile reset is fully silent.
     """
     session_id: int
 
@@ -163,14 +152,11 @@ class DelayReset:
 class UnsavedOffsetDiscarded:
     """The zero-reset discarded a manual adjustment that was never stored.
 
-    Posted by the applier's miss path: when an
-    unlearned profile resets the delay to baseline and the value in force
-    DIVERGED from our last apply, the difference was the user's hand
-    — remember-adjustments off, or a stream change inside the quiescence
-    window. The Notifier raises the "Offset not saved" toast so the user
-    knows why their adjustment vanished; a reset of pure AOM residue posts
-    nothing (silent by design). ``ms`` is the discarded value, for the
-    toast/log only — it is never written anywhere.
+    Posted by the applier's miss path when an unlearned profile resets the
+    delay to baseline and the value in force diverged from our last apply
+    (learning off, or a stream change inside the quiescence window). The
+    Notifier raises the "Offset not saved" toast; a reset of our own residue
+    posts nothing. ``ms`` is the discarded value, for the toast/log only.
     """
     session_id: int
     profile: object  # StreamProfile
@@ -181,14 +167,12 @@ class UnsavedOffsetDiscarded:
 class UserOffsetSettled:
     """A manual audio-offset adjustment held through quiescence.
 
-    The USER-ACTION fact, posted by the AdjustmentWatcher at the settle
-    instant for every quiesced foreign value — before, and regardless
-    of, whether the learn loop stores it (``UserOffsetSaved`` is the
-    STORAGE fact). Consumers reacting to the user's adjustment itself —
-    the seek scheduler's 'change' replay — subscribe here, so they keep
-    working with learning off, an incomplete profile, or an unwritable
-    store (the replay follows the user's hand, not the
-    learn loop). ``ms`` is the settled value, for logging only.
+    The user-action fact, posted by the AdjustmentWatcher for every quiesced
+    foreign value, regardless of whether the learn loop stores it
+    (``UserOffsetSaved`` is the storage fact). Consumers reacting to the
+    adjustment itself (the seek scheduler's 'change' replay) subscribe here,
+    so they keep working with learning off, an incomplete profile, or an
+    unwritable store. ``ms`` is the settled value, for logging only.
     """
     session_id: int
     ms: int
@@ -198,14 +182,10 @@ class UserOffsetSettled:
 class UserOffsetSaved:
     """The adjustment watcher stored a user's manual offset change.
 
-    Session-stamped, and the profile/ms ride on the event as captured AT
-    STORE TIME on the dispatcher thread: consumers (notification, 'change'
-    seek-back) act on exactly what was stored, and an in-place reopen
-    between post and dispatch makes the event inert instead of targeting
-    the new session.
-
-    ``key`` is the store key the value landed under, resolved by the write
-    rule at store instant — consumers log/announce exactly what was stored.
+    The profile/ms are captured at store time on the dispatcher thread, so
+    consumers (notification, 'change' seek-back) act on exactly what was
+    stored, and an in-place reopen between post and dispatch makes the event
+    inert. ``key`` is the store key the value landed under.
     """
     session_id: int
     profile: object  # StreamProfile
@@ -219,10 +199,9 @@ class UserOffsetSaved:
 class ExecuteSeek:
     """Self-scheduled seek execution attempt (re-validated at fire time).
 
-    ``requested_at`` (monotonic) rides on the event — the ProbeStream
-    pattern — so the deadline is measured from the request that scheduled
-    this attempt chain with no side bookkeeping; a re-request key-replaces
-    the chain with a fresh requested_at (deadline restart).
+    ``requested_at`` (monotonic) rides on the event so the deadline is
+    measured from the request with no side bookkeeping; a re-request
+    key-replaces the chain with a fresh requested_at (deadline restart).
     """
     session_id: int
     reason: str
@@ -235,14 +214,10 @@ class ExecuteSeek:
 class RaiseToast:
     """Self-scheduled toast release delayed past a fading predecessor.
 
-    The fade-guard section of ``aome.app.notifier``'s module docstring is the
-    authoritative account of the mechanics and the supersede semantics.
-
-    Deliberately NOT session-stamped: the payload describes a fact that
-    already happened and stays true (and worth announcing) even if the
-    session ends inside the deferral. The surface is pre-rendered at request
-    time — kind-specific rendering happens before scheduling, so every toast
-    kind can ride this one event.
+    See the fade-guard section of ``aome.app.notifier`` for the mechanics.
+    Not session-stamped: the payload describes a fact that stays true even
+    if the session ends inside the deferral. The surface is pre-rendered at
+    request time, so every toast kind can ride this one event.
     """
     message: str
     title: object       # str, or None for the gui's addon-name default
@@ -278,13 +253,11 @@ class StoreCorrupted:
 class StoreMutationRequested:
     """A cross-process store mutation request received over NotifyAll.
 
-    Posted by the monitor bridge VERBATIM from the (untrusted) payload —
-    fields may be None or wrong-typed; the StoreMutationHandler owns
-    validation and the op whitelist (delete/clear/import ONLY: the
-    channel structurally cannot carry a value write — there is no value
-    field, and import reads values only from the staged backup file).
-    ``request_id`` is echoed back on the ack so the script process can
-    match replies.
+    Posted by the monitor bridge verbatim from the untrusted payload (fields
+    may be None or wrong-typed); the StoreMutationHandler owns validation
+    and the op whitelist (delete/clear/import only, no value field).
+    ``request_id`` is echoed on the ack so the script process can match
+    replies.
     """
     op: object
     key: object = None
@@ -293,20 +266,17 @@ class StoreMutationRequested:
 
 @dataclass(frozen=True)
 class StoreMutated:
-    """A whitelisted mutation changed the LIVE (in-memory) store.
+    """A whitelisted mutation changed the live (in-memory) store.
 
-    Posted by the StoreMutationHandler after a delete that removed an
-    entry or a clear with entries — INCLUDING their persist-failed
-    variants, because OffsetStore keeps the in-memory removal and reset
-    markers when only the disk write fails, and the live session resolves
-    against memory (the ack separately reports the durability truth). A
-    missing-key delete, an empty clear, and refused ops changed nothing
-    and post nothing. The applier consumes it exactly like
-    ``SettingsChanged``: a mutation is a resolve moment for the live
-    session (deleting the playing profile's
-    offset takes effect immediately, not at the next playback), and it
-    changes no profile, so the same foreign-delay preservation applies.
-    ``op``/``key`` ride along for the debug trail only.
+    Posted after a delete that removed an entry or a clear with entries,
+    including their persist-failed variants (OffsetStore keeps the in-memory
+    change when only the disk write fails, and the live session resolves
+    against memory). A missing-key delete, an empty clear, and refused ops
+    post nothing. The applier consumes it like ``SettingsChanged``: a
+    mutation is a resolve moment for the live session (deleting the playing
+    profile's offset takes effect immediately), and it changes no profile,
+    so the same foreign-delay preservation applies. ``op``/``key`` ride
+    along for the debug trail only.
     """
     op: str
     key: object = None

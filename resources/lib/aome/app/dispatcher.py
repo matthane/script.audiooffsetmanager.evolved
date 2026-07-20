@@ -1,26 +1,25 @@
 """Single-threaded event dispatcher with a monotonic timer scheduler.
 
-All application state is owned by the dispatcher thread: Kodi bridges (and any
-other thread) only ever call post(), a thread-safe enqueue that returns
-immediately. Handlers, timers, and therefore every state mutation run
-serialized on one thread — no locks are needed anywhere above this module.
+All application state is owned by the dispatcher thread: Kodi bridges (and
+any other thread) only ever call post(), a thread-safe enqueue that returns
+immediately. Handlers, timers, and every state mutation run serialized on
+one thread, so no locks are needed anywhere above this module.
 
-Timers: schedule(delay_s, event, key=...) enqueues a future event. Scheduling
-with the same key REPLACES the pending timer (the supersede pattern that
-debouncing needs); cancel(key) drops a pending timer. Consumers may also
-cancel lazily by dropping stale events on receipt (e.g. dead-session checks).
-All interval math uses the injected clock (time.monotonic by default — never
-wall-clock time).
+Timers: schedule(delay_s, event, key=...) enqueues a future event.
+Scheduling with the same key replaces the pending timer (the supersede
+pattern debouncing needs); cancel(key) drops a pending timer. Consumers may
+also cancel lazily by dropping stale events on receipt. All interval math
+uses the injected clock (time.monotonic by default, never wall-clock time).
 
-Handlers are isolated: an exception in one handler is logged and does not
-prevent later handlers or later events. With log_runtimes enabled, per-handler
-elapsed time is logged; the flag
-is a plain attribute so the runtime can refresh it on SettingsChanged.
+Handlers are isolated: an exception in one is logged and does not prevent
+later handlers or events. With log_runtimes on, per-handler elapsed time is
+logged; the flag is a plain attribute so the runtime can refresh it on
+SettingsChanged.
 
-Pure Python — no Kodi imports. The error-log sink is a REQUIRED constructor
+Pure Python, no Kodi imports. The error-log sink is a required constructor
 argument (an unwired dispatcher must not silently swallow handler failures);
 the debug sink is optional. Tests inject a fake clock and pump manually with
-run_pending() instead of start()ing the thread.
+run_pending() instead of starting the thread.
 """
 
 import heapq

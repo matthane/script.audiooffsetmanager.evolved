@@ -1,22 +1,19 @@
 """Script-process client for the store mutation channel.
 
-The management view's ONLY write path: one ``JSONRPC.NotifyAll`` request to
-the service (broadcast through the injected gateway's ``notify_all`` — the
-one home of the RPC envelope), then a bounded poll for the
-matching ack. The service's dispatcher executes the mutation
-(single-writer doctrine — see ``aome.app.store_mutations``) and acks back
-over NotifyAll; ``send`` returns that ack dict, or ``None`` when no ack
-arrives inside the timeout — the view's "service not running" signal.
-There is deliberately NO fallback write path here (report-only).
+The management view's only write path: one ``JSONRPC.NotifyAll`` request to
+the service (broadcast through the injected gateway's ``notify_all``), then
+a bounded poll for the matching ack. The service's dispatcher executes the
+mutation and acks back over NotifyAll; ``send`` returns that ack dict, or
+``None`` when no ack arrives inside the timeout (the view's "service not
+running" signal). There is no fallback write path here (report-only).
 
 Request/ack matching uses a per-request ``request_id`` echoed by the
-service; acks are ignored outright while no request is in flight, so a
-stale or id-less broadcast can never pre-seed a reply. ``onNotification``
-runs on Kodi's announce thread while ``send`` polls; the single-reference
-handoff (assign whole dict, read whole dict) is safe under the GIL.
+service; acks are ignored while no request is in flight, so a stale or
+id-less broadcast cannot pre-seed a reply. ``onNotification`` runs on Kodi's
+announce thread while ``send`` polls; the single-reference handoff (assign
+whole dict, read whole dict) is safe under the GIL.
 
-This is an ``aome.kodi`` adapter: the only aome layer permitted to import
-``xbmc``.
+An ``aome.kodi`` adapter: the only aome layer permitted to import ``xbmc``.
 """
 
 import uuid

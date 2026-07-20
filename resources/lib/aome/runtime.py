@@ -1,12 +1,11 @@
 """Composition root for the service process.
 
-Builds the full typed graph — the dispatcher, the Kodi adapters (gateway,
-settings, gui, log), and the app components — with explicit, REQUIRED
-constructor dependencies: no fallback construction anywhere, exactly one
-instance of each adapter for the whole process. Blocks on the monitor until
-Kodi aborts, then stops the dispatcher.
+Builds the full typed graph (the dispatcher, the Kodi adapters, and the app
+components) with explicit, required constructor dependencies: no fallback
+construction, exactly one instance of each adapter. Blocks on the monitor
+until Kodi aborts, then stops the dispatcher.
 
-Every component subscribes during construction, BEFORE the dispatcher thread
+Every component subscribes during construction, before the dispatcher thread
 starts, so events the bridges queue during construction are dispatched to a
 complete graph (matters when the service (re)starts while playback is
 already active).
@@ -15,27 +14,21 @@ Subscription order is load-bearing (dispatch follows it, per event type):
 
 1. tracker — the session exists (or is torn down) before any other handler
    of the same lifecycle event runs;
-2. detector — owns ``session.profile`` and the stream-state machine (its
-   ``StreamProbed`` platform facts are log-only);
-3. applier — on ProfileChanged/StreamStabilized/SettingsChanged/
-   StoreMutated the offset is applied (and ``session.applied`` recorded)
-   before anything downstream reads it;
+2. detector — owns ``session.profile`` and the stream-state machine;
+3. applier — applies the offset (and records ``session.applied``) before
+   anything downstream reads it;
 4. notifier — its StreamStabilized release runs after the applier's retry
    pass for the same stabilization;
-5. seek scheduler — seeks for a stabilization are planned only after the
-   offset work for it is done;
-6. adjustment watcher — its ProfileChanged AND SettingsChanged passes run
-   after the applier's for the same event, so ``session.applied`` is
-   already current when eligibility is (re)evaluated — and every delay
-   the applier sets announces itself (``OffsetApplied`` for applies,
-   ``DelayReset`` for silent resets), whose watcher pass drops an
-   in-flight observation (the supersede corollary, enforced
-   structurally).
+5. seek scheduler — seeks are planned only after the offset work is done;
+6. adjustment watcher — its ProfileChanged and SettingsChanged passes run
+   after the applier's, so ``session.applied`` is current when eligibility
+   is evaluated, and every delay the applier sets (``OffsetApplied`` or
+   ``DelayReset``) drops an in-flight observation.
 
 One exception precedes the numbered order: the runtime's own
-``SettingsChanged`` debug-flag refresh subscribes before everything, so
-the passes for the very save that toggles debug logging already log at
-the fresh escalation level.
+``SettingsChanged`` debug-flag refresh subscribes first, so the passes for
+the very save that toggles debug logging already log at the fresh escalation
+level.
 """
 
 import xbmcvfs
@@ -62,8 +55,8 @@ from resources.lib.aome.store.offset_store import OffsetStore
 from resources.lib.aome.store.table import OffsetTable
 
 # The original addon this one supersedes: both enabled at once can apply
-# audio offsets twice, so the service warns ONCE per install (the
-# once-flag is behavior state in settings, never offset data).
+# audio offsets twice, so the service warns once per install (the once-flag
+# is behavior state in settings, never offset data).
 CLASSIC_ADDON_ID = 'script.audiooffsetmanager'
 STRING_COEXISTENCE_HEADING = 32129
 STRING_COEXISTENCE_BODY = 32130
@@ -78,11 +71,10 @@ class ServiceRuntime:
         self.gateway = KodiGateway(log=self.logger)
         self.gui = Gui(log=self.logger)
 
-        # The sparse offset store: loaded ONCE at service start, owned by
-        # the dispatcher thread thereafter (single-writer doctrine). A
-        # corrupt file was quarantined to .bad inside load(); the typed
-        # StoreCorrupted event is posted AFTER the graph is built (below)
-        # and the Notifier owns the user-facing notice.
+        # The sparse offset store: loaded once at service start, owned by the
+        # dispatcher thread thereafter (single writer). A corrupt file was
+        # quarantined to .bad inside load(); the typed StoreCorrupted event
+        # is posted after the graph is built and the Notifier owns the notice.
         self.store = OffsetStore(
             xbmcvfs.translatePath(STORE_PATH),
             log_debug=self.logger.debug, log_warning=self.logger.warning)
@@ -94,9 +86,9 @@ class ServiceRuntime:
             log_error=self.logger.error,
             log_runtimes=self.logger.debug_escalation)
 
-        # Debug-flag refresh subscribes FIRST (before any component), so the
-        # applier/watcher passes for the very save that toggles debug
-        # logging already run at the fresh escalation level.
+        # Debug-flag refresh subscribes first (before any component), so the
+        # applier/watcher passes for the very save that toggles debug logging
+        # already run at the fresh escalation level.
         self.dispatcher.subscribe(events.SettingsChanged,
                                   self._on_settings_changed)
 
@@ -124,10 +116,10 @@ class ServiceRuntime:
             self.dispatcher, self.session_tracker, self.gateway,
             self.settings, self.offsets, log_debug=self.logger.debug,
             log_warning=self.logger.warning)
-        # The cross-process mutation channel's executor: requests
-        # arrive via the monitor bridge as typed events, mutate the store
-        # on this dispatcher (single-writer doctrine), and ack back over
-        # NotifyAll so the script process can tell "done" from "no service".
+        # The cross-process mutation channel's executor: requests arrive via
+        # the monitor bridge as typed events, mutate the store on this
+        # dispatcher, and ack back over NotifyAll so the script process can
+        # tell "done" from "no service".
         self.store_mutations = StoreMutationHandler(
             self.dispatcher, self.session_tracker, self.store,
             lambda payload: self.gateway.notify_all(
@@ -153,13 +145,11 @@ class ServiceRuntime:
     def _maybe_warn_coexistence(self):
         """One-time warning when the original addon is enabled alongside.
 
-        Probes only while the once-flag is unset, and writes the flag ONLY
-        after the dialog actually showed — a transient probe failure (or
-        the original addon being installed later) still warns on a future
-        start. Runs
-        from run() after the dispatcher starts: the modal ok blocks only
-        this service thread, never the dispatcher, and the settings dialog
-        cannot be open this early (write-ordering doctrine holds).
+        Probes only while the once-flag is unset, and writes the flag only
+        after the dialog actually showed, so a transient probe failure (or
+        the original addon installed later) still warns on a future start.
+        Runs from run() after the dispatcher starts: the modal ok blocks only
+        this service thread, never the dispatcher.
         """
         if self.settings.coexistence_warned():
             return
@@ -175,16 +165,15 @@ class ServiceRuntime:
             "enabled. Running both can apply audio offsets twice. "
             "Consider disabling the classic addon.")
         if not self.gui.ok(heading, body):
-            # The dialog never rendered: leave the flag unset so the
-            # warning retries on a future start (the flag
-            # means "the user has SEEN this", not "we tried").
+            # The dialog never rendered: leave the flag unset so the warning
+            # retries on a future start (the flag means "the user has seen
+            # this", not "we tried").
             return
         if self.gateway.settings_dialog_open():
-            # Doctrine: never write a setting while the settings dialog is
-            # open (its save-on-close clobbers the write). A service
-            # restart CAN land under an open dialog — addon update/re-
-            # enable — so skip the write; the warning re-fires and writes
-            # on a later start.
+            # Never write a setting while the settings dialog is open (its
+            # save-on-close clobbers the write). A service restart can land
+            # under an open dialog (addon update/re-enable), so skip the
+            # write; the warning re-fires and writes on a later start.
             self.logger.debug("AOMe_Runtime: deferring coexistence flag "
                               "(settings dialog open)")
             return

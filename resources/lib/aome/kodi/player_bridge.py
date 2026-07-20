@@ -1,9 +1,9 @@
 """Kodi player bridge: every callback is a one-line post to the dispatcher.
 
-Kodi pumps Player callbacks sequentially; anything slow here delays every
-subsequent callback for this addon. Therefore this class holds ZERO logic —
-no logging, no settings reads, no state. Translation to typed events, state
-bookkeeping, and all decisions happen in dispatcher handlers.
+Kodi pumps Player callbacks sequentially, so anything slow here delays
+every subsequent callback for this addon. This class therefore holds no
+logic: no logging, no settings reads, no state. Translation to typed
+events and all decisions happen in dispatcher handlers.
 """
 
 import xbmc

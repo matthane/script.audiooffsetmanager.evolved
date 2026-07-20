@@ -1,14 +1,12 @@
-"""Kodi GUI toast surface — the only place xbmcgui notifications are raised.
+"""Kodi GUI surface: the only place xbmcgui notifications and dialogs are raised.
 
-Single-shot BY DESIGN, matching the gateway convention: each method performs
-exactly one Kodi GUI call and returns, guarded so a transient GUI-layer
-failure degrades to a log line rather than unwinding the caller mid-handler.
+Single-shot, matching the gateway convention: each method performs exactly
+one Kodi GUI call and returns, guarded so a transient failure degrades to a
+log line rather than unwinding the caller. String resolution goes through
+``getLocalizedString``; the app-layer Notifier owns message assembly and
+hands this surface a resolved string.
 
-String resolution goes through ``getLocalizedString``: the app-layer
-Notifier owns message assembly
-and hands this surface a fully-resolved string.
-
-This is an ``aome.kodi`` adapter: the only aome layer permitted to import
+An ``aome.kodi`` adapter: the only aome layer permitted to import
 ``xbmcgui``/``xbmcaddon``.
 """
 
@@ -23,11 +21,9 @@ class Gui:
     """Single-shot wrapper over Kodi's notification dialog and string table."""
 
     def __init__(self, *, log):
-        """``log`` is a REQUIRED ``(message, level)`` sink — production
-        injects the ``aome.kodi.log.KodiLogger`` callable, matching the
-        gateway convention, so one logger instance (and its cached debug
-        escalation) serves the whole process.
-        """
+        """``log`` is a required ``(message, level)`` sink (production
+        injects the ``KodiLogger`` callable), so one logger instance serves
+        the whole process."""
         addon = xbmcaddon.Addon(ADDON_ID)
         self._addon = addon
         self._name = addon.getAddonInfo('name')
@@ -51,13 +47,11 @@ class Gui:
     def select(self, heading, options):
         """Show a selection list; return the chosen index, -1 on cancel/error.
 
-        The management view's list surface. Each option
-        is either a plain string (single-line row) or a ``(label, detail)``
-        tuple — any tuple upgrades the whole dialog to Kodi's two-line
-        detail rows (``useDetails``), with strings rendering as
-        detail-less items so mixed lists keep one look. -1 (Kodi's cancel
-        value) doubles as the error fallback so a transient GUI failure
-        reads as "user backed out" rather than unwinding the view.
+        Each option is a plain string (single-line row) or a
+        ``(label, detail)`` tuple; any tuple upgrades the whole dialog to
+        Kodi's two-line detail rows (``useDetails``), with strings rendering
+        as detail-less items. -1 (Kodi's cancel value) doubles as the error
+        fallback, so a transient failure reads as "user backed out".
         """
         try:
             if any(isinstance(option, tuple) for option in options):
@@ -92,9 +86,9 @@ class Gui:
         """Show a modal OK dialog; True when it actually rendered.
 
         The bool matters to callers that gate a side effect on the user
-        having SEEN the dialog (the coexistence once-flag): a
-        swallowed GUI failure returns False so the caller can retry later
-        instead of marking an unshown warning as shown.
+        having seen the dialog (the coexistence once-flag): a swallowed
+        failure returns False so the caller can retry rather than mark an
+        unshown warning as shown.
         """
         try:
             xbmcgui.Dialog().ok(heading, message)
@@ -108,11 +102,10 @@ class Gui:
         """Show a writable-folder picker; return the path, '' on cancel/error.
 
         The export destination surface: type 3 is Kodi's
-        ShowAndGetWriteableDirectory, over the 'files' shares so local
+        ShowAndGetWriteableDirectory over the 'files' shares, so local
         drives, network shares, and USB mounts all offer themselves. Kodi
-        answers a cancel with the default value — the empty string here —
-        so '' doubles as the error fallback (a transient GUI failure reads
-        as "user backed out", same doctrine as select()).
+        answers a cancel with the empty default, so '' doubles as the error
+        fallback, like select().
         """
         try:
             return xbmcgui.Dialog().browseSingle(3, heading, 'files')

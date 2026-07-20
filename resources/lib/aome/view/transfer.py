@@ -1,19 +1,16 @@
 """TransferView: the script-process offsets backup surface (export/import).
 
-The manage view's sibling: it runs in the SCRIPT process, honours the same
-no-value-entry boundary (a backup transports values that were
-LEARNED during playback, nobody types one), and NEVER writes the store
-file. Export is pure read: the store file is validated through the
-read-only reader and then copied VERBATIM to a folder the user picks —
-byte-identical, so a backup round-trips exactly, resets section and all.
-Import is the restore: the picked file is copied to the channel's
-well-known staging path (``<store>.import`` — a staging file, NOT the
-store file, so the single-writer doctrine holds), pre-validated with the
-same reader the service will use, confirmed ("replaces all"), and then
-requested over the mutation channel as the ``import`` op; the SERVICE
+The manage view's sibling: it runs in the script process, honours the same
+no-value-entry boundary (a backup transports values learned during playback,
+never typed), and never writes the store file. Export is pure read: the
+store file is validated through the read-only reader and copied verbatim to
+a folder the user picks, so a backup round-trips exactly, resets section and
+all. Import is the restore: the picked file is copied to the channel's
+staging path (``<store>.import``, a staging file, not the store file),
+pre-validated with the same reader the service will use, confirmed, and
+requested over the mutation channel as the ``import`` op; the service
 re-validates the staged file, replaces the whole store (restore semantics,
-never merge; the backup's reset markers are
-restored too, so the verbatim export round-trips WHOLE), and discards the
+never merge; the backup's reset markers are restored too), and discards the
 staging file. No path and no values ever travel on the wire.
 
 The seams are injected callables, wired by the script router:
@@ -21,42 +18,31 @@ The seams are injected callables, wired by the script router:
 * ``read_entries()`` — validated snapshot of the live store (export's
   count + refuse-to-export-garbage gate); raises :class:`StoreUnreadable`.
 * ``read_staged()`` — validated snapshot of the staged backup (import's
-  pre-flight); raises :class:`StoreUnreadable`, including for a missing
-  staging file.
+  pre-flight); raises :class:`StoreUnreadable`, including for a missing file.
 * ``export_file(destination)`` — copy the store file to ``destination``
-  (the router wires ``xbmcvfs.copy``, so network/USB destinations work).
+  (``xbmcvfs.copy``, so network/USB destinations work).
 * ``stage_file(source)`` — copy ``source`` to the staging path (again
-  ``xbmcvfs.copy``: the picked source may be a VFS path plain ``open()``
-  cannot read).
+  ``xbmcvfs.copy``, since the picked source may be a VFS path).
 * ``discard_staged()`` — best-effort staging cleanup. The view discards
-  before every stage (a stale file must not survive a failed copy) and
-  right after the pre-flight read, so the staged copy does NOT sit at the
-  well-known path while the confirmation dialog waits on the user; only a
-  confirmed import re-stages, milliseconds before the send. After a SENT
-  request the service owns the cleanup unconditionally — the view never
-  sweeps behind a sent request, because an ack timeout does not mean the
-  request died: it may still be queued behind dispatcher work, and
-  deleting the staging file out from under it would turn a merely-slow
+  before every stage and right after the pre-flight read, so nothing sits
+  staged while the confirmation dialog waits; only a confirmed import
+  re-stages, just before the send. After a sent request the service owns the
+  cleanup: an ack timeout does not mean the request died (it may still be
+  queued), and deleting the staging file out from under it would turn a slow
   import into a refused one. A stale staging file is inert (overwritten
-  before every request), so leaving one behind costs nothing.
+  before every request).
 * ``send_mutation(op)`` — the channel client's send; ``None`` (no ack) is
-  the report-only "service not running" signal, exactly as in the
-  manage view.
+  the report-only "service not running" signal, as in the manage view.
 
-Import deliberately refuses an EMPTY (but valid) backup before
-confirming: export refuses to write one, so an empty file is hand-made,
-and "restore nothing, deleting everything" is clear-all wearing a costume
-— the real clear-all in the manage view says what it does. The service
-enforces the same refusal at its end (the choke point); this one is the
-friendly pre-flight.
+Import refuses an empty (but valid) backup before confirming: export refuses
+to write one, so an empty file is hand-made, and "restore nothing" is
+clear-all in a costume. The service enforces the same refusal (the choke
+point); this is the friendly pre-flight.
 
-Every dialog string that is the ENTIRE message carries an English
-fallback (localized() degrades to '' on transient failure — the manage
-view doctrine); the shared ids reuse the manage view's fallback texts so
-the two surfaces can never drift apart. Templates are format-guarded the
-same way the manage view guards its count templates: a translation that
-drops or malforms a placeholder degrades to the English template rather
-than crashing or silently swallowing the count/path.
+Every dialog string that is the entire message carries an English fallback,
+and the shared ids reuse the manage view's fallback texts. Templates are
+format-guarded the same way, so a translation that drops or malforms a
+placeholder degrades to the English template.
 """
 
 import time
@@ -127,9 +113,9 @@ def _noop(_message):
 def _join(folder, name):
     """Append ``name`` to a browsed folder path.
 
-    Kodi's folder browser answers WITH a trailing separator; the guard
-    covers hand-fed paths without one ('/' is accepted by every VFS
-    protocol and by Windows APIs alike, so no platform switch is needed).
+    Kodi's folder browser answers with a trailing separator; the guard
+    covers hand-fed paths without one ('/' is accepted by every VFS protocol
+    and by Windows APIs).
     """
     if folder.endswith('/') or folder.endswith('\\'):
         return folder + name
@@ -188,10 +174,9 @@ class TransferView:
             _MSG_EXPORTED, self._counted(len(entries)), destination))
 
     def _export_name(self):
-        """Timestamped backup filename, second resolution: repeated
-        exports get distinct names (two completions inside the same
-        second would collide, which the dialog-paced flow cannot
-        produce)."""
+        """Timestamped backup filename, second resolution: repeated exports
+        get distinct names (two completions inside one second would collide,
+        which the dialog-paced flow cannot produce)."""
         stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime(self._clock()))
         return 'aom-evolved-offsets-{0}.json'.format(stamp)
 
@@ -201,11 +186,9 @@ class TransferView:
         """Pick a backup, pre-flight it, confirm, stage + request the restore.
 
         The staged copy lives at the well-known path only in two short
-        windows: around the pre-flight read (staged, read, discarded — a
-        finally block, so no exit path can leak it into the confirm
-        window) and between the post-confirmation re-stage and the
-        service consuming it. Nothing sits staged while the confirmation
-        dialog waits on the user.
+        windows: around the pre-flight read (a finally block discards it, so
+        no exit path leaks it into the confirm window) and between the
+        post-confirmation re-stage and the service consuming it.
         """
         heading = self._gui.localized(_HEADING_IMPORT)
         source = self._gui.browse_file(heading, _IMPORT_MASK)
@@ -266,14 +249,12 @@ class TransferView:
     def _report(self, heading, ack, staged_count):
         """Surface the import ack.
 
-        Once a request was SENT the service owns the staging cleanup —
-        even on an ack timeout, which means "no reply in time", not "the
-        request died": it may still be queued behind dispatcher work, and
-        sweeping the staging file here would turn a merely-slow import
-        into a refused one. Refusal details the pre-flight also detects
-        (the staged file changed between the two reads) map to the same
-        dedicated wordings; unexpected details fall back to the generic
-        failure line with the raw token, like the manage view.
+        Once a request was sent the service owns the staging cleanup, even on
+        an ack timeout (which means "no reply in time", not "the request
+        died"): sweeping the staging file here would turn a slow import into
+        a refused one. Refusal details the pre-flight also detects map to the
+        same dedicated wordings; unexpected details fall back to the generic
+        failure line with the raw token.
         """
         if ack is None:
             self._log("AOMe_TransferView: no ack (service not running)")
@@ -305,13 +286,10 @@ class TransferView:
         return self._gui.localized(string_id) or _FALLBACKS[string_id]
 
     def _template(self, string_id, *values):
-        """A format template with the manage view's translation guards,
-        widened for multi-placeholder templates: a translation missing ANY
-        of the expected ``{0}..{n}`` placeholders (not just all of them —
-        32153 carries two, and format() silently ignores unused
-        arguments), or one malformed enough to raise, degrades to the
-        English fallback — a blank or value-swallowing dialog teaches
-        nothing."""
+        """A format template with the manage view's translation guards: a
+        translation missing any of the expected ``{0}..{n}`` placeholders
+        (32153 carries two), or one malformed enough to raise, degrades to
+        the English fallback."""
         template = self._text(string_id)
         if any('{' + str(index) + '}' not in template
                for index in range(len(values))):

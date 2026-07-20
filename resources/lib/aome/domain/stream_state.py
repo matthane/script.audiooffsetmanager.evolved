@@ -1,20 +1,12 @@
-"""Stream stability state machine — the ONE answer to "has the stream settled?"
+"""Stream stability states: has the stream settled enough to act on?
 
     STARTING ──(profile built)──▶ STABILIZING ──(profile held ~1s)──▶ STABLE
                                        ▲                                │
                                        └──(profile change detected)─────┘
 
-Consumers ask one question:
-``session.stream_state is StreamState.STABLE``. The machine also counts its
-own STABLE transitions (``PlaybackSession.stabilized_count``), so "is this
-stabilization startup settling or a mid-play change?" is answered here —
-stamped as ``StreamStabilized.initial`` — rather than by consumer-side
-latches.
-
-The StreamDetector drives every transition: stability is judged on the WHOLE
-profile (HDR + FPS + audio, not just the codec), and a failed verification
-re-schedules itself instead of stranding STABILIZING — every stabilization
-therefore reaches STABLE and releases any pending notification promptly.
+Consumers check ``session.stream_state is StreamState.STABLE``. The
+StreamDetector drives every transition, judging stability on the whole
+profile (HDR + FPS + audio, not just the codec).
 
 Pure Python: no Kodi imports.
 """

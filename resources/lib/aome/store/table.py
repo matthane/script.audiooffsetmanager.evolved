@@ -1,19 +1,12 @@
-"""OffsetTable: the sparse-store adapter — the seam the pipeline speaks to.
+"""OffsetTable: the sparse-store adapter the pipeline speaks to.
 
-Its dependencies are the pure store plus one injected settings READ, so it
-lives beside the store it adapts. It imports no Kodi module (the settings
-adapter is injected), keeping the store package's purity contract intact.
-
-Keys are composed AT CALL TIME from the profile's verbatim facts plus the
-LIVE ``per_fps_offsets`` toggle (freshness doctrine: never a captured key,
-never conditional on lookup history). Lookup routes through
-``resolve.resolve`` (one candidate key per mode -> exact | miss); writes
-route through ``resolve.write_key`` — the ONLY sanctioned write-key
-derivation.
-
-The store-entry dict shape stays INSIDE the store package: consumers read
-values via ``Resolution.ms`` and ``stored_ms_at`` rather than indexing
-``entry['delay_ms']`` themselves.
+Wraps the pure store and one injected settings read. Keys are composed at
+call time from the profile's verbatim facts plus the live
+``per_fps_offsets`` toggle, never captured and never conditional on lookup
+history. Lookup routes through ``resolve.resolve`` (one candidate key per
+mode); writes route through ``resolve.write_key``, the only sanctioned
+write-key derivation. The store-entry dict shape stays inside the store
+package: consumers read values via ``Resolution.ms`` and ``stored_ms_at``.
 """
 
 from resources.lib.aome.store import resolve as store_resolve
@@ -30,9 +23,8 @@ class OffsetTable:
     def read_only(self):
         """True when the store refuses all writes (newer-schema file).
 
-        The watcher checks this in eligibility: a permanently unwritable
-        store must stop the learn loop outright instead of re-detecting and
-        re-failing the same adjustment every quiescence cycle.
+        The watcher checks this so a permanently unwritable store stops the
+        learn loop rather than re-failing the same adjustment every cycle.
         """
         return self._store.read_only
 
@@ -48,9 +40,8 @@ class OffsetTable:
         return self._store.consume_reset(key)
 
     def write_key(self, profile):
-        """The write key for the profile RIGHT NOW, or None if not
-        composable (unparseable fps under per-fps — callers gate on
-        completeness first, so this is a belt-and-braces None)."""
+        """The write key for the profile now, or None if not composable
+        (unparseable fps under per-fps; callers gate on completeness first)."""
         try:
             return store_resolve.write_key(
                 profile.hdr_type, profile.video_fps, profile.audio_format,
@@ -63,8 +54,8 @@ class OffsetTable:
         return self._store.get(key)
 
     def stored_ms_at(self, key):
-        """The verbatim ms stored at an exact key, or None — keeps the
-        entry dict shape inside the store package."""
+        """The ms stored at an exact key, or None (keeps the entry dict
+        shape inside the store package)."""
         entry = self._store.get(key)
         if entry is None:
             return None
