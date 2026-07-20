@@ -809,3 +809,88 @@ class TestDeletedReset:
         assert session.applied == (None, 0)
         assert rig.offsets.consumed == [EXACT_KEY]       # one-shot
         assert rig.announced == []                       # silent: no toast
+
+
+class TestPublishedProfile:
+    """The home-window property the management view reads to tag the
+    playing entry: published before the apply gates at every trigger,
+    retracted on playback end / incomplete profile, deduped between."""
+
+    PROP = OffsetApplier.PROFILE_PROPERTY
+
+    def prop(self, rig):
+        return rig.gateway.window_properties.get(self.PROP)
+
+    def test_publishes_write_key_on_profile_changed_even_on_a_miss(self, rig):
+        # No stored entry: the property reflects what is PLAYING, which
+        # exists independently of whether anything is stored for it.
+        rig.start(make_profile(), offset_ms=None)
+        rig.profile_changed()
+        assert self.prop(rig) == ALL_KEY
+
+    def test_apply_off_still_publishes(self, rig):
+        # The re-teach state (apply off, learn on) keeps the indicator:
+        # publishing runs before the gates.
+        rig.settings.apply_offsets = False
+        rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        assert rig.gateway.applied == []
+        assert self.prop(rig) == ALL_KEY
+
+    def test_toggle_flip_republishes_the_other_modes_key(self, rig):
+        rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        assert self.prop(rig) == ALL_KEY
+
+        rig.offsets.per_fps = True
+        rig.settings_changed()
+        assert self.prop(rig) == EXACT_KEY
+
+    def test_repeat_trigger_does_not_rewrite_an_unchanged_key(self, rig):
+        rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+
+        writes = []
+        original = rig.gateway.set_window_property
+
+        def spying(name, value):
+            writes.append((name, value))
+            return original(name, value)
+
+        rig.gateway.set_window_property = spying
+        rig.post(events.StreamStabilized(session_id=rig.session.session_id))
+        assert writes == []
+        assert self.prop(rig) == ALL_KEY
+
+    def test_incomplete_profile_retracts(self, rig):
+        from resources.lib.aome.domain import formats
+        session = rig.start(make_profile(), offset_ms=-125)
+        rig.profile_changed()
+        assert self.prop(rig) == ALL_KEY
+
+        session.profile = make_profile(audio_format=formats.UNKNOWN)
+        rig.profile_changed()
+        assert self.PROP not in rig.gateway.window_properties
+
+    def test_every_playback_boundary_retracts(self):
+        # Stop and end have no live profile; start has none YET, and it is
+        # the only edge an in-place reopen fires (no stop callback), so the
+        # old key must not stand into the new stream's discovery window.
+        # Fresh rig each so the property state cannot leak between variants.
+        for boundary in (events.PlaybackStopped(), events.PlaybackEnded(),
+                         events.PlaybackStarted()):
+            rig = Rig()
+            rig.start(make_profile(), offset_ms=-125)
+            rig.profile_changed()
+            assert self.prop(rig) == ALL_KEY
+
+            rig.post(boundary)
+            assert self.PROP not in rig.gateway.window_properties
+
+    def test_clear_published_profile_bypasses_the_dedupe(self, rig):
+        # Startup hygiene: a crashed predecessor's stale value is invisible
+        # to fresh dedupe state (nothing published yet), so the explicit
+        # clear must not consult it.
+        rig.gateway.window_properties[self.PROP] = 'hdr10|all|ac3'
+        rig.applier.clear_published_profile()
+        assert self.PROP not in rig.gateway.window_properties

@@ -130,6 +130,11 @@ class ServiceRuntime:
         self.player_bridge = PlayerBridge(self.dispatcher)
         self.monitor = MonitorBridge(self.dispatcher)
 
+        # Retract any published-profile property a crashed predecessor left
+        # behind: window properties persist until Kodi exits, and a stale
+        # key would tag a dead playback in the management view.
+        self.offset_applier.clear_published_profile()
+
         # Surface the one-shot corruption flag through the graph: posted
         # here (queued until the dispatcher starts) so the Notifier — the
         # toast owner — raises the notice, not this composition root.
@@ -192,3 +197,6 @@ class ServiceRuntime:
         # subscription lives on the dispatcher, and posts arriving after
         # stop are dropped by design.
         self.dispatcher.stop()
+        # After the join no publish can race this final retract; without it
+        # the property would outlive the service until Kodi exits.
+        self.offset_applier.clear_published_profile()

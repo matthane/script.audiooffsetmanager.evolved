@@ -54,6 +54,20 @@ keys) forces the delay to 0 immediately, first action or not: the deletion
 is the authorization the gate otherwise waits for. The forced 0 consumes the
 markers (one-shot) and is silent.
 
+The applier also publishes the live profile to the home-window property
+``script.audiooffsetmanager.evolved.profile``: the write key of the current
+complete profile under the current toggle, retracted at every playback
+boundary — start included, since an in-place reopen fires no stop callback
+and the old key must not outlive its stream — and when the profile is
+incomplete. Publishing rides the same four triggers and runs
+before the apply gates, so the property stays fresh at every resolve moment
+(a toggle flip republishes the other mode's key) and keeps working with
+applying off. The management view in the script process reads it to tag the
+playing entry; nothing in-process consumes it. Window properties outlive a
+crashed service until Kodi exits, so the runtime retracts at service
+start/stop via ``clear_published_profile``, which bypasses the repeat-write
+dedupe.
+
 Pure app layer: Kodi I/O via the injected gateway, settings via the injected
 adapter, log sinks injected; no Kodi imports.
 """
@@ -65,7 +79,12 @@ from resources.lib.aome.domain.stream_state import StreamState
 
 
 class OffsetApplier:
-    """Applies the stored offset for the session's current profile."""
+    """Applies the stored offset for the session's current profile and
+    publishes the live profile's key for the management view."""
+
+    # Cross-process contract with the script process's management view,
+    # which reads this home-window property to tag the playing entry.
+    PROFILE_PROPERTY = 'script.audiooffsetmanager.evolved.profile'
 
     def __init__(self, dispatcher, session_tracker, gateway, settings,
                  offsets, *, log_debug, log_warning):
@@ -76,11 +95,15 @@ class OffsetApplier:
         self._offsets = offsets
         self._log = log_debug
         self._warn = log_warning
+        self._published = None
 
         dispatcher.subscribe(events.ProfileChanged, self._on_profile_changed)
         dispatcher.subscribe(events.StreamStabilized, self._on_stream_stabilized)
         dispatcher.subscribe(events.SettingsChanged, self._on_settings_changed)
         dispatcher.subscribe(events.StoreMutated, self._on_store_mutated)
+        dispatcher.subscribe(events.PlaybackStarted, self._on_playback_boundary)
+        dispatcher.subscribe(events.PlaybackStopped, self._on_playback_boundary)
+        dispatcher.subscribe(events.PlaybackEnded, self._on_playback_boundary)
 
     # -- triggers (dispatcher thread) --------------------------------------------
 
@@ -106,6 +129,16 @@ class OffsetApplier:
         marked miss forces its 0 at the deletion itself)."""
         self._reconcile_live_session()
 
+    def _on_playback_boundary(self, _event):
+        """Retract the published profile at every playback edge.
+
+        A stop/end has no live profile; a start has none YET — and it is
+        the only edge an in-place reopen fires, so without it the previous
+        stream's key would stand for the whole discovery window (or
+        forever, when the new stream never completes a profile).
+        """
+        self._publish_key(None)
+
     def _reconcile_live_session(self):
         session = self._sessions.current
         if session is None:
@@ -121,6 +154,9 @@ class OffsetApplier:
 
         # Read fresh at the moment of use (see Freshness above).
         profile = session.profile
+        # Publish before the gates: the indicator reflects what is playing,
+        # not whether applying is enabled.
+        self._publish_profile(profile)
         if not self._should_apply(profile):
             return
 
@@ -283,6 +319,43 @@ class OffsetApplier:
             self._dispatcher.post(events.UnsavedOffsetDiscarded(
                 session_id=session.session_id, profile=profile,
                 ms=discarded))
+
+    # -- the published-profile property -------------------------------------------
+
+    def _publish_profile(self, profile):
+        """Publish the live profile's write key, or retract for anything less.
+
+        The write key under the current toggle is exactly what the manage
+        view's rows are keyed by, so equality there is the "playing now"
+        test. An incomplete profile retracts rather than holding the last
+        key: a stale tag is worse than none.
+        """
+        key = None
+        if policies.is_complete(profile):
+            key = self._offsets.write_key(profile)
+        self._publish_key(key)
+
+    def _publish_key(self, key):
+        # Dedupe: the repeat triggers (every stabilization) must not
+        # re-write an unchanged property.
+        if key == self._published:
+            return
+        self._published = key
+        if key:
+            self._gateway.set_window_property(self.PROFILE_PROPERTY, key)
+        else:
+            self._gateway.clear_window_property(self.PROFILE_PROPERTY)
+
+    def clear_published_profile(self):
+        """Unconditional retract for the runtime's start/stop hygiene.
+
+        Bypasses the dedupe on purpose: at service start the property may
+        hold a value a crashed predecessor never retracted (window
+        properties persist until Kodi exits), which fresh dedupe state
+        cannot see.
+        """
+        self._published = None
+        self._gateway.clear_window_property(self.PROFILE_PROPERTY)
 
     def _should_apply(self, profile):
         """Resolve the inputs and log the reason; the decision is the policy's."""
