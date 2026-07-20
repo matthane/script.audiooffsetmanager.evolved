@@ -36,12 +36,14 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
+from resources.lib.aome.app.offset_applier import OffsetApplier
 from resources.lib.aome.kodi.gateway import KodiGateway
 from resources.lib.aome.kodi.gui import Gui
 from resources.lib.aome.kodi.log import KodiLogger
 from resources.lib.aome.kodi.mutation_client import MutationClient
 from resources.lib.aome.kodi.settings import (ADDON_ID, STORE_PATH, Settings,
                                              import_staging_path)
+from resources.lib.aome.store.keys import canonical_key
 from resources.lib.aome.store.offset_store import read_import, read_profiles
 from resources.lib.aome.view.logexport import LogExportView
 from resources.lib.aome.view.manage import ManageView
@@ -123,25 +125,30 @@ def _reopen_settings_at_advanced():
 def _script_graph():
     """The per-route composition preamble, written once for every route:
     one logger (with the same debug escalation the service uses), the live
-    settings proxy, the plain-dialog gui, and the mutation client as the
-    only write path to the store."""
+    settings proxy, the plain-dialog gui, the gateway (window-property
+    reads), and the mutation client as the only write path to the store."""
     logger = KodiLogger()
     settings = Settings(log=logger)
     logger.debug_escalation = settings.debug_logging_enabled()
     gui = Gui(log=logger)
-    client = MutationClient(KodiGateway(log=logger), log=logger)
-    return logger, settings, gui, client
+    gateway = KodiGateway(log=logger)
+    client = MutationClient(gateway, log=logger)
+    return logger, settings, gui, gateway, client
 
 
 def _manage_offsets():
     """Compose the management view's process graph and run it: the shared
-    preamble plus the read-only reader pointed at the shared STORE_PATH."""
-    logger, settings, gui, client = _script_graph()
+    preamble plus the read-only reader pointed at the shared STORE_PATH and
+    the playing-profile read off the service's published window property
+    (canonicalized here so the view compares keys verbatim)."""
+    logger, settings, gui, gateway, client = _script_graph()
     store_path = xbmcvfs.translatePath(STORE_PATH)
     view = ManageView(
         lambda: read_profiles(store_path, log_debug=logger.debug),
         gui, client.send,
         per_fps=settings.per_fps_offsets_enabled(),
+        current_key=lambda: canonical_key(
+            gateway.window_property(OffsetApplier.PROFILE_PROPERTY)),
         log_debug=logger.debug)
     view.run()
 
@@ -155,7 +162,7 @@ def _transfer_view():
     staging path comes from ``import_staging_path()``, shared by both
     processes.
     """
-    logger, _settings, gui, client = _script_graph()
+    logger, _settings, gui, _gateway, client = _script_graph()
     store_path = xbmcvfs.translatePath(STORE_PATH)
     staging_path = import_staging_path()
     return TransferView(
@@ -179,7 +186,7 @@ def _log_export_view():
     ``xbmcvfs`` writer so VFS destinations work, and the redaction pairs that
     fold resolved ``special://`` roots back to their portable form.
     """
-    logger, _settings, gui, _client = _script_graph()
+    logger, _settings, gui, _gateway, _client = _script_graph()
     log_dir = xbmcvfs.translatePath('special://logpath/')
     version = xbmcaddon.Addon(ADDON_ID).getAddonInfo('version')
     return LogExportView(

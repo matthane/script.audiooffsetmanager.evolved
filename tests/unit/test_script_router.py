@@ -94,11 +94,12 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
 
     class FakeView:
         def __init__(self, read_entries, gui, send_mutation, *,
-                     per_fps=False, log_debug=None):
+                     per_fps=False, current_key=None, log_debug=None):
             built['reader'] = read_entries
             built['gui'] = gui
             built['send'] = send_mutation
             built['per_fps'] = per_fps
+            built['current_key'] = current_key
             built['log'] = log_debug
             built['ran'] = 0
 
@@ -118,6 +119,9 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
     method = built['send']
     assert getattr(method, '__name__', '') == 'send'
     assert isinstance(getattr(method, '__self__', None), MutationClient)
+    # The playing-profile seam reads the service's published property
+    # (unset here -> '' -> "nothing playing").
+    assert built['current_key']() == ''
     assert callable(built['log'])
 
 

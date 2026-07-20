@@ -6,7 +6,7 @@ anywhere here (offsets are learned during playback, never typed), and it
 never writes the store file. It reads the file through the injected read-only
 reader and asks the service to mutate over the channel.
 
-The seam is three injected callables, wired by the script router:
+The seam is four injected callables, wired by the script router:
 
 * ``read_entries()`` returns a ``{key: entry}`` snapshot (each entry has
   ``delay_ms``, ``updated``, ``source``, optional ``video_fps``) and may
@@ -17,6 +17,9 @@ The seam is three injected callables, wired by the script router:
 * ``send_mutation(op, key=None)`` posts a delete/clear over the channel and
   returns the service's ack dict, or ``None`` on timeout (the report-only
   "service not running" signal). There is no fallback write path.
+* ``current_key()`` returns the canonical store key the service published
+  for the live playback (the applier's home-window property), or '' —
+  absent service, no playback, or no wiring all read as "nothing playing".
 
 ``run()`` is a re-read-and-render loop: every pass reads the store fresh, so
 a delete's effect is the next render. Values render verbatim (the signed
@@ -45,11 +48,27 @@ tagged '— inactive', never hidden, and sink below the active rows of their
 HDR group. Every stored entry always lists, so clear-all's confirmation
 never under-represents what it deletes.
 
+The entry matching ``current_key()`` is the playing row, re-read every pass
+so it tracks reality while the view loops. It is tagged '· playing now' and
+floats first — globally, so its HDR group also leads the index (first-
+appearance ordering — the Other bucket keeps its forced-last seat) and it
+heads its group's drill-down. A playing row is never dormant: the published
+key is always the current mode's, dormancy always the other's, and the row
+build enforces it besides, so even a mid-flip race between the two
+processes' toggle reads cannot render a contradictory row. A published key
+with no matching entry shows nothing: the rows are the indicator's whole
+surface, and the headings stay static.
+
 List rows carry Kodi label markup applied at render time only: dormant rows
-are dimmed gray and the group index bolds the group name against its count.
-The ``_Row`` strings stay plain so confirmations, which reuse them, render
-unstyled; bold degrades to regular weight on skins without a bold list font,
-so no information lives in markup alone.
+are dimmed gray whole, the playing row is bolded whole (both lines, like
+the dim) with a localized "»" marker leading its label line, and the group
+index bolds the group name against its count — except the playing group's
+row, which takes the marker and a single whole-row bold, since nesting
+``[B]`` tags would end the bold at the inner close tag. No color is
+hardcoded beyond the dormant gray (a fixed accent clashes with foreign skin
+palettes). The ``_Row`` strings stay plain so confirmations, which reuse
+them, render unstyled; bold degrades to regular weight on skins without a
+bold list font, so no information lives in markup alone.
 """
 
 from collections import namedtuple
@@ -76,6 +95,8 @@ _LABEL_CLEAR_GROUP = 32138    # the scoped clear row inside an open group
 _MSG_CONFIRM_CLEAR_GROUP = 32139
 _LABEL_INACTIVE = 32167       # "{0} — inactive" — the dormant row's value line
 _LABEL_GROUP_INACTIVE = 32170  # "({0} inactive)" — group-row count suffix
+_LABEL_PLAYING = 32172        # "{0} · playing now" — the playing row/group tag
+_LABEL_PLAYING_MARK = 32174   # "» {0}" — playing row's list-only lead marker
 
 # English fallbacks for strings that must never render blank: localized()
 # degrades to '' on a transient failure, and a blank dialog teaches nothing.
@@ -103,19 +124,23 @@ _FALLBACKS = {
     _MSG_CONFIRM_CLEAR_GROUP: "Delete all stored offsets in this group?",
     _LABEL_INACTIVE: "{0} — inactive",
     _LABEL_GROUP_INACTIVE: "({0} inactive)",
+    _LABEL_PLAYING: "{0} · playing now",
+    _LABEL_PLAYING_MARK: "» {0}",
 }
 
 # One presentable entry: the full profile line (flat rows and the delete
 # confirmation's first line), the in-group line (drill-down rows, codec
 # leading), the value/meta detail line, the literal store key the delete
-# targets, and the dormancy flag. All strings plain; markup is a list-render
-# concern, and these feed confirmations too.
-_Row = namedtuple("_Row", "describe short detail key dormant")
+# targets, and the dormancy/playing flags. All strings plain; markup is a
+# list-render concern, and these feed confirmations too.
+_Row = namedtuple("_Row", "describe short detail key dormant playing")
 
-# Kodi label markup for the list renders. Color is skin-independent; [B]
-# needs the skin's bold list font (Estuary has one) and silently renders
-# regular weight without it, which is fine since the bold carries no
-# information the text does not.
+# Kodi label markup for the list renders. No hardcoded colors beyond the
+# dormant gray: a fixed accent clashes with foreign skin palettes, so the
+# playing row's extra weight is structural — the localized "»" marker plus
+# bold, both inheriting the skin's own styling. [B] needs the skin's bold
+# list font (Estuary has one) and silently renders regular weight without
+# it, which is fine since no markup carries information the text does not.
 _DIM = "[COLOR gray]{0}[/COLOR]"
 _BOLD = "[B]{0}[/B]"
 
@@ -128,23 +153,29 @@ class ManageView:
     """Inspect + delete/clear stored offsets from the script process."""
 
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
-                 log_debug=None):
+                 current_key=None, log_debug=None):
         """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
         change while the view is open). It drives display only: 'All FPS' vs
         an omitted fps axis for the 'all' segment, and the '— inactive' tag
         on whichever rows the lookup will not consult now. Never filtering:
         this view is the store's only inspection surface, so every entry
         always lists.
+
+        ``current_key`` (see the module docstring) defaults to
+        "nothing playing", so a caller without the seam renders plain.
         """
         self._read_entries = read_entries
         self._gui = gui
         self._send_mutation = send_mutation
         self._per_fps = bool(per_fps)
+        self._current_key = current_key or (lambda: '')
         self._log = log_debug or _noop
         # The open drill-down group (an hdr segment, or _OTHER_GROUP);
         # None = top level. run() owns it; held on the instance so the
         # per-pass methods share one navigation state.
         self._group = None
+        # The published playing key ('' = none), refreshed per pass.
+        self._current = ''
 
     # -- entry point ----------------------------------------------------------
 
@@ -164,6 +195,8 @@ class ManageView:
                     else _MSG_UNREADABLE
                 self._gui.ok(heading, self._text(message))
                 return
+
+            self._current = self._current_key() or ''
 
             if not entries:
                 self._log("AOMe_ManageView: store empty; nothing to manage")
@@ -209,14 +242,16 @@ class ManageView:
     def _index_pass(self, heading, groups):
         """The group index: one single-line row per HDR type + clear-all.
 
-        ``groups`` is run()'s ordered ``(segment, count, inactive)`` list.
-        Clear-all stays on this level when grouped: its confirmation covers
-        the whole store, so it belongs where the whole store is represented.
+        ``groups`` is run()'s ordered ``(segment, count, inactive, playing)``
+        list. Clear-all stays on this level when grouped: its confirmation
+        covers the whole store, so it belongs where the whole store is
+        represented.
         """
         self._log("AOMe_ManageView: rendering group index ({0} group(s))"
                   .format(len(groups)))
-        options = [self._group_row(segment, count, inactive, emphasize=True)
-                   for segment, count, inactive in groups]
+        options = [self._group_row(segment, count, inactive,
+                                   emphasize=True, playing=playing)
+                   for segment, count, inactive, playing in groups]
         options.append(self._gui.localized(_LABEL_CLEAR_ALL))
 
         choice = self._gui.select(heading, options)
@@ -315,34 +350,48 @@ class ManageView:
         splits each HDR group in two: the active rows list first, the
         dormant ones sink below, each stratum keeping the codec/rate order.
         The split stays inside the group, so dormancy never moves an entry
-        between groups.
+        between groups. The playing row alone outranks everything — hoisted
+        globally, so its group's first appearance leads the index too.
         """
         rows = []
         for key, entry in entries.items():
             dormant = self._is_dormant(key)
+            # A dormant row never claims playing, even if a mid-flip race
+            # publishes the other mode's key for one pass: the heading's
+            # miss line covers that pass, and the next one self-corrects.
+            playing = (bool(self._current) and key == self._current
+                       and not dormant)
             rows.append(_Row(self._describe(key, entry),
                              self._describe_short(key, entry),
-                             self._detail(entry, inactive=dormant),
+                             self._detail(entry, inactive=dormant,
+                                          playing=playing),
                              key,
-                             dormant))
+                             dormant,
+                             playing))
 
         def display_order(row):
             hdr, audio, fps_rank, raw = sort_key(row.key)
-            return (hdr, row.dormant, audio, fps_rank, raw)
+            return (not row.playing, hdr, row.dormant, audio, fps_rank, raw)
 
         rows.sort(key=display_order)
         return rows
 
-    @staticmethod
-    def _list_row(label, row):
-        """One two-line select option; a dormant row is dimmed whole.
+    def _list_row(self, label, row):
+        """One two-line select option; a dormant row is dimmed whole, the
+        playing row bolded whole with the localized "»" marker leading its
+        label line.
 
-        Markup lives here, not in the ``_Row`` strings, which confirmations
-        reuse unstyled. Both lines dim; half a gray row would read as two
-        states.
+        Markup and the marker live here, not in the ``_Row`` strings, which
+        confirmations reuse unstyled. Both lines style together; half a
+        styled row would read as two states (the marker is a lead-in on the
+        label, not a style, so it stays off the value line). The branches
+        cannot collide: a playing row is never dormant (module docstring).
         """
         if row.dormant:
             return (_DIM.format(label), _DIM.format(row.detail))
+        if row.playing:
+            return (_BOLD.format(self._template(_LABEL_PLAYING_MARK, label)),
+                    _BOLD.format(row.detail))
         return (label, row.detail)
 
     def _is_dormant(self, key):
@@ -385,16 +434,20 @@ class ManageView:
         except ValueError:
             return key
 
-    def _detail(self, entry, *, inactive):
-        """The value line ('-115 ms'), run through the localized inactive
-        template when dormant.
+    def _detail(self, entry, *, inactive, playing=False):
+        """The value line ('-115 ms'), run through the localized
+        playing/inactive templates as flagged.
 
         Just the verbatim signed value; the store's source/updated metadata
-        stays in the file but out of the row.
+        stays in the file but out of the row. The state template wraps the
+        whole line (the two states are mutually exclusive, so at most one
+        wraps).
         """
         delay = entry.get("delay_ms")
         sign = "+" if isinstance(delay, int) and delay > 0 else ""
         detail = "{0}{1} ms".format(sign, delay)
+        if playing:
+            detail = self._template(_LABEL_PLAYING, detail)
         if inactive:
             detail = self._template(_LABEL_INACTIVE, detail)
         return detail
@@ -417,28 +470,35 @@ class ManageView:
         return hdr if hdr.strip() else _OTHER_GROUP
 
     def _group_index(self, rows):
-        """Ordered ``(segment, count, inactive)`` triples for the group index.
+        """Ordered ``(segment, count, inactive, playing)`` quads for the
+        group index.
 
         Rows arrive display-sorted, so first appearance yields the same
-        HDR-display order the flat list scans in; the Other bucket is forced
+        HDR-display order the flat list scans in — with the playing row
+        hoisted first, its group leads — and the Other bucket is forced
         last. Counts include dormant rows (every stored entry is countable
-        from the index), and each group carries its dormant share.
+        from the index); each group carries its dormant share and whether
+        it holds the playing row.
         """
         order = []
         counts = {}
         inactive = {}
+        playing = {}
         for row in rows:
             segment = self._group_of(row.key)
             if segment not in counts:
                 order.append(segment)
                 counts[segment] = 0
                 inactive[segment] = 0
+                playing[segment] = False
             counts[segment] += 1
             inactive[segment] += 1 if row.dormant else 0
+            playing[segment] = playing[segment] or row.playing
         if _OTHER_GROUP in counts:
             order.remove(_OTHER_GROUP)
             order.append(_OTHER_GROUP)
-        return [(segment, counts[segment], inactive[segment])
+        return [(segment, counts[segment], inactive[segment],
+                 playing[segment])
                 for segment in order]
 
     def _group_name(self, segment):
@@ -447,20 +507,28 @@ class ManageView:
             return self._text(_LABEL_OTHER_GROUP)
         return HDR_DISPLAY.get(segment, segment)
 
-    def _group_row(self, segment, count, inactive=0, *, emphasize=False):
+    def _group_row(self, segment, count, inactive=0, *, emphasize=False,
+                   playing=False):
         """One index row: 'Dolby Vision — 6 entries (2 inactive)'.
 
         The inactive suffix appears only when the group has dormant entries,
         and the count always states the total (the suffix splits it, never
-        replaces it). ``emphasize`` bolds the group name against its count
-        for the index list; the clear-group confirmation reuses this row
-        plain.
+        replaces it); ``playing`` appends the playing tag after the counts.
+        ``emphasize`` bolds the group name against its count for the index
+        list — except the playing group, whose whole row bolds in a single
+        wrap (nested ``[B]`` tags would end the bold at the inner close
+        tag). The clear-group confirmation reuses this row plain.
         """
         string_id = _LABEL_GROUP_ENTRY if count == 1 else _LABEL_GROUP_ENTRIES
         counted = self._template(string_id, count)
         if inactive:
             counted += " " + self._template(_LABEL_GROUP_INACTIVE, inactive)
+        if playing:
+            counted = self._template(_LABEL_PLAYING, counted)
         name = self._group_name(segment)
+        if emphasize and playing:
+            return _BOLD.format(self._template(
+                _LABEL_PLAYING_MARK, "{0} — {1}".format(name, counted)))
         if emphasize:
             name = _BOLD.format(name)
         return "{0} — {1}".format(name, counted)

@@ -8,8 +8,9 @@ next re-read), and plain callables/exceptions cover the reader edge cases.
 
 The load-bearing doctrines pinned here: verbatim signed millisecond values
 (no rounding, no step snapping), deterministic sort order, the empty state as
-first-run education, report-only on a missing service, and the no-value-entry boundary
-that the only ops this view can ever emit are ``delete`` and ``clear``.
+first-run education, report-only on a missing service, and the
+no-value-entry boundary that the only ops this view can ever emit are
+``delete`` and ``clear``.
 """
 
 import inspect
@@ -61,6 +62,12 @@ class FakeService:
 
 def _entry(delay_ms, updated="2026-07-15T12:00:00Z", source="user"):
     return {"delay_ms": delay_ms, "updated": updated, "source": source}
+
+
+def _value(delay):
+    """The expected detail line: the verbatim signed value."""
+    sign = "+" if delay > 0 else ""
+    return "{0}{1} ms".format(sign, delay)
 
 
 # Three profiles whose display labels sort DV < HDR10 < HLG.
@@ -153,9 +160,9 @@ def test_per_fps_rows_show_the_exact_reported_rate():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | 59 fps | Dolby Digital", "+75 ms")
+    assert options[0] == ("Dolby Vision | 59 fps | Dolby Digital", _value(75))
     assert options[1] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
-                          "-25 ms")
+                          _value(-25))
 
 
 def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
@@ -172,12 +179,12 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     view.run()
 
     options = gui.selects[0][1]
-    assert options[0] == ("Dolby Vision | Dolby Digital Plus", "-25 ms")
+    assert options[0] == ("Dolby Vision | Dolby Digital Plus", _value(-25))
     # Dormant rows dim whole (label AND detail) on top of the tag —
     # Kodi's gray-out idiom for present-but-not-in-effect.
     assert options[1] == (
         "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
-        "[COLOR gray]+125 ms — inactive[/COLOR]")
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
     assert len(options) == 3               # both entries + clear-all
 
 
@@ -197,10 +204,10 @@ def test_toggle_on_tags_all_rows_inactive_and_never_hides():
 
     options = gui.selects[0][1]
     assert options[0] == ("Dolby Vision | 23.976 fps | Dolby Digital Plus",
-                          "+125 ms")
+                          _value(125))
     assert options[1] == (
         "[COLOR gray]Dolby Vision | All FPS | Dolby Digital Plus[/COLOR]",
-        "[COLOR gray]-25 ms — inactive[/COLOR]")
+        "[COLOR gray]" + _value(-25) + " — inactive[/COLOR]")
 
 
 def test_rows_group_by_codec_then_numeric_rate():
@@ -405,7 +412,7 @@ def test_ack_failure_reports_detail():
 def test_constructor_exposes_no_store_writer_seam():
     params = list(inspect.signature(ManageView.__init__).parameters)
     assert params == ["self", "read_entries", "gui", "send_mutation",
-                      "per_fps", "log_debug"]
+                      "per_fps", "current_key", "log_debug"]
     # No parameter is a store writer / value setter — the view cannot write.
     for name in params:
         assert "write" not in name
@@ -569,11 +576,11 @@ def test_group_drilldown_shows_short_rows_and_back_returns_to_index():
     # per_fps is ON here, so the 'all' rows are dormant (dim + tag) and
     # sink below the exact-rate row that is in effect.
     assert options == [
-        ("Dolby TrueHD · 23.976 fps", "+2 ms"),
+        ("Dolby TrueHD · 23.976 fps", _value(2)),
         ("[COLOR gray]Dolby Digital Plus · All FPS[/COLOR]",
-         "[COLOR gray]+3 ms — inactive[/COLOR]"),
+         "[COLOR gray]" + _value(3) + " — inactive[/COLOR]"),
         ("[COLOR gray]Dolby TrueHD · All FPS[/COLOR]",
-         "[COLOR gray]+1 ms — inactive[/COLOR]"),
+         "[COLOR gray]" + _value(1) + " — inactive[/COLOR]"),
         "#32138",
     ]
     assert "#32126" not in options
@@ -594,7 +601,7 @@ def test_other_bucket_lists_unsplittable_key_verbatim():
     assert heading == "Other"
     # Verbatim acceptance: the scribbled key shows as itself (there is no
     # HDR name to drop), value verbatim, never a crash.
-    assert options == [("scribbled-key", "+10 ms"), "#32138"]
+    assert options == [("scribbled-key", _value(10)), "#32138"]
 
 
 def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
@@ -614,7 +621,7 @@ def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
     # The _Row strings stay PLAIN (no [COLOR] markup in dialog text); the
     # inactive tag rides along — the confirmation states the row as shown.
     assert "Dolby Vision | All FPS | Dolby Digital Plus" in message
-    assert "+3 ms — inactive" in message
+    assert _value(3) + " — inactive" in message
     assert "[COLOR" not in message
     assert service.calls == [("delete", "dolbyvision|all|eac3")]
     # After the delete the (re-read) group re-rendered with 2 rows (+ the
@@ -700,8 +707,8 @@ def test_dormant_rows_count_and_tag_at_both_levels():
     # active rows stay unstyled.
     options = gui.selects[1][1]
     assert ("[COLOR gray]Dolby TrueHD · 23.976 fps[/COLOR]",
-            "[COLOR gray]+2 ms — inactive[/COLOR]") in options
-    assert ("Dolby TrueHD", "+1 ms") in options
+            "[COLOR gray]" + _value(2) + " — inactive[/COLOR]") in options
+    assert ("Dolby TrueHD", _value(1)) in options
 
 
 def test_clear_from_group_index_exits_quietly():
@@ -824,8 +831,8 @@ def test_blank_hdr_segment_key_joins_the_other_bucket():
     # (nothing is known about how it resolves).
     assert options == [
         ("[COLOR gray]Dolby TrueHD · All FPS[/COLOR]",   # blank hdr
-         "[COLOR gray]+9 ms — inactive[/COLOR]"),
-        ("scribbled-key", "+10 ms"),
+         "[COLOR gray]" + _value(9) + " — inactive[/COLOR]"),
+        ("scribbled-key", _value(10)),
         "#32138",
     ]
 
@@ -980,3 +987,171 @@ def test_count_template_degrades_on_malformed_or_placeholderless_translation():
         view.run()
         assert ("[B]Dolby Vision[/B] — 3 entries (1 inactive)"
                 in gui.selects[0][1]), bad
+
+
+# -- the playing indicator -----------------------------------------------------
+#
+# The service publishes the live profile's write key to a window property;
+# the router injects it as ``current_key()``. The matching row tags
+# '· playing now', renders marked-and-bold whole, and floats first —
+# globally, so its HDR group leads the index too. A published key with no
+# matching row shows nothing (the rows are the indicator's whole surface;
+# headings stay static). All existing tests run without the seam and pin
+# that its absence renders plain.
+
+# The exact playing treatments: the label line leads with the localized
+# "»" marker inside the bold; the value line bolds without it. No color —
+# a hardcoded accent clashes with foreign skin palettes.
+_PLAYING = "[B]» {0}[/B]"
+_PLAYING_DETAIL = "[B]{0}[/B]"
+
+def _build_playing(entries, current, gui=None, per_fps=False):
+    """A view whose current_key seam is scripted: a str publishes once for
+    the whole run; a callable answers per pass."""
+    service = FakeService(entries)
+    gui = gui or FakeGui()
+    key_fn = current if callable(current) else (lambda: current)
+    view = ManageView(service.read, gui, service.send, per_fps=per_fps,
+                      current_key=key_fn)
+    return view, gui, service
+
+
+def test_playing_row_tags_bolds_and_floats_first():
+    entries = {
+        DV: _entry(-115),
+        "dolbyvision|all|ac3": _entry(9999),
+        "dolbyvision|all|eac3": _entry(-2500),
+    }
+    view, gui, _ = _build_playing(entries, DV)
+    view.run()
+
+    options = gui.selects[0][1]
+    # The TrueHD row sorts LAST by codec; playing hoists it above both.
+    assert options[0] == (
+        _PLAYING.format("Dolby Vision | Dolby TrueHD"),
+        _PLAYING_DETAIL.format(_value(-115) + " · playing now"))
+    assert options[1] == ("Dolby Vision | Dolby Digital", _value(9999))
+    # The heading is static; the tagged row carries the whole state.
+    assert gui.selects[0][0] == "#32115"
+
+
+def test_playing_group_leads_the_index_and_bolds_whole():
+    gui = _grouped_gui()
+    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|ac3",
+                                  gui=gui)
+    view.run()
+
+    options = gui.selects[0][1]
+    # HDR10 sorts after Dolby Vision by display name; holding the playing
+    # row hoists it first. Its whole row takes the playing markup in ONE
+    # wrap (nested [B] would end the bold early); the others keep the
+    # name-only bold.
+    assert options == [
+        _PLAYING.format("HDR10 — 3 entries (1 inactive) · playing now"),
+        "[B]Dolby Vision[/B] — 3 entries (1 inactive)",
+        "[B]HLG[/B] — 2 entries",
+        "[B]SDR[/B] — 1 entry",
+        "[B]Other[/B] — 1 entry",
+        "#32126",
+    ]
+
+
+def test_playing_row_heads_its_groups_drilldown():
+    gui = _grouped_gui()
+    gui.select_answers = [0, -1, -1]     # open the hoisted HDR10, back, exit
+    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|dtshd_ma",
+                                  gui=gui)
+    view.run()
+
+    heading, options = gui.selects[1]
+    assert heading == "HDR10"
+    # DTS-HD MA sorts after Dolby Digital by codec; playing heads the list.
+    # The dormant 59-fps row still sinks last.
+    assert options[0] == (_PLAYING.format("DTS-HD MA"),
+                          _PLAYING_DETAIL.format(_value(6) + " · playing now"))
+    assert options[1] == ("Dolby Digital", _value(4))
+    assert options[2][0].startswith("[COLOR gray]")
+
+
+def test_published_key_without_a_matching_row_renders_plain():
+    # No entry matches the playing stream: nothing marks, nothing bolds,
+    # and the heading stays static (field feedback: the heading is not an
+    # indicator surface).
+    entries = {DV: _entry(-115)}
+    view, gui, _ = _build_playing(entries, "hdr10|all|ac3")
+    view.run()
+
+    assert gui.selects[0][0] == "#32115"
+    assert gui.selects[0][1][0] == ("Dolby Vision | Dolby TrueHD",
+                                    _value(-115))
+
+
+def test_empty_store_with_playback_keeps_the_static_heading():
+    view, gui, _ = _build_playing({}, "hdr10|all|ac3")
+    view.run()
+
+    assert gui.oks == [("#32115", "#32122")]
+
+
+def test_playing_state_is_reread_every_pass_and_stays_plain_in_dialogs():
+    # Playback stops while the view is open: the next pass renders the row
+    # back in its sorted place, unbolded and untagged. The declined
+    # confirmation in between reuses the _Row strings plain — markup never
+    # reaches dialog text, but the playing tag rides along.
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(9999)}
+    published = iter([DV, ""])
+    gui = FakeGui()
+    gui.select_answers = [0, -1]         # pick the playing row, then exit
+    gui.yesno_answers = [False]          # inspect the confirmation only
+    view, gui, _ = _build_playing(entries, lambda: next(published), gui=gui)
+    view.run()
+
+    message = gui.yesnos[0][1]
+    assert "[B]" not in message
+    assert "[COLOR" not in message
+    assert _value(-115) + " · playing now" in message
+
+    # Second pass: nothing playing, natural order restored (ac3 first).
+    options = gui.selects[1][1]
+    assert options[0] == ("Dolby Vision | Dolby Digital", _value(9999))
+    assert options[1] == ("Dolby Vision | Dolby TrueHD", _value(-115))
+
+
+def test_dormant_rows_never_read_as_playing():
+    # The published key is always the current mode's; the other mode's
+    # entry for the same stream stays dormant even when the store also
+    # holds the published key. No dim+bold collision can exist.
+    entries = {
+        "dolbyvision|all|eac3": _entry(-25),
+        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+    }
+    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3",
+                                  per_fps=False)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == (
+        _PLAYING.format("Dolby Vision | Dolby Digital Plus"),
+        _PLAYING_DETAIL.format(_value(-25) + " · playing now"))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
+
+
+def test_mid_flip_race_renders_dormant_not_playing():
+    # The one window where the published key CAN name a dormant row: the
+    # settings save that flips per_fps also launches the view, and the
+    # service may not have republished the new mode's key yet. The row
+    # build enforces the invariant — dormant wins, no dim+bold hybrid —
+    # and the next pass self-corrects.
+    entries = {"dolbyvision|all|eac3": _entry(-25)}
+    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3",
+                                  per_fps=True)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == (
+        "[COLOR gray]Dolby Vision | All FPS | Dolby Digital Plus[/COLOR]",
+        "[COLOR gray]" + _value(-25) + " — inactive[/COLOR]")
+    assert "· playing now" not in options[0][1]
+    assert gui.selects[0][0] == "#32115"

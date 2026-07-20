@@ -382,3 +382,17 @@ msgstr ""
 msgctxt "#32170"
 msgid "({0} inactive)"
 msgstr ""
+
+#. Tag on the stored offset (or its group row) matching what is currently
+#. playing; {0} is the rest of the line, e.g. the full line reads
+#. "+125 ms · saved 19 Jul 2026 · playing now" or "3 entries · playing now"
+msgctxt "#32172"
+msgid "{0} · playing now"
+msgstr ""
+
+#. Marker leading the list row of the offset that is currently playing;
+#. {0} is the row text. Shown only in lists, never in dialog text; adjust
+#. the punctuation and its side to fit the language's direction.
+msgctxt "#32174"
+msgid "» {0}"
+msgstr ""
