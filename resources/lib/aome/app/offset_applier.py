@@ -33,8 +33,7 @@ Two contracts, both pinned by tests:
 - **Freshness**: the profile is read from ``session.profile`` at the moment
   of use (the detector is its sole writer, on this same thread); the
   granularity toggles (per-fps, distinct-spatial, distinct-channels) are
-  resolved inside the
-  OffsetTable for the same reason.
+  resolved inside the OffsetTable for the same reason.
 
 The apply is eager: it runs on adoption, before stability, because A/V sync
 matters immediately. It is marked ``provisional`` unless the session is
@@ -61,11 +60,11 @@ The applier also publishes the live profile to the home-window property
 complete profile under the current toggle, retracted at every playback
 boundary — start included, since an in-place reopen fires no stop callback
 and the old key must not outlive its stream — and when the profile is
-incomplete. Publishing rides the same four triggers and runs
-before the apply gates, so the property stays fresh at every resolve moment
-(a toggle flip republishes the other mode's key) and keeps working with
-applying off. The management view in the script process reads it to tag the
-playing entry; nothing in-process consumes it. Window properties outlive a
+incomplete. Publishing rides the same four triggers and runs before the
+apply gates, so the property stays fresh at every resolve moment (a toggle
+flip republishes the other mode's key) and keeps working with applying off.
+The management view in the script process reads it to tag the playing
+entry; nothing in-process consumes it. Window properties outlive a
 crashed service until Kodi exits, so the runtime retracts at service
 start/stop via ``clear_published_profile``, which bypasses the repeat-write
 dedupe.
