@@ -2,7 +2,7 @@
 
 # Audio Offset Manager: Evolved
 
-**Kodi's missing lipsync tool.** Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers your lipsync corrections. Adjust the audio offset during playback however you normally would: the slider in Kodi's audio settings, a keymap, a remote app, or anything else that sets the offset. Evolved picks up the change no matter where it came from, saves the value for that stream's profile (HDR type, audio format, and optionally frame rate), and applies it automatically the next time you play matching content.
+**Kodi's missing lipsync tool.** Audio Offset Manager: Evolved is a service addon for Kodi (v20+) that remembers your lipsync corrections. Adjust the audio offset during playback however you normally would: the slider in Kodi's audio settings, a keymap, a remote app, or anything else that sets the offset. Evolved picks up the change no matter where it came from, saves the value for that stream's profile (HDR type and audio format, with optional finer splits by frame rate, spatial audio format, and channel count), and applies it automatically the next time you play matching content.
 
 **Why a separate addon?** Evolved is the addon the original Audio Offset Manager set out to be. Where the original was built around a fixed (and very limited) list of formats configured in its settings, Evolved learns offsets for whatever Kodi reports, so any format or codec works, including ones Kodi adds in the future. Rebuilding the original around this model would have wiped out every existing user's configuration, so it lives on as-is and Evolved is a separate addon.
 
@@ -11,24 +11,24 @@
 ## How it works
 
 1. Play a video and adjust the audio offset from wherever you prefer.
-2. Evolved saves the adjustment for the current stream profile: the HDR type and audio format of the video itself, plus its frame rate when per-frame-rate offsets are enabled.
+2. Evolved saves the adjustment for the current stream profile: the HDR type and audio format of the video itself, refined by frame rate, spatial audio format, or channel count when the matching toggles are enabled.
 3. On every later playback with a matching profile, the saved offset is applied automatically.
 
 There are no offset values to type in and no per-format settings pages. Everything the addon knows comes from adjustments you make during playback, and there are no fixed increments: whatever value you land on is stored and applied exactly as given.
 
 ## Settings
 
-<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-1.png" width="100%" alt="Offsets settings category with Learn, Apply, and Per-frame-rate toggles">
+<img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-1.png" width="100%" alt="Offsets settings category with the Learn, Apply, and granularity toggles">
 
 - **Learn audio offsets**: save adjustments you make during playback. Off stops new offsets from being saved.
 - **Apply audio offsets**: replay saved offsets on matching playback. Off leaves playback untouched.
+- **Distinct frame-rate offsets**: also key offsets by the video's frame rate, for setups where sync differs between, say, 24 and 60 fps content. Offsets apply only in the mode they were saved in: offsets saved while this was off cover all frame rates and are not applied while it is on, so each frame rate is taught by adjusting once during playback. Nothing is deleted by switching modes.
 - **Distinct spatial audio offsets**: keep spatial audio formats such as Dolby Atmos and DTS:X as their own stream profiles with their own offsets. Off makes a spatial format share its base codec's offset, so for example TrueHD Atmos and plain TrueHD are taught and applied as one; offsets already saved for spatial formats are kept but not applied while this is off.
-- **Per-frame-rate offsets**: also key offsets by the video's frame rate, for setups where sync differs between, say, 24 and 60 fps content. Offsets apply only in the mode they were saved in: offsets saved while this was off cover all frame rates and are not applied while it is on, so each frame rate is taught by adjusting once during playback. Nothing is deleted by switching modes.
-- **Distinct channel count offsets**: also key offsets by the source's channel count, for setups where sync differs between, say, stereo and 5.1 versions of the same format. Follows the same rule as per-frame-rate offsets: an offset applies only in the mode it was saved in, each count is taught by adjusting once during playback, and nothing is deleted by switching modes.
+- **Distinct channel count offsets**: also key offsets by the source's channel count, for setups where sync differs between, say, stereo and 5.1 versions of the same format. Follows the same rule as distinct frame-rate offsets: an offset applies only in the mode it was saved in, each count is taught by adjusting once during playback, and nothing is deleted by switching modes.
 
 ## Managing stored offsets
 
-The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings are shown dimmed: frame-rate specific entries while per-frame-rate offsets is off, all-rates entries while it is on, spatial format entries while distinct spatial audio offsets is off, and likewise for channel counts under distinct channel count offsets.
+The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings are shown dimmed: frame-rate specific entries while distinct frame-rate offsets is off, all-rates entries while it is on, spatial format entries while distinct spatial audio offsets is off, and likewise for channel counts under distinct channel count offsets.
 
 <img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-2.png" width="100%" alt="Manage stored offsets view grouped by HDR type">
 

@@ -142,10 +142,10 @@ class Settings:
 
     def distinct_spatial_enabled(self):
         """The ONE audio-granularity knob: OFF = spatial variants share
-        their base codec's key. Defaults ON (verbatim keys): distinct is
-        the shipped behavior, so an unreadable setting must not silently
-        start collapsing."""
-        return self.get_bool('distinct_spatial_formats', True)
+        their base codec's key. Defaults OFF like the other granularity
+        toggles: collapsed is the shipped behavior, so an unreadable
+        setting must not silently start keying variants apart."""
+        return self.get_bool('distinct_spatial_formats', False)
 
     def distinct_channels_enabled(self):
         """The ONE channel-granularity knob: OFF = the all-channels key

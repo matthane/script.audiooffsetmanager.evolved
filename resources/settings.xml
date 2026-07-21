@@ -6,8 +6,10 @@
     <section id="script.audiooffsetmanager.evolved">
         <!-- Offset learning: the product. -->
         <category id="learning" label="32105" help="32106">
-            <!-- One untitled group: the category name says "Offsets" and
-                 the six items say the rest. -->
+            <!-- Three untitled groups, matching the Playback and Advanced
+                 treatment: the dividers separate the learn/apply pair,
+                 the granularity toggles, and the management button, and
+                 the settings say the rest. -->
             <group id="1">
                 <setting id="remember_adjustments" type="boolean" label="32108" help="32109">
                     <level>0</level>
@@ -22,28 +24,31 @@
                     <default>true</default>
                     <control type="toggle"/>
                 </setting>
-                <!-- Default on: distinct keys are the shipped behavior;
-                     off collapses spatial variants onto the base codec.
-                     Sits with the default-on pair above, ahead of the
-                     opt-in per-fps toggle. -->
-                <setting id="distinct_spatial_formats" type="boolean" label="32175" help="32176">
-                    <level>0</level>
-                    <default>true</default>
-                    <control type="toggle"/>
-                </setting>
+            </group>
+            <!-- The three granularity toggles, all default off, in
+                 key-axis order (frame rate, spatial audio, channel
+                 count); the labels share the "Distinct ... offsets"
+                 shape so they read as one family. -->
+            <group id="2">
                 <setting id="per_fps_offsets" type="boolean" label="32110" help="32111">
                     <level>0</level>
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
-                <!-- Default off like per-fps: the opt-in granularity pair
-                     sits together below the default-on toggles. Off keys
-                     every channel count onto the 'all' segment. -->
+                <!-- Off collapses spatial variants onto the base codec. -->
+                <setting id="distinct_spatial_formats" type="boolean" label="32175" help="32176">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <!-- Off keys every channel count onto the 'all' segment. -->
                 <setting id="distinct_channel_counts" type="boolean" label="32177" help="32178">
                     <level>0</level>
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
+            </group>
+            <group id="7">
                 <setting id="manage_offsets" type="action" label="32115" help="32116">
                     <level>0</level>
                     <data>RunScript(script.audiooffsetmanager.evolved,manage_offsets)</data>

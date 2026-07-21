@@ -76,8 +76,8 @@ HDR10 = "hdr10|all|ac3|all"
 HLG = "hlg|all|eac3|all"
 
 
-def _build(entries, acks=None, gui=None, per_fps=False, distinct_spatial=True,
-           distinct_channels=False):
+def _build(entries, acks=None, gui=None, per_fps=False,
+           distinct_spatial=False, distinct_channels=False):
     service = FakeService(entries, acks=acks)
     gui = gui or FakeGui()
     view = ManageView(service.read, gui, service.send, per_fps=per_fps,

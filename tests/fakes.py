@@ -123,8 +123,8 @@ class FakeFacade:
 
     ``per_fps``, ``distinct_spatial``, and ``distinct_channels`` drive the
     detector's identity granularity and the offset table's key composition
-    (defaults mirror the real defaults: per-fps OFF, distinct-spatial ON,
-    distinct-channels OFF); ``seek_configs`` maps
+    (defaults mirror the real defaults: every granularity toggle OFF);
+    ``seek_configs`` maps
     a seek reason to its
     (enabled, seconds) pair, defaulting every reason to (True, 4);
     ``remember_adjustments`` gates the adjustment watcher and
@@ -136,7 +136,7 @@ class FakeFacade:
     ``aome.kodi.settings.Settings`` + ``OffsetTable``).
     """
 
-    def __init__(self, per_fps=False, distinct_spatial=True,
+    def __init__(self, per_fps=False, distinct_spatial=False,
                  distinct_channels=False):
         self.per_fps = per_fps
         self.distinct_spatial = distinct_spatial
@@ -188,7 +188,7 @@ class FakeOffsetTable:
     standalone uses may set ``per_fps`` directly instead.
     """
 
-    def __init__(self, per_fps=False, distinct_spatial=True,
+    def __init__(self, per_fps=False, distinct_spatial=False,
                  distinct_channels=False, facade=None):
         self.offsets = {}            # key -> ms
         self.stored = []             # (key, ms), in store order

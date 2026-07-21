@@ -94,7 +94,7 @@ def test_manage_offsets_composition(monkeypatch, tmp_path):
 
     class FakeView:
         def __init__(self, read_entries, gui, send_mutation, *,
-                     per_fps=False, distinct_spatial=True,
+                     per_fps=False, distinct_spatial=False,
                      distinct_channels=False, current_key=None,
                      log_debug=None):
             built['reader'] = read_entries

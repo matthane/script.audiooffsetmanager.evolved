@@ -8,8 +8,9 @@ package.
 
 A Kodi service addon built around one loop: the user fixes lipsync once by
 adjusting Kodi's audio offset during playback, and the addon remembers that
-value per stream profile (HDR type, frame rate, audio format) and re-applies
-it automatically on every matching playback. Seek-back replays,
+value per stream profile (HDR type and audio format, refined by frame
+rate, spatial audio format, and channel count as the granularity toggles
+opt in) and re-applies it automatically on every matching playback. Seek-back replays,
 notifications, and a view for managing everything learned are built around
 that loop.
 
@@ -184,9 +185,9 @@ and refuses an empty one.
 `settings.xml` holds behavior toggles only: `remember_adjustments` /
 `apply_offsets` (an orthogonal learn/apply pair; the watcher never consults
 the apply toggle, so apply-off with learn-on is the legal re-teach state),
-`per_fps_offsets`, `distinct_spatial_formats` (default on; off collapses
-spatial variants onto the base codec's key), `distinct_channel_counts`
-(default off; on keys offsets by the source channel count), the
+`per_fps_offsets`, `distinct_spatial_formats`, and
+`distinct_channel_counts` (the three granularity toggles, all default
+off; each opts one key axis into finer granularity), the
 `seek_back_events`
 multiselect (its option values are
 `SeekScheduler.REASONS` verbatim, pinned by a contract test) with a shared

@@ -95,7 +95,7 @@ msgstr ""
 
 #. Setting label; its help text is #32111
 msgctxt "#32110"
-msgid "Per-frame-rate offsets"
+msgid "Distinct frame-rate offsets"
 msgstr ""
 
 #. Help text for #32110

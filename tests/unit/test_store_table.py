@@ -25,7 +25,7 @@ class _ToggleSettings:
     """Just the granularity reads the adapter consults — flipped between calls to
     prove keys are composed at CALL TIME, never captured."""
 
-    def __init__(self, per_fps=False, distinct_spatial=True,
+    def __init__(self, per_fps=False, distinct_spatial=False,
                  distinct_channels=False):
         self.per_fps = per_fps
         self.distinct_spatial = distinct_spatial
@@ -41,7 +41,7 @@ class _ToggleSettings:
         return self.distinct_channels
 
 
-def _make_table(tmp_path, per_fps=False, distinct_spatial=True,
+def _make_table(tmp_path, per_fps=False, distinct_spatial=False,
                 distinct_channels=False):
     from resources.lib.aome.store.offset_store import OffsetStore
     store = OffsetStore(str(tmp_path / "offsets.json"))

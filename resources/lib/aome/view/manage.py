@@ -157,7 +157,7 @@ class ManageView:
     """Inspect + delete/clear stored offsets from the script process."""
 
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
-                 distinct_spatial=True, distinct_channels=False,
+                 distinct_spatial=False, distinct_channels=False,
                  current_key=None, log_debug=None):
         """``per_fps``, ``distinct_spatial``, and ``distinct_channels`` are
         the granularity toggles at launch (they cannot change while the

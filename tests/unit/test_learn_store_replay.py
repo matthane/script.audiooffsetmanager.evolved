@@ -108,7 +108,7 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
                         lambda: per_fps_holder['on'])
     # Pinned to the real defaults: the fake xbmc settings stub's getBool
     # is not a settings store, so intent reads are stubbed explicitly.
-    monkeypatch.setattr(settings, 'distinct_spatial_enabled', lambda: True)
+    monkeypatch.setattr(settings, 'distinct_spatial_enabled', lambda: False)
     monkeypatch.setattr(settings, 'distinct_channels_enabled', lambda: False)
     monkeypatch.setattr(settings, 'remember_adjustments_enabled', lambda: True)
     monkeypatch.setattr(settings, 'seek_back_config', lambda reason: (False, 0))

@@ -48,7 +48,7 @@ class FakeSettings:
         self.learn_enabled = True
         self.duration = duration_ms
         self.per_fps = False
-        self.distinct_spatial = True
+        self.distinct_spatial = False
         self.distinct_channels = False
 
     def notify_apply_enabled(self):
@@ -891,6 +891,7 @@ class TestSpatialGranularity:
         assert message == "DV | TrueHD"
 
     def test_toast_names_the_variant_when_distinct_on(self, rig):
+        rig.settings.distinct_spatial = True
         profile = make_profile(audio_format='truehd_atmos')
         session = rig.start(profile)
 
@@ -920,6 +921,7 @@ class TestSpatialGranularity:
     def test_held_toast_drops_on_variant_change_when_distinct_on(self, rig):
         # With distinct on the variant IS offset-relevant: the held toast
         # describes a stale stream and must drop.
+        rig.settings.distinct_spatial = True
         session = rig.start(make_profile(audio_format='truehd'))
         rig.post(events.OffsetApplied(session_id=session.session_id,
                                       profile=session.profile, ms=-125,
