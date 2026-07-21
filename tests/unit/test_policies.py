@@ -150,3 +150,33 @@ def test_should_apply_has_no_new_install_gate():
     signature = inspect.signature(policies.should_apply)
     assert 'new_install' not in signature.parameters
     assert 'hdr_enabled' not in signature.parameters
+
+
+def test_identity_collapses_spatial_variants_when_distinct_off():
+    # With distinct-spatial off a codec and its variant share one key and
+    # one offset, so a track switch between them is not a stream change.
+    a = make_profile(audio_format="truehd")
+    b = make_profile(audio_format="truehd_atmos")
+    assert (policies.stream_identity(a, False, False)
+            == policies.stream_identity(b, False, False))
+    # Composes with the fps axis: still equal at per-fps granularity.
+    assert (policies.stream_identity(a, True, False)
+            == policies.stream_identity(b, True, False))
+
+
+def test_identity_keeps_spatial_variants_distinct_by_default():
+    # Default mirrors the toggle default (distinct ON), and the identity
+    # tracks the lookup key: variant and base are different streams.
+    a = make_profile(audio_format="truehd")
+    b = make_profile(audio_format="truehd_atmos")
+    assert (policies.stream_identity(a, False)
+            != policies.stream_identity(b, False))
+    assert (policies.stream_identity(a, False, True)
+            != policies.stream_identity(b, False, True))
+
+
+def test_identity_spatial_collapse_leaves_strangers_alone():
+    a = make_profile(audio_format="x-future-codec")
+    b = make_profile(audio_format="x-future-codec")
+    assert (policies.stream_identity(a, False, False)
+            == policies.stream_identity(b, False, False))

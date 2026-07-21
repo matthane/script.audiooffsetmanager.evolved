@@ -26,14 +26,18 @@ other string passes through verbatim. ``hdr_segment`` maps a blank HDR to
 chain-of-evidence decision that belongs to the detector, not this pure
 module. FPS uses integer truncation, keeping NTSC fractional rates distinct
 from their integer siblings (23.976 -> 23 vs 24.0 -> 24); with per-fps off
-the segment is the literal 'all'.
+the segment is the literal 'all'. The audio axis has its own granularity
+mode: with distinct-spatial off, a spatial object-audio variant keys as its
+base codec (``formats.SPATIAL_BASE``). Both modes live in key composition
+only — ``canonical_key`` is mode-independent and never collapses either
+axis.
 
 Pure Python: stdlib only, no xbmc* imports.
 """
 
 import math
 
-from resources.lib.aome.domain.formats import UNKNOWN
+from resources.lib.aome.domain.formats import UNKNOWN, spatial_base
 
 # Segment joiner for the composite profile key.
 SEPARATOR = '|'
@@ -160,16 +164,25 @@ def normalize_segment(raw):
     return str(raw).strip().lower().replace(SEPARATOR, '_')
 
 
-def audio_segment(raw):
+def audio_segment(raw, distinct_spatial=True):
     """Normalise an audio string; collapse reported-absence to UNKNOWN.
 
     '', 'none', and 'unknown' all mean Kodi reported no audio format and map to
     the UNKNOWN sentinel. Every other value passes through verbatim — no
     whitelist, no substring collapse (e.g. 'pcm_s24le' stays 'pcm_s24le').
+
+    ``distinct_spatial`` is the audio-granularity mode (the
+    distinct-spatial toggle): falsy collapses a spatial object-audio
+    variant to its base codec (``formats.SPATIAL_BASE``), so TrueHD Atmos
+    keys as 'truehd'. The default is verbatim because mode-independent
+    callers (``canonical_key``, display) must never collapse — the mode
+    belongs to key composition, exactly like the fps axis.
     """
     segment = normalize_segment(raw)
     if segment in _ABSENT:
         return UNKNOWN
+    if not distinct_spatial:
+        return spatial_base(segment)
     return segment
 
 
@@ -211,16 +224,16 @@ def fps_segment(fps, per_fps):
         raise ValueError("fps_segment: unparseable fps value {!r}".format(fps))
 
 
-def profile_key(hdr_raw, fps, audio_raw, *, per_fps):
+def profile_key(hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial=True):
     """Compose the full ``<hdr>|<fps>|<audio>`` profile key."""
     return SEPARATOR.join((
         hdr_segment(hdr_raw),
         fps_segment(fps, per_fps),
-        audio_segment(audio_raw),
+        audio_segment(audio_raw, distinct_spatial),
     ))
 
 
-def all_key(hdr_raw, audio_raw):
+def all_key(hdr_raw, audio_raw, *, distinct_spatial=True):
     """The all-rates key ``<hdr>|all|<audio>`` — the candidate whenever
     the fps axis does not exist (toggle off, or a stream with no
     parseable rate).
@@ -228,7 +241,8 @@ def all_key(hdr_raw, audio_raw):
     Delegates to ``profile_key`` with the toggle off (which forces the 'all'
     segment) so the key shape has exactly one composition point.
     """
-    return profile_key(hdr_raw, None, audio_raw, per_fps=False)
+    return profile_key(hdr_raw, None, audio_raw, per_fps=False,
+                       distinct_spatial=distinct_spatial)
 
 
 def split_key(key):
@@ -246,9 +260,11 @@ def canonical_key(key):
     other-process reader, import) through this, so the spelling rules reach
     data written by an older codec exactly as they reach live composition.
     Segments re-run their own segment functions, so a format this code has
-    never seen round-trips verbatim. The fps segment ('all' or a truncated
-    integer) passes through untouched, and an unsplittable key returns
-    unchanged. Idempotent by construction.
+    never seen round-trips verbatim. Mode-independent by design: the fps
+    segment ('all' or a truncated integer) passes through untouched and the
+    audio segment never spatial-collapses, since canonicalization must not
+    rewrite stored keys when a granularity toggle flips. An unsplittable
+    key returns unchanged. Idempotent by construction.
     """
     try:
         hdr, fps, audio = split_key(key)

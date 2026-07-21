@@ -32,7 +32,8 @@ Two contracts, both pinned by tests:
   would let it store our own apply as a user adjustment. Do not reorder.
 - **Freshness**: the profile is read from ``session.profile`` at the moment
   of use (the detector is its sole writer, on this same thread); the
-  ``per_fps`` toggle is resolved inside the OffsetTable for the same reason.
+  granularity toggles (per-fps, distinct-spatial) are resolved inside the
+  OffsetTable for the same reason.
 
 The apply is eager: it runs on adoption, before stability, because A/V sync
 matters immediately. It is marked ``provisional`` unless the session is

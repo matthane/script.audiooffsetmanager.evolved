@@ -22,11 +22,12 @@ There are no offset values to type in and no per-format settings pages. Everythi
 
 - **Learn audio offsets**: save adjustments you make during playback. Off stops new offsets from being saved.
 - **Apply audio offsets**: replay saved offsets on matching playback. Off leaves playback untouched.
+- **Distinct spatial audio offsets**: keep spatial audio formats such as Dolby Atmos and DTS:X as their own stream profiles with their own offsets. Off makes a spatial format share its base codec's offset, so for example TrueHD Atmos and plain TrueHD are taught and applied as one; offsets already saved for spatial formats are kept but not applied while this is off.
 - **Per-frame-rate offsets**: also key offsets by the video's frame rate, for setups where sync differs between, say, 24 and 60 fps content. Offsets apply only in the mode they were saved in: offsets saved while this was off cover all frame rates and are not applied while it is on, so each frame rate is taught by adjusting once during playback. Nothing is deleted by switching modes.
 
 ## Managing stored offsets
 
-The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings are shown dimmed: frame-rate specific entries while per-frame-rate offsets is off, and all-rates entries while it is on.
+The **Manage stored offsets** view lists everything the addon has learned, grouped by HDR type. You can delete a single entry, clear a group, or clear everything. Entries that are inactive under the current settings are shown dimmed: frame-rate specific entries while per-frame-rate offsets is off, all-rates entries while it is on, and spatial format entries while distinct spatial audio offsets is off.
 
 <img src="https://raw.githubusercontent.com/matthane/script.audiooffsetmanager.evolved/refs/heads/main/resources/aome-screenshot-2.png" width="100%" alt="Manage stored offsets view grouped by HDR type">
 

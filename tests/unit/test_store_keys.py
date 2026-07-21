@@ -417,3 +417,47 @@ def test_profile_summary_uses_short_names_with_full_table_fallback():
         'x-future-hdr | x-future-codec'
     # Absence reads 'Unknown' on the short surface, not 'Unknown Format'.
     assert keys.profile_summary('sdr', keys.UNKNOWN) == 'SDR | Unknown'
+
+
+# --- Spatial-mode pins: the audio axis's granularity flag --------------------
+
+def test_audio_segment_default_is_verbatim():
+    # The default serves the mode-independent callers (canonical_key,
+    # display): a variant collapses only when a caller passes the mode.
+    assert keys.audio_segment('truehd_atmos') == 'truehd_atmos'
+    assert keys.audio_segment('dtshd_ma_x') == 'dtshd_ma_x'
+
+
+def test_audio_segment_collapses_variants_with_distinct_off():
+    assert keys.audio_segment(' TrueHD_Atmos ', False) == 'truehd'
+    assert keys.audio_segment('EAC3_DDP_Atmos', False) == 'eac3'
+    assert keys.audio_segment('dtshd_ma_x', False) == 'dtshd_ma'
+    assert keys.audio_segment('dtshd_ma_x_imax', False) == 'dtshd_ma'
+
+
+def test_audio_segment_collapse_leaves_non_variants_alone():
+    for raw in ('truehd', 'eac3', 'dtshd_ma', 'dtshd_hra', 'x-future-codec'):
+        assert keys.audio_segment(raw, False) == raw
+
+
+def test_audio_absence_is_unknown_in_both_spatial_modes():
+    for raw in ('', 'none', 'unknown'):
+        assert keys.audio_segment(raw, False) == formats.UNKNOWN
+        assert keys.audio_segment(raw, True) == formats.UNKNOWN
+
+
+def test_profile_key_composes_the_spatial_mode():
+    assert keys.profile_key('dolbyvision', 23.976, 'truehd_atmos',
+                            per_fps=True, distinct_spatial=False) \
+        == 'dolbyvision|23|truehd'
+    assert keys.all_key('dolbyvision', 'truehd_atmos',
+                        distinct_spatial=False) == 'dolbyvision|all|truehd'
+
+
+def test_canonical_key_never_spatial_collapses():
+    # Boundary canonicalization is mode-independent: collapsing here would
+    # destructively rewrite stored variant keys while the toggle is off.
+    assert keys.canonical_key('dolbyvision|all|truehd_atmos') \
+        == 'dolbyvision|all|truehd_atmos'
+    assert keys.canonical_key('sdr|23|dtshd_ma_x_imax') \
+        == 'sdr|23|dtshd_ma_x_imax'

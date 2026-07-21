@@ -41,3 +41,26 @@ def test_common_codec_names_round_trip_verbatim():
         assert facts.profile.audio_format == audio
         assert facts.profile.hdr_type == 'hdr10'
         assert facts.profile.video_fps == 23.976
+
+
+# --- the spatial-variant fact table ------------------------------------------
+
+def test_spatial_base_pins_the_observed_variant_spellings():
+    # Exactly the variant cases in Kodi's StreamUtils::GetCodecName — the
+    # never-speculative rule forbids padding this map. Lossy DTS:X over
+    # HRA reports as plain 'dtshd_hra' (FFmpeg reads the X syncword only
+    # inside the lossless XLL substream), so it has no spelling to map.
+    assert formats.SPATIAL_BASE == {
+        'truehd_atmos': 'truehd',
+        'eac3_ddp_atmos': 'eac3',
+        'dtshd_ma_x': 'dtshd_ma',
+        'dtshd_ma_x_imax': 'dtshd_ma',
+    }
+
+
+def test_spatial_base_passes_everything_else_through():
+    # Not a whitelist: a base codec, a stranger, and the absence sentinel
+    # all pass through unchanged.
+    for segment in ('truehd', 'eac3', 'dtshd_ma', 'dtshd_hra',
+                    'x-future-codec', formats.UNKNOWN):
+        assert formats.spatial_base(segment) == segment

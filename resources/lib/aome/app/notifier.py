@@ -10,9 +10,10 @@ by typed events on the dispatcher thread:
 * ``StreamStabilized`` — releases a held provisional toast, but only if the
   profile still has the identity it was held under (a profile that changed
   underneath drops the stale toast). Identity uses
-  ``policies.stream_identity`` with the live ``per_fps_offsets`` toggle, so
-  an fps wiggle the offset system ignores (toggle off) never drops a toast
-  for an apply that really happened.
+  ``policies.stream_identity`` with the live granularity toggles
+  (``per_fps_offsets``, ``distinct_spatial_formats``), so a wiggle the
+  offset system ignores (an fps drift, a spatial-variant track switch)
+  never drops a toast for an apply that really happened.
 * ``UserOffsetSaved`` — a manual adjustment the AdjustmentWatcher stored.
   Toasts from the event's own profile/ms (captured at store time); session
   and settings are not re-read.
@@ -203,8 +204,9 @@ class Notifier:
     def _same_stream(self, held, current):
         """Offset-relevant identity at the granularity in force RIGHT NOW."""
         per_fps = self._settings.per_fps_offsets_enabled()
-        return (policies.stream_identity(held, per_fps)
-                == policies.stream_identity(current, per_fps))
+        distinct = self._settings.distinct_spatial_enabled()
+        return (policies.stream_identity(held, per_fps, distinct)
+                == policies.stream_identity(current, per_fps, distinct))
 
     def _toast(self, string_id, ms, profile, *, enabled):
         # ``enabled`` is the per-kind gate accessor, passed by the call site
@@ -215,9 +217,11 @@ class Notifier:
 
         now = self._clock()
         # Dedupe at the offset-relevant granularity: with per_fps off an
-        # fps wiggle must not defeat the window and re-toast a duplicate.
+        # fps wiggle must not defeat the window and re-toast a duplicate,
+        # nor, with distinct_spatial off, a spatial-variant track switch.
         per_fps = self._settings.per_fps_offsets_enabled()
-        key = self._dedupe_key(string_id, ms, profile, per_fps)
+        distinct = self._settings.distinct_spatial_enabled()
+        key = self._dedupe_key(string_id, ms, profile, per_fps, distinct)
         if self._last_raise is not None:
             last_key, last_at, _ = self._last_raise
             if key == last_key and now - last_at < self.DEDUPE_SECONDS:
@@ -226,13 +230,15 @@ class Notifier:
         # Toast shape: the saved/applied line is the title and the profile
         # summary is the message. Packing both into the message with a
         # newline made Kodi's single-line label auto-scroll and truncate the
-        # codec. The rate is shown only when offset-relevant (per_fps on);
-        # with the toggle off the value lives under the all-rates key, so
-        # "23.976 fps" would mislead and crowd out the codec.
+        # codec. Each axis shows only what is offset-relevant: the rate only
+        # with per_fps on (off, the value lives under the all-rates key, so
+        # "23.976 fps" would mislead), and with distinct_spatial off the
+        # base codec name, since that names the key the value lives under.
         sign = '+' if ms > 0 else ''
         heading = f"{self._gui.localized(string_id)}: {sign}{ms} ms"
         summary = store_keys.profile_summary(
-            profile.hdr_type, profile.audio_format,
+            profile.hdr_type,
+            store_keys.audio_segment(profile.audio_format, distinct),
             profile.video_fps if per_fps else None)
         self._present(summary, self._settings.notification_duration_ms(),
                       title=heading, dedupe_key=key, enabled=enabled)
@@ -280,7 +286,10 @@ class Notifier:
         self._last_raise = (dedupe_key, self._clock(), duration_ms)
 
     @staticmethod
-    def _dedupe_key(string_id, ms, profile, per_fps):
-        # Offset-toast dedupe identity. _toast's single per_fps read feeds
-        # both this key and the rendered summary, so they cannot disagree.
-        return (string_id, policies.stream_identity(profile, per_fps), ms)
+    def _dedupe_key(string_id, ms, profile, per_fps, distinct_spatial):
+        # Offset-toast dedupe identity. _toast's single read of each toggle
+        # feeds both this key and the rendered summary, so they cannot
+        # disagree.
+        return (string_id,
+                policies.stream_identity(profile, per_fps, distinct_spatial),
+                ms)

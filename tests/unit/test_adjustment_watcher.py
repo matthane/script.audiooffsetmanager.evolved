@@ -300,6 +300,19 @@ class TestQuiescence:
         assert rig.offset_table.stored == [('dolbyvision|23|truehd', -50)]
         assert rig.saved[0].key == 'dolbyvision|23|truehd'
 
+    def test_write_key_follows_the_live_distinct_spatial_toggle(self, rig):
+        # Spatial twin of the per-fps freshness rule: the toggle flips
+        # mid-observation, so the store lands under the base codec's key.
+        profile = make_profile(audio_format='truehd_atmos')
+        rig.begin(profile, baseline_delay='0.000 s')
+
+        rig.observe_foreign('-0.050 s')            # pending under variant key
+        rig.offset_table.distinct_spatial = False  # toggle flips mid-wait
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == [('dolbyvision|all|truehd', -50)]
+        assert rig.saved[0].key == 'dolbyvision|all|truehd'
+
     def test_our_own_apply_during_pending_is_self_echo(self, rig):
         # A foreign value is pending; then session.applied catches up to that
         # value (a mid-play automatic apply): the next tick treats it as our

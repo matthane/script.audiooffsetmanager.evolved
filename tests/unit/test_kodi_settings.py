@@ -326,3 +326,18 @@ class TestIntentReads:
         # default=5 so an unreadable setting yields a visible 5 s toast,
         # never a 0 ms blink.
         assert settings.get_int.calls == [('notification_seconds', 5)]
+
+
+class TestFailSafeIntentDefaults:
+    def test_unreadable_toggles_default_to_the_shipped_behavior(self):
+        # The product-critical reads must fail safe, not fail off: an
+        # unreadable settings store must not silently disable applying or
+        # learning, and must not silently start collapsing spatial
+        # variants onto base keys (distinct is the shipped behavior).
+        settings, _logs = _make_settings()
+        settings._settings.getBool = _Spy(raises=RuntimeError("boom"))
+        assert settings.apply_enabled() is True
+        assert settings.remember_adjustments_enabled() is True
+        assert settings.distinct_spatial_enabled() is True
+        # The granularity opt-ins stay off, matching their defaults.
+        assert settings.per_fps_offsets_enabled() is False

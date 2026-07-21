@@ -22,21 +22,26 @@ def _profile(hdr='dolbyvision', audio='truehd', video_fps=23.976):
 
 
 class _ToggleSettings:
-    """Just the per_fps read the adapter consults — flipped between calls to
+    """Just the granularity reads the adapter consults — flipped between calls to
     prove keys are composed at CALL TIME, never captured."""
 
-    def __init__(self, per_fps=False):
+    def __init__(self, per_fps=False, distinct_spatial=True):
         self.per_fps = per_fps
+        self.distinct_spatial = distinct_spatial
 
     def per_fps_offsets_enabled(self):
         return self.per_fps
 
+    def distinct_spatial_enabled(self):
+        return self.distinct_spatial
 
-def _make_table(tmp_path, per_fps=False):
+
+def _make_table(tmp_path, per_fps=False, distinct_spatial=True):
     from resources.lib.aome.store.offset_store import OffsetStore
     store = OffsetStore(str(tmp_path / "offsets.json"))
     store.load()
-    return OffsetTable(store, _ToggleSettings(per_fps)), store
+    return OffsetTable(store,
+                       _ToggleSettings(per_fps, distinct_spatial)), store
 
 
 class TestOffsetTable:
@@ -90,3 +95,22 @@ class TestOffsetTable:
         assert table.stored_ms_at('sdr|all|flac') is None
         assert table.read_only is False
 
+
+class TestSpatialToggle:
+    def test_keys_are_composed_at_call_time_from_the_live_spatial_toggle(
+            self, tmp_path):
+        # Freshness doctrine, spatial axis: the SAME variant profile writes
+        # different keys as the toggle changes between calls.
+        table, store = _make_table(tmp_path, distinct_spatial=True)
+        profile = _profile(audio='truehd_atmos')
+        assert table.store(profile, 25) == 'dolbyvision|all|truehd_atmos'
+        table._settings.distinct_spatial = False
+        assert table.store(profile, 40) == 'dolbyvision|all|truehd'
+        assert store.get('dolbyvision|all|truehd_atmos')['delay_ms'] == 25
+
+    def test_resolve_collapses_the_variant_with_distinct_off(self, tmp_path):
+        table, store = _make_table(tmp_path, distinct_spatial=False)
+        store.set('dolbyvision|all|truehd', 175)
+        got = table.resolve(_profile(audio='truehd_atmos'))
+        assert (got.hit_kind, got.key, got.ms) == (
+            'exact', 'dolbyvision|all|truehd', 175)

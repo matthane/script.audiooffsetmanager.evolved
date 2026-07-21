@@ -7,7 +7,7 @@
         <!-- Offset learning: the product. -->
         <category id="learning" label="32105" help="32106">
             <!-- One untitled group: the category name says "Offsets" and
-                 the four items say the rest. -->
+                 the five items say the rest. -->
             <group id="1">
                 <setting id="remember_adjustments" type="boolean" label="32108" help="32109">
                     <level>0</level>
@@ -18,6 +18,15 @@
                      orthogonal: apply off + learn on is the re-teach state,
                      and both off pauses the addon entirely. -->
                 <setting id="apply_offsets" type="boolean" label="32140" help="32141">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+                <!-- Default on: distinct keys are the shipped behavior;
+                     off collapses spatial variants onto the base codec.
+                     Sits with the default-on pair above, ahead of the
+                     opt-in per-fps toggle. -->
+                <setting id="distinct_spatial_formats" type="boolean" label="32175" help="32176">
                     <level>0</level>
                     <default>true</default>
                     <control type="toggle"/>

@@ -140,6 +140,13 @@ class Settings:
         """The ONE fps-granularity knob: OFF = the `all` key world."""
         return self.get_bool('per_fps_offsets')
 
+    def distinct_spatial_enabled(self):
+        """The ONE audio-granularity knob: OFF = spatial variants share
+        their base codec's key. Defaults ON (verbatim keys): distinct is
+        the shipped behavior, so an unreadable setting must not silently
+        start collapsing."""
+        return self.get_bool('distinct_spatial_formats', True)
+
     def apply_enabled(self):
         """The apply toggle: gates the applier only, never the watcher.
 

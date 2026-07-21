@@ -147,6 +147,7 @@ def _manage_offsets():
         lambda: read_profiles(store_path, log_debug=logger.debug),
         gui, client.send,
         per_fps=settings.per_fps_offsets_enabled(),
+        distinct_spatial=settings.distinct_spatial_enabled(),
         current_key=lambda: canonical_key(
             gateway.window_property(OffsetApplier.PROFILE_PROPERTY)),
         log_debug=logger.debug)

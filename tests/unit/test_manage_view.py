@@ -76,10 +76,11 @@ HDR10 = "hdr10|all|ac3"
 HLG = "hlg|all|eac3"
 
 
-def _build(entries, acks=None, gui=None, per_fps=False):
+def _build(entries, acks=None, gui=None, per_fps=False, distinct_spatial=True):
     service = FakeService(entries, acks=acks)
     gui = gui or FakeGui()
-    view = ManageView(service.read, gui, service.send, per_fps=per_fps)
+    view = ManageView(service.read, gui, service.send, per_fps=per_fps,
+                      distinct_spatial=distinct_spatial)
     return view, gui, service
 
 
@@ -412,7 +413,8 @@ def test_ack_failure_reports_detail():
 def test_constructor_exposes_no_store_writer_seam():
     params = list(inspect.signature(ManageView.__init__).parameters)
     assert params == ["self", "read_entries", "gui", "send_mutation",
-                      "per_fps", "current_key", "log_debug"]
+                      "per_fps", "distinct_spatial", "current_key",
+                      "log_debug"]
     # No parameter is a store writer / value setter — the view cannot write.
     for name in params:
         assert "write" not in name
@@ -1155,3 +1157,74 @@ def test_mid_flip_race_renders_dormant_not_playing():
         "[COLOR gray]" + _value(-25) + " — inactive[/COLOR]")
     assert "· playing now" not in options[0][1]
     assert gui.selects[0][0] == "#32115"
+
+
+# -- spatial dormancy ---------------------------------------------------------
+
+def test_distinct_off_tags_spatial_variant_rows_inactive_and_never_hides():
+    # With distinct-spatial off the lookup reads the base codec's key, so a
+    # variant entry is stored-but-dormant: tagged and dimmed, never hidden.
+    # The base entry stays plain and lists first (dormant rows sink).
+    entries = {
+        "dolbyvision|all|truehd": _entry(-25),
+        "dolbyvision|all|truehd_atmos": _entry(125),
+    }
+    view, gui, _ = _build(entries, distinct_spatial=False)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | Dolby TrueHD", _value(-25))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | Dolby TrueHD Atmos[/COLOR]",
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
+    assert len(options) == 3               # both entries + clear-all
+
+
+def test_distinct_on_leaves_every_row_active():
+    # The spatial rule is ONE-SIDED: with the toggle on, both the variant
+    # and the base key are legitimate verbatim keys — nothing sleeps.
+    entries = {
+        "dolbyvision|all|truehd": _entry(-25),
+        "dolbyvision|all|truehd_atmos": _entry(125),
+    }
+    view, gui, _ = _build(entries, distinct_spatial=True)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | Dolby TrueHD", _value(-25))
+    assert options[1] == ("Dolby Vision | Dolby TrueHD Atmos", _value(125))
+
+
+def test_base_codec_rows_are_never_spatially_dormant():
+    # A base-codec entry serves plain streams in both modes; the collapse
+    # must not gray it out just because variants exist somewhere.
+    entries = {"dolbyvision|all|truehd": _entry(-25)}
+    for distinct in (False, True):
+        view, gui, _ = _build(entries, distinct_spatial=distinct)
+        view.run()
+        assert gui.selects[0][1][0] == ("Dolby Vision | Dolby TrueHD",
+                                        _value(-25))
+
+
+def test_spatial_dormancy_composes_with_per_fps_dormancy():
+    # Both axes judge independently; a row dormant on either axis dims.
+    # per_fps ON sleeps the 'all' variant row twice over and the exact-rate
+    # variant row on the spatial axis alone; the exact-rate base row stays
+    # active.
+    entries = {
+        "dolbyvision|23|truehd": dict(_entry(-25), video_fps=23.976),
+        "dolbyvision|23|truehd_atmos": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|truehd_atmos": _entry(50),
+    }
+    view, gui, _ = _build(entries, per_fps=True, distinct_spatial=False)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | 23.976 fps | Dolby TrueHD",
+                          _value(-25))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | All FPS | Dolby TrueHD Atmos[/COLOR]",
+        "[COLOR gray]" + _value(50) + " — inactive[/COLOR]")
+    assert options[2] == (
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby TrueHD Atmos[/COLOR]",
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")

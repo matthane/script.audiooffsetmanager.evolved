@@ -110,17 +110,28 @@ never in settings.xml. The rules that keep it safe:
   split actually observed, not speculatively. An absent HDR reading resolves
   to `sdr` in the detector's chain-of-evidence, not in the key codec. The
   store canonicalizes every key at its boundary, so entries written under
-  older spellings keep resolving as the rules evolve. `fps` is `all` by
-  default, or the integer-truncated rate when the `per_fps_offsets` toggle is
-  on; truncation keeps the NTSC fractional rates distinct from their integer
-  siblings (23.976 → `23` vs 24.0 → `24`), which tests pin.
-- **Lookup is strict: one candidate key per mode.** With the toggle off the
-  only key consulted is `<hdr>|all|<audio>`; with it on,
-  `<hdr>|<fps>|<audio>`. There is no fallback between the two, so an offset
-  applies only in the mode it was saved in. Dormancy is symmetric (specific
-  entries sleep while the toggle is off, `all` entries while it is on; the
-  manage view dims and tags whichever set is dormant), and flipping the
-  toggle is non-destructive both ways. The toggle's help text carries the
+  older spellings keep resolving as the rules evolve (canonicalization is
+  mode-independent and never collapses a granularity axis). `fps` is `all`
+  by default, or the integer-truncated rate when the `per_fps_offsets`
+  toggle is on; truncation keeps the NTSC fractional rates distinct from
+  their integer siblings (23.976 → `23` vs 24.0 → `24`), which tests pin.
+  The audio axis has its own granularity toggle: with
+  `distinct_spatial_formats` off, a spatial object-audio variant keys as
+  its base codec (`domain/formats.SPATIAL_BASE`: `truehd_atmos` →
+  `truehd`, `eac3_ddp_atmos` → `eac3`, `dtshd_ma_x`/`dtshd_ma_x_imax` →
+  `dtshd_ma` — the exact variant spellings Kodi's StreamUtils can report,
+  observed-only like the HDR aliases; lossy DTS:X over HRA reports as
+  plain `dtshd_hra` upstream, so it has no entry).
+- **Lookup is strict: one candidate key per resolve.** With `per_fps_offsets`
+  off the only key consulted is `<hdr>|all|<audio>`; with it on,
+  `<hdr>|<fps>|<audio>`; with `distinct_spatial_formats` off the audio
+  segment is the variant's base codec. There is no fallback between any
+  levels. Fps dormancy is symmetric (specific entries sleep while the
+  toggle is off, `all` entries while it is on); spatial dormancy is
+  one-sided (a base-codec key is legitimate in both modes, so only
+  spatial-variant entries sleep, and only while distinct is off). The
+  manage view dims and tags whatever is dormant, and flipping either
+  toggle is non-destructive both ways. The toggles' help text carries the
   mode contract; there is no flip-time modal, since Kodi only reports a
   settings change on dialog close. `aome/store/resolve.py` and its unit tests
   are the reference for the lookup and write-key rules.
@@ -160,7 +171,9 @@ and refuses an empty one.
 `settings.xml` holds behavior toggles only: `remember_adjustments` /
 `apply_offsets` (an orthogonal learn/apply pair; the watcher never consults
 the apply toggle, so apply-off with learn-on is the legal re-teach state),
-`per_fps_offsets`, the `seek_back_events` multiselect (its option values are
+`per_fps_offsets`, `distinct_spatial_formats` (default on; off collapses
+spatial variants onto the base codec's key), the `seek_back_events`
+multiselect (its option values are
 `SeekScheduler.REASONS` verbatim, pinned by a contract test) with a shared
 `seek_back_seconds`, `notify_apply` / `notify_learn` /
 `notification_seconds`, `enable_debug_logging`, the action buttons, and a

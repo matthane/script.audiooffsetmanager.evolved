@@ -56,16 +56,21 @@ def is_complete(profile):
             and profile.video_fps is not None)
 
 
-def stream_identity(profile, per_fps):
+def stream_identity(profile, per_fps, distinct_spatial=True):
     """The "same stream" comparison key at the granularity that matters.
 
-    With per_fps off the fps axis is excluded, so a VFR rate wiggle between
-    gathers does not read as a stream change. With it on, the truncated rate
-    is part of the identity, exactly like the lookup key.
+    Identity tracks the lookup key's granularity on both axes. With per_fps
+    off the fps axis is excluded, so a VFR rate wiggle between gathers does
+    not read as a stream change; with it on, the truncated rate is part of
+    the identity. With distinct_spatial off the audio axis is the spatial
+    base, so a track switch between a codec and its object-audio variant
+    (same key, same offset) is not a stream change either.
     """
+    audio = (profile.audio_format if distinct_spatial
+             else formats.spatial_base(profile.audio_format))
     if per_fps:
-        return (profile.hdr_type, profile.fps_int(), profile.audio_format)
-    return (profile.hdr_type, profile.audio_format)
+        return (profile.hdr_type, profile.fps_int(), audio)
+    return (profile.hdr_type, audio)
 
 
 def seek_decision(now, requested_at, last_activity, last_own_seek,

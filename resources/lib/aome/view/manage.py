@@ -41,12 +41,15 @@ channel (no batch op on the wire). An open group survives external mutations
 that leave it the only group, while the top level re-evaluates fresh each
 render; delete confirmations always show the full profile line.
 
-Display is toggle-aware but never filtered: dormancy is symmetric with the
-lookup rule (an offset applies only in the mode it was saved in), so the
-injected ``per_fps`` flag decides which rows are tagged. Dormant rows are
-tagged '— inactive', never hidden, and sink below the active rows of their
-HDR group. Every stored entry always lists, so clear-all's confirmation
-never under-represents what it deletes.
+Display is toggle-aware but never filtered: dormancy mirrors the lookup
+rule, so the injected ``per_fps`` and ``distinct_spatial`` flags decide
+which rows are tagged. The fps rule is symmetric (each mode sleeps the
+other's entries); the spatial rule is one-sided (a base-codec key is
+legitimate in both modes, so only spatial-variant rows sleep, and only
+while the toggle is off). Dormant rows are tagged '— inactive', never
+hidden, and sink below the active rows of their HDR group. Every stored
+entry always lists, so clear-all's confirmation never under-represents what
+it deletes.
 
 The entry matching ``current_key()`` is the playing row, re-read every pass
 so it tracks reality while the view loops. It is tagged '· playing now' and
@@ -73,6 +76,7 @@ bold list font, so no information lives in markup alone.
 
 from collections import namedtuple
 
+from resources.lib.aome.domain.formats import spatial_base
 from resources.lib.aome.store.keys import (HDR_DISPLAY, describe_key,
                                           describe_key_in_group, sort_key,
                                           split_key)
@@ -153,13 +157,13 @@ class ManageView:
     """Inspect + delete/clear stored offsets from the script process."""
 
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
-                 current_key=None, log_debug=None):
-        """``per_fps`` is the per_fps_offsets toggle at launch (it cannot
-        change while the view is open). It drives display only: 'All FPS' vs
-        an omitted fps axis for the 'all' segment, and the '— inactive' tag
-        on whichever rows the lookup will not consult now. Never filtering:
-        this view is the store's only inspection surface, so every entry
-        always lists.
+                 distinct_spatial=True, current_key=None, log_debug=None):
+        """``per_fps`` and ``distinct_spatial`` are the granularity toggles
+        at launch (they cannot change while the view is open). They drive
+        display only: 'All FPS' vs an omitted fps axis for the 'all'
+        segment, and the '— inactive' tag on whichever rows the lookup will
+        not consult now. Never filtering: this view is the store's only
+        inspection surface, so every entry always lists.
 
         ``current_key`` (see the module docstring) defaults to
         "nothing playing", so a caller without the seam renders plain.
@@ -168,6 +172,7 @@ class ManageView:
         self._gui = gui
         self._send_mutation = send_mutation
         self._per_fps = bool(per_fps)
+        self._distinct_spatial = bool(distinct_spatial)
         self._current_key = current_key or (lambda: '')
         self._log = log_debug or _noop
         # The open drill-down group (an hdr segment, or _OTHER_GROUP);
@@ -397,16 +402,23 @@ class ManageView:
     def _is_dormant(self, key):
         """True for an entry the lookup will not consult right now.
 
-        Dormancy mirrors the lookup rule symmetrically: with per_fps off
-        only the 'all' key is read, so an exact-rate entry is dormant; with
-        it on, only the fps-specific key is read, so an 'all' entry is
-        dormant. The row is tagged rather than hidden (hiding would misstate
-        clear-all's scope). Unsplittable keys are never tagged.
+        Dormancy mirrors the lookup rule per axis. The fps rule is
+        symmetric: with per_fps off only the 'all' key is read, so an
+        exact-rate entry is dormant; with it on, only the fps-specific key
+        is read, so an 'all' entry is dormant. The spatial rule is
+        one-sided: a base-codec key is legitimate in both modes, so only a
+        spatial-variant entry is dormant, and only while distinct_spatial
+        is off (the lookup then reads the base key). The row is tagged
+        rather than hidden (hiding would misstate clear-all's scope).
+        Unsplittable keys are never tagged.
         """
         try:
-            fps_segment = split_key(key)[1]
+            _hdr, fps_segment, audio_segment = split_key(key)
         except ValueError:
             return False
+        if not self._distinct_spatial and \
+                spatial_base(audio_segment) != audio_segment:
+            return True
         if self._per_fps:
             return fps_segment == 'all'
         return fps_segment != 'all'

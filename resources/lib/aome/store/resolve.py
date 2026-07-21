@@ -3,14 +3,20 @@
 This module is the key-schema decision table. Both rules are deliberately
 trivial:
 
-Lookup — one candidate key per mode, symmetric in both directions:
+Lookup — one candidate key per call, composed from both granularity modes:
 
     per_fps off (default):  <hdr>|all|<audio>   -> exact | miss
     per_fps on:             <hdr>|<fps>|<audio> -> exact | miss
 
-There is no fallback between the levels: an offset applies only in the mode
-it was saved in. Specific-fps entries are dormant while the toggle is off,
-``all`` entries while it is on; flipping is non-destructive both ways. One
+    distinct_spatial on (default): <audio> is the verbatim segment
+    distinct_spatial off:          <audio> is the variant's base codec
+
+There is no fallback between the levels. The fps modes are symmetric:
+specific-fps entries are dormant while the toggle is off, ``all`` entries
+while it is on. The spatial modes are one-sided: a base-codec key (e.g.
+``truehd``) is a legitimate verbatim key in both modes, so only
+spatial-variant entries (``truehd_atmos``) go dormant, and only while
+distinct_spatial is off. Flipping either toggle is non-destructive. One
 seam: an fps that cannot be parsed under the toggle means the stream has no
 fps axis, so its candidate is the ``all`` key (defensive only; completeness
 gating keeps unparseable rates out of the apply path).
@@ -60,23 +66,27 @@ class Resolution(namedtuple('Resolution',
         return self.entry['delay_ms']
 
 
-def resolve(store, hdr_raw, fps, audio_raw, *, per_fps):
+def resolve(store, hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial):
     """Look up the offset entry for the given stream facts; never raises.
 
     Exactly one candidate key per call: the ``all`` key with per_fps off,
-    the fps-specific key with it on. An unparseable fps under per_fps
-    degrades to the ``all`` key rather than turning a benign miss into an
-    exception.
+    the fps-specific key with it on; the audio segment collapses to its
+    spatial base with distinct_spatial off. An unparseable fps under
+    per_fps degrades to the ``all`` key rather than turning a benign miss
+    into an exception.
     """
     if not per_fps:
-        candidate = keys.all_key(hdr_raw, audio_raw)
+        candidate = keys.all_key(hdr_raw, audio_raw,
+                                 distinct_spatial=distinct_spatial)
     else:
         try:
             candidate = keys.profile_key(hdr_raw, fps, audio_raw,
-                                         per_fps=True)
+                                         per_fps=True,
+                                         distinct_spatial=distinct_spatial)
         except ValueError:
             # No fps axis on this stream: the all key IS its exact key.
-            candidate = keys.all_key(hdr_raw, audio_raw)
+            candidate = keys.all_key(hdr_raw, audio_raw,
+                                     distinct_spatial=distinct_spatial)
     entry = store.get(candidate)
     if entry is not None:
         return Resolution(entry, EXACT, candidate, (candidate,), ())
@@ -89,11 +99,13 @@ def _pending(consulted, store):
     return tuple(key for key in consulted if store.reset_pending(key))
 
 
-def write_key(hdr_raw, fps, audio_raw, *, per_fps):
+def write_key(hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial):
     """The single key a manual adjustment is stored under.
 
-    Derived from the current profile facts and toggle at store time, never
+    Derived from the current profile facts and toggles at store time, never
     from lookup history: the ``all`` key with per_fps off, the fps-specific
-    key with it on.
+    key with it on, the spatial-base audio segment with distinct_spatial
+    off.
     """
-    return keys.profile_key(hdr_raw, fps, audio_raw, per_fps=per_fps)
+    return keys.profile_key(hdr_raw, fps, audio_raw, per_fps=per_fps,
+                            distinct_spatial=distinct_spatial)

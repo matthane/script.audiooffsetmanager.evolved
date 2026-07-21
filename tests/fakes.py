@@ -121,8 +121,10 @@ class FakeGateway:
 class FakeFacade:
     """Scriptable settings double covering the app components' read surface.
 
-    ``per_fps`` drives the detector's identity granularity and the offset
-    table's key composition; ``seek_configs`` maps a seek reason to its
+    ``per_fps`` and ``distinct_spatial`` drive the detector's identity
+    granularity and the offset table's key composition (defaults mirror the
+    real defaults: per-fps OFF, distinct-spatial ON); ``seek_configs`` maps
+    a seek reason to its
     (enabled, seconds) pair, defaulting every reason to (True, 4);
     ``remember_adjustments`` gates the adjustment watcher and
     ``apply_offsets`` the applier (orthogonal);
@@ -133,8 +135,9 @@ class FakeFacade:
     ``aome.kodi.settings.Settings`` + ``OffsetTable``).
     """
 
-    def __init__(self, per_fps=False):
+    def __init__(self, per_fps=False, distinct_spatial=True):
         self.per_fps = per_fps
+        self.distinct_spatial = distinct_spatial
         self.seek_configs = {}
         self.remember_adjustments = True
         self.apply_offsets = True
@@ -144,6 +147,9 @@ class FakeFacade:
 
     def per_fps_offsets_enabled(self):
         return self.per_fps
+
+    def distinct_spatial_enabled(self):
+        return self.distinct_spatial
 
     def apply_enabled(self):
         return self.apply_offsets
@@ -176,7 +182,7 @@ class FakeOffsetTable:
     standalone uses may set ``per_fps`` directly instead.
     """
 
-    def __init__(self, per_fps=False, facade=None):
+    def __init__(self, per_fps=False, distinct_spatial=True, facade=None):
         self.offsets = {}            # key -> ms
         self.stored = []             # (key, ms), in store order
         self.resets = set()          # keys with a pending deletion reset
@@ -185,6 +191,7 @@ class FakeOffsetTable:
         self.read_only = False
         self._facade = facade
         self._per_fps = per_fps
+        self._distinct_spatial = distinct_spatial
 
     @property
     def per_fps(self):
@@ -198,6 +205,19 @@ class FakeOffsetTable:
             self._facade.per_fps = value
         else:
             self._per_fps = value
+
+    @property
+    def distinct_spatial(self):
+        if self._facade is not None:
+            return self._facade.distinct_spatial
+        return self._distinct_spatial
+
+    @distinct_spatial.setter
+    def distinct_spatial(self, value):
+        if self._facade is not None:
+            self._facade.distinct_spatial = value
+        else:
+            self._distinct_spatial = value
 
     # dict-shaped store protocol for resolve.resolve
     def get(self, key):
@@ -217,14 +237,15 @@ class FakeOffsetTable:
         from resources.lib.aome.store import resolve as store_resolve
         return store_resolve.resolve(
             self, profile.hdr_type, profile.video_fps, profile.audio_format,
-            per_fps=self.per_fps)
+            per_fps=self.per_fps, distinct_spatial=self.distinct_spatial)
 
     def write_key(self, profile):
         from resources.lib.aome.store import resolve as store_resolve
         try:
             return store_resolve.write_key(
                 profile.hdr_type, profile.video_fps, profile.audio_format,
-                per_fps=self.per_fps)
+                per_fps=self.per_fps,
+                distinct_spatial=self.distinct_spatial)
         except ValueError:
             return None
 

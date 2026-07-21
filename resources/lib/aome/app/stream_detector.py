@@ -20,10 +20,10 @@ scheduled events rather than sleeps:
 Every gather posts ``StreamProbed`` platform facts (log-only).
 
 "Same stream" is judged on the offset-relevant identity
-(``policies.stream_identity`` with the live ``per_fps_offsets`` toggle), not
+(``policies.stream_identity`` with the live granularity toggles), not
 raw dataclass equality: incidental fields (player_id, audio_channels, and,
-with the toggle off, the fps rate) can wiggle between gathers without the
-stream changing for offset purposes. An identity-equal gather silently
+per the toggles, the fps rate or a spatial-variant distinction) can wiggle
+between gathers without the stream changing for offset purposes. An identity-equal gather silently
 refreshes ``session.profile`` with no events and no state change; comparing
 raw equality would strand verification in a perpetual re-adopt loop.
 
@@ -319,15 +319,18 @@ class StreamDetector:
     def _same_stream(self, profile, adopted):
         """Offset-relevant identity at the granularity in force now.
 
-        The per-fps toggle is read at compare instant: with it off, an fps
-        wiggle is an incidental-field refresh; with it on, the truncated
-        rate is part of the identity like the lookup key.
+        Both granularity toggles are read at compare instant: with per-fps
+        off, an fps wiggle is an incidental-field refresh; with
+        distinct-spatial off, a switch between a codec and its spatial
+        variant is too. On, each axis joins the identity like the lookup
+        key.
         """
         if adopted is None:
             return False
         per_fps = self._settings.per_fps_offsets_enabled()
-        return (policies.stream_identity(profile, per_fps)
-                == policies.stream_identity(adopted, per_fps))
+        distinct = self._settings.distinct_spatial_enabled()
+        return (policies.stream_identity(profile, per_fps, distinct)
+                == policies.stream_identity(adopted, per_fps, distinct))
 
     def _adopt(self, session, profile):
         """Write the session's profile and (re-)earn stability for it."""

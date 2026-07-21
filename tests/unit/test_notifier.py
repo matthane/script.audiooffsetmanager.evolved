@@ -48,6 +48,7 @@ class FakeSettings:
         self.learn_enabled = True
         self.duration = duration_ms
         self.per_fps = False
+        self.distinct_spatial = True
 
     def notify_apply_enabled(self):
         return self.apply_enabled
@@ -60,6 +61,9 @@ class FakeSettings:
 
     def per_fps_offsets_enabled(self):
         return self.per_fps
+
+    def distinct_spatial_enabled(self):
+        return self.distinct_spatial
 
 
 class Rig:
@@ -865,3 +869,61 @@ class TestIdentityGranularity:
         assert rig.toasts == []                        # stale toast dropped
         assert session.pending_notification is None
 
+
+
+class TestSpatialGranularity:
+
+    def test_toast_names_the_base_codec_when_distinct_off(self, rig):
+        # With distinct-spatial off the value lives under the base codec's
+        # key: naming the variant would mislead about what was saved.
+        rig.settings.distinct_spatial = False
+        profile = make_profile(audio_format='truehd_atmos')
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        message, _duration = rig.toasts[0]
+        assert message == "DV | TrueHD"
+
+    def test_toast_names_the_variant_when_distinct_on(self, rig):
+        profile = make_profile(audio_format='truehd_atmos')
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        message, _duration = rig.toasts[0]
+        assert message == "DV | TrueHD Atmos"
+
+    def test_held_toast_survives_variant_wiggle_when_distinct_off(self, rig):
+        # A track switch between a codec and its spatial variant maps to
+        # the same key with the toggle off — the held toast must use the
+        # same identity notion and still release.
+        rig.settings.distinct_spatial = False
+        session = rig.start(make_profile(audio_format='truehd'))
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+        assert session.pending_notification is not None
+
+        session.profile = make_profile(audio_format='truehd_atmos')
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert len(rig.toasts) == 1                    # toast NOT dropped
+
+    def test_held_toast_drops_on_variant_change_when_distinct_on(self, rig):
+        # With distinct on the variant IS offset-relevant: the held toast
+        # describes a stale stream and must drop.
+        session = rig.start(make_profile(audio_format='truehd'))
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+
+        session.profile = make_profile(audio_format='truehd_atmos')
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert rig.toasts == []                        # stale toast dropped
+        assert session.pending_notification is None
