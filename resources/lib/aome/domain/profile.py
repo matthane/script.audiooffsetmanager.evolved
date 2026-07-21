@@ -30,18 +30,40 @@ class StreamProfile:
             return None
         return int(self.video_fps)
 
-    def identity(self):
-        """The tuple two gathers must share to be "the same stream".
+    def channels_int(self):
+        """The channel key axis: the reported count as a positive int, or
+        None when unusable ('unknown', 0, bool) — mirroring the store's
+        channel_segment rule, where an unusable count means the stream has
+        no channel axis."""
+        if isinstance(self.audio_channels, bool):
+            return None
+        try:
+            # OverflowError: int(float('inf')) — junk like any other.
+            count = int(self.audio_channels)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if count <= 0:
+            return None
+        return count
 
-        Incidental fields (player_id, audio_channels) are excluded: they can
-        wiggle between gathers without the stream changing for offset
-        purposes. Callers that ignore the fps axis (per_fps off) use
-        ``policies.stream_identity`` instead.
+    def identity(self):
+        """The raw fixed-shape identity tuple; incidental fields excluded.
+
+        Not the runtime comparison: every offset-path caller uses
+        ``policies.stream_identity``, which folds each axis in or out per
+        the live granularity toggles (fps, spatial, channels). This raw
+        form ignores the toggles and the channel axis by construction.
         """
         return (self.hdr_type, self.fps_int(), self.audio_format)
 
     def describe(self):
-        """Compact greppable form for logs: ``hdr|fps|audio``."""
+        """Compact greppable form for logs: ``hdr|fps|audio|ch``.
+
+        Unusable axes read '?', so a channel-less report is visible in the
+        log rather than silently shaped like a real count.
+        """
         fps = self.fps_int()
-        return "{0}|{1}|{2}".format(
-            self.hdr_type, '?' if fps is None else fps, self.audio_format)
+        channels = self.channels_int()
+        return "{0}|{1}|{2}|{3}".format(
+            self.hdr_type, '?' if fps is None else fps, self.audio_format,
+            '?' if channels is None else channels)

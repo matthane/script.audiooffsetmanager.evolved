@@ -89,6 +89,7 @@ def _collect_python_read_ids():
 
     exercise("per_fps_offsets_enabled")
     exercise("distinct_spatial_enabled")
+    exercise("distinct_channels_enabled")
     exercise("apply_enabled")
     exercise("remember_adjustments_enabled")
     exercise("notify_apply_enabled")

@@ -28,8 +28,8 @@ from resources.lib.aome.store.offset_store import OffsetStore
 from tests.fakes import FakeClock
 
 
-KEY_A = 'dolbyvision|all|truehd'
-KEY_B = 'hdr10|all|eac3'
+KEY_A = 'dolbyvision|all|truehd|all'
+KEY_B = 'hdr10|all|eac3|all'
 
 
 class Rig:
@@ -98,13 +98,13 @@ def test_delete_removes_entry_persists_and_acks(rig):
 
 
 def test_delete_missing_key_acks_missing_without_disk_touch(rig):
-    rig.request('delete', key='sdr|all|aac')
+    rig.request('delete', key='sdr|all|aac|all')
     assert rig.acks[0]['ok'] is False
     assert rig.acks[0]['detail'] == 'missing'
     assert len(rig.store) == 2
 
 
-@pytest.mark.parametrize("bad_key", [None, '', 7, ['dolbyvision|all|truehd']])
+@pytest.mark.parametrize("bad_key", [None, '', 7, ['dolbyvision|all|truehd|all']])
 def test_delete_with_non_string_key_is_rejected(rig, bad_key):
     rig.request('delete', key=bad_key)
     assert rig.acks[0]['ok'] is False
@@ -208,7 +208,7 @@ def test_persist_failure_still_reconciles_the_live_store(rig, monkeypatch):
 def test_successful_delete_clears_miss_dedupe_of_live_session(rig):
     rig.post(events.PlaybackStarted())
     session = rig.tracker.current
-    session.miss_announced = ('sdr|all|aac',)
+    session.miss_announced = ('sdr|all|aac|all',)
 
     rig.request('delete', key=KEY_A)
 
@@ -248,7 +248,7 @@ def test_no_op_requests_leave_watch_state_alone(rig):
 def test_successful_clear_clears_miss_dedupe_of_live_session(rig):
     rig.post(events.PlaybackStarted())
     session = rig.tracker.current
-    session.miss_announced = ('sdr|all|aac',)
+    session.miss_announced = ('sdr|all|aac|all',)
 
     rig.request('clear')
 
@@ -258,12 +258,12 @@ def test_successful_clear_clears_miss_dedupe_of_live_session(rig):
 def test_failed_mutations_leave_miss_dedupe_alone(rig):
     rig.post(events.PlaybackStarted())
     session = rig.tracker.current
-    session.miss_announced = ('sdr|all|aac',)
+    session.miss_announced = ('sdr|all|aac|all',)
 
     rig.request('delete', key='no|such|key')        # missing
     rig.request('set', key=KEY_A)                   # rejected
 
-    assert session.miss_announced == ('sdr|all|aac',)
+    assert session.miss_announced == ('sdr|all|aac|all',)
 
 
 def test_mutation_without_a_session_does_not_crash(rig):
@@ -313,12 +313,12 @@ def _stage(rig, profiles, version=1, resets=None):
 
 
 def test_import_replaces_store_consumes_staging_and_acks_count(rig):
-    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    _stage(rig, {'hlg|all|eac3|all': {'delay_ms': -75}})
     rig.request('import', request_id='imp')
 
     assert rig.acks == [{'ok': True, 'detail': 'imported', 'count': 1,
                          'op': 'import', 'request_id': 'imp'}]
-    assert set(rig.store.entries()) == {'hlg|all|eac3'}
+    assert set(rig.store.entries()) == {'hlg|all|eac3|all'}
     # Restore semantics: the dropped keys carry reset markers.
     assert rig.store.reset_pending(KEY_A) is True
     assert rig.store.reset_pending(KEY_B) is True
@@ -327,7 +327,7 @@ def test_import_replaces_store_consumes_staging_and_acks_count(rig):
     # Durable: a second store built on the same file agrees.
     reread = OffsetStore(rig.store_path)
     reread.load()
-    assert set(reread.entries()) == {'hlg|all|eac3'}
+    assert set(reread.entries()) == {'hlg|all|eac3|all'}
     assert [(e.op, e.key) for e in rig.mutated] == [('import', None)]
 
 
@@ -373,12 +373,12 @@ def test_import_restores_the_backups_reset_markers(rig):
     # The export is a verbatim file copy, resets section and all; the
     # restore must not silently drop the one section that is not an
     # offset — a pending "expect 0" promise survives the round trip.
-    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}},
-           resets=['sdr|all|aac', '', 7])       # scribble dropped, keys kept
+    _stage(rig, {'hlg|all|eac3|all': {'delay_ms': -75}},
+           resets=['sdr|all|aac|all', '', 7])       # scribble dropped, keys kept
     rig.request('import')
 
     assert rig.acks[0]['ok'] is True
-    assert rig.store.reset_pending('sdr|all|aac') is True
+    assert rig.store.reset_pending('sdr|all|aac|all') is True
     # The live keys the backup dropped are marked too (restore contract).
     assert rig.store.reset_pending(KEY_A) is True
 
@@ -386,7 +386,7 @@ def test_import_restores_the_backups_reset_markers(rig):
 def test_import_of_future_schema_staging_acks_future(rig):
     # The wording split matters to the view: a newer-version backup is not
     # corrupt, it is unimportable by THIS build.
-    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}}, version=99)
+    _stage(rig, {'hlg|all|eac3|all': {'delay_ms': -75}}, version=99)
     rig.request('import')
 
     assert rig.acks[0]['detail'] == 'future'
@@ -397,25 +397,25 @@ def test_import_of_future_schema_staging_acks_future(rig):
 def test_import_persist_failure_still_reconciles_and_consumes(rig,
                                                               monkeypatch):
     monkeypatch.setattr(rig.store, '_persist', lambda: False)
-    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    _stage(rig, {'hlg|all|eac3|all': {'delay_ms': -75}})
     rig.request('import')
 
     assert rig.acks[0] == {'ok': False, 'detail': 'persist_failed',
                            'op': 'import', 'request_id': 'req-1'}
     # In-memory replacement stands (OffsetStore doctrine): reconcile fires.
     assert [(e.op, e.key) for e in rig.mutated] == [('import', None)]
-    assert set(rig.store.entries()) == {'hlg|all|eac3'}
+    assert set(rig.store.entries()) == {'hlg|all|eac3|all'}
     assert not _os.path.exists(rig.import_path)
 
 
 def test_import_clears_live_session_state_like_other_mutations(rig):
     rig.post(events.PlaybackStarted())
     session = rig.tracker.current
-    session.miss_announced = ('sdr|all|aac',)
+    session.miss_announced = ('sdr|all|aac|all',)
     session.watch_baseline_ms = -115
     session.watch_pending = (0, 123.0)
 
-    _stage(rig, {'hlg|all|eac3': {'delay_ms': -75}})
+    _stage(rig, {'hlg|all|eac3|all': {'delay_ms': -75}})
     rig.request('import')
 
     assert session.miss_announced is None
@@ -426,11 +426,11 @@ def test_import_clears_live_session_state_like_other_mutations(rig):
 def test_failed_import_leaves_live_session_state_alone(rig):
     rig.post(events.PlaybackStarted())
     session = rig.tracker.current
-    session.miss_announced = ('sdr|all|aac',)
+    session.miss_announced = ('sdr|all|aac|all',)
 
     rig.request('import')                        # nothing staged: refused
 
-    assert session.miss_announced == ('sdr|all|aac',)
+    assert session.miss_announced == ('sdr|all|aac|all',)
 
 
 # --- MonitorBridge.onNotification ----------------------------------------------
@@ -453,11 +453,11 @@ def test_bridge_decodes_mutation_payload(bridge_rig):
     bridge, dispatcher = bridge_rig
     bridge.onNotification(
         ADDON_ID, 'Other.' + MUTATION_MESSAGE,
-        '{"op": "delete", "key": "dolbyvision|all|truehd", '
+        '{"op": "delete", "key": "dolbyvision|all|truehd|all", '
         '"request_id": "r9"}')
 
     assert dispatcher.posted == [events.StoreMutationRequested(
-        op='delete', key='dolbyvision|all|truehd', request_id='r9')]
+        op='delete', key='dolbyvision|all|truehd|all', request_id='r9')]
 
 
 def test_bridge_ignores_other_senders_and_messages(bridge_rig):

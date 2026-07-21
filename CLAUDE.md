@@ -100,8 +100,12 @@ never in settings.xml. The rules that keep it safe:
   file. Persistence is atomic (temp file, fsync, then `os.replace`); a file
   that fails to parse is renamed to `.bad` and the store starts empty (and
   notifies once); a file from a newer schema version makes the store
-  read-only rather than risk overwriting it.
-- **Keys are `hdr|fps|audio`, accepted verbatim.** The reported string,
+  read-only rather than risk overwriting it. The schema version is 2 (the
+  channel axis grew the key to four segments); a version-1 file loads
+  writable, its keys expanding through boundary canonicalization — that
+  expansion IS the migration, with no separate migration code — and the
+  first persist rewrites the file as v2.
+- **Keys are `hdr|fps|audio|ch`, accepted verbatim.** The reported string,
   case-folded and trimmed, is the key segment. There is no whitelist and no
   substring matching, so a codec or HDR type this code has never seen still
   works. The HDR axis also strips internal whitespace and carries a small set
@@ -111,7 +115,8 @@ never in settings.xml. The rules that keep it safe:
   to `sdr` in the detector's chain-of-evidence, not in the key codec. The
   store canonicalizes every key at its boundary, so entries written under
   older spellings keep resolving as the rules evolve (canonicalization is
-  mode-independent and never collapses a granularity axis). `fps` is `all`
+  mode-independent, never collapses a granularity axis, and expands legacy
+  three-segment keys with a trailing `all`). `fps` is `all`
   by default, or the integer-truncated rate when the `per_fps_offsets`
   toggle is on; truncation keeps the NTSC fractional rates distinct from
   their integer siblings (23.976 → `23` vs 24.0 → `24`), which tests pin.
@@ -121,16 +126,24 @@ never in settings.xml. The rules that keep it safe:
   `truehd`, `eac3_ddp_atmos` → `eac3`, `dtshd_ma_x`/`dtshd_ma_x_imax` →
   `dtshd_ma` — the exact variant spellings Kodi's StreamUtils can report,
   observed-only like the HDR aliases; lossy DTS:X over HRA reports as
-  plain `dtshd_hra` upstream, so it has no entry).
+  plain `dtshd_hra` upstream, so it has no entry). `ch` is `all` by
+  default, or the verbatim source channel count when
+  `distinct_channel_counts` is on; the count is a source-stream fact
+  (Kodi reports the demuxed layout regardless of output config, field-
+  verified stable through passthrough flips), and an unusable count
+  degrades to `all` identically in lookup and write — channels has no
+  completeness gate, unlike fps, so the degradation is a real seam, not
+  just a defensive one.
 - **Lookup is strict: one candidate key per resolve.** With `per_fps_offsets`
-  off the only key consulted is `<hdr>|all|<audio>`; with it on,
-  `<hdr>|<fps>|<audio>`; with `distinct_spatial_formats` off the audio
+  off the only fps segment consulted is `all`; with it on, the truncated
+  rate. The channel axis works the same way under
+  `distinct_channel_counts`. With `distinct_spatial_formats` off the audio
   segment is the variant's base codec. There is no fallback between any
-  levels. Fps dormancy is symmetric (specific entries sleep while the
-  toggle is off, `all` entries while it is on); spatial dormancy is
-  one-sided (a base-codec key is legitimate in both modes, so only
-  spatial-variant entries sleep, and only while distinct is off). The
-  manage view dims and tags whatever is dormant, and flipping either
+  levels. Fps and channel dormancy are symmetric (specific entries sleep
+  while their toggle is off, `all` entries while it is on); spatial
+  dormancy is one-sided (a base-codec key is legitimate in both modes, so
+  only spatial-variant entries sleep, and only while distinct is off). The
+  manage view dims and tags whatever is dormant, and flipping any
   toggle is non-destructive both ways. The toggles' help text carries the
   mode contract; there is no flip-time modal, since Kodi only reports a
   settings change on dialog close. `aome/store/resolve.py` and its unit tests
@@ -172,7 +185,9 @@ and refuses an empty one.
 `apply_offsets` (an orthogonal learn/apply pair; the watcher never consults
 the apply toggle, so apply-off with learn-on is the legal re-teach state),
 `per_fps_offsets`, `distinct_spatial_formats` (default on; off collapses
-spatial variants onto the base codec's key), the `seek_back_events`
+spatial variants onto the base codec's key), `distinct_channel_counts`
+(default off; on keys offsets by the source channel count), the
+`seek_back_events`
 multiselect (its option values are
 `SeekScheduler.REASONS` verbatim, pinned by a contract test) with a shared
 `seek_back_seconds`, `notify_apply` / `notify_learn` /

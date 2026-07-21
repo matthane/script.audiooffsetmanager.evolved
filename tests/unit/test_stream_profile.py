@@ -50,6 +50,26 @@ def test_fps_int_none_when_undetected():
     assert make_profile(video_fps=None).fps_int() is None
 
 
+@pytest.mark.parametrize("audio_channels, expected", [
+    (8, 8), (6, 6), (2, 2), (1, 1),
+    ('6', 6),                         # numeric string passes through
+    (22, 22),                         # open-ended: no layout whitelist
+])
+def test_channels_int_normalizes(audio_channels, expected):
+    assert make_profile(audio_channels=audio_channels).channels_int() \
+        == expected
+
+
+@pytest.mark.parametrize("unusable", [
+    'unknown', '', None, 0, -2, True, False,
+    float('nan'), float('inf'), float('-inf'),
+])
+def test_channels_int_none_when_unusable(unusable):
+    # Mirrors the store's channel_segment rule: an unusable count means the
+    # stream has no channel axis (bool guarded — True must never read as 1).
+    assert make_profile(audio_channels=unusable).channels_int() is None
+
+
 # --- identity ------------------------------------------------------------------
 
 def test_identity_is_the_offset_relevant_tuple():
@@ -70,8 +90,13 @@ def test_identity_carries_verbatim_open_vocabulary():
 # --- describe (field-log form) ---------------------------------------------------
 
 def test_describe_is_greppable_key_shape():
-    assert make_profile().describe() == 'dolbyvision|23|truehd'
+    assert make_profile().describe() == 'dolbyvision|23|truehd|8'
 
 
 def test_describe_marks_missing_fps():
-    assert make_profile(video_fps=None).describe() == 'dolbyvision|?|truehd'
+    assert make_profile(video_fps=None).describe() == 'dolbyvision|?|truehd|8'
+
+
+def test_describe_marks_unusable_channels():
+    assert make_profile(audio_channels='unknown').describe() == \
+        'dolbyvision|23|truehd|?'

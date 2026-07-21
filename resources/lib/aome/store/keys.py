@@ -15,10 +15,13 @@ detection says 'hdr10plus'). Spaced title-case reports ('Dolby Vision' vs
 'dolbyvision') are the same class, handled by the whitespace strip rather
 than per-variant aliases.
 
-Key shape: ``<hdr>|<fps>|<audio>`` (e.g. ``dolbyvision|23|truehd``,
-``hdr10plus|all|aac``). The ``|`` joiner is why ``normalize_segment`` maps
+Key shape: ``<hdr>|<fps>|<audio>|<ch>`` (e.g. ``dolbyvision|23|truehd|all``,
+``hdr10plus|all|aac|6``). The ``|`` joiner is why ``normalize_segment`` maps
 any stray ``|`` inside a raw string to ``_``, so ``split_key`` always
-recovers exactly three parts.
+recovers exactly four parts. Schema-1 keys had three segments (no channel
+axis); ``canonical_key`` expands them with a trailing ``all``, which is the
+whole migration — lossless, idempotent, and running at the store boundary
+where every stored key already passes.
 
 Absence (empty, 'none', 'unknown') collapses to the UNKNOWN sentinel; every
 other string passes through verbatim. ``hdr_segment`` maps a blank HDR to
@@ -28,9 +31,13 @@ module. FPS uses integer truncation, keeping NTSC fractional rates distinct
 from their integer siblings (23.976 -> 23 vs 24.0 -> 24); with per-fps off
 the segment is the literal 'all'. The audio axis has its own granularity
 mode: with distinct-spatial off, a spatial object-audio variant keys as its
-base codec (``formats.SPATIAL_BASE``). Both modes live in key composition
-only — ``canonical_key`` is mode-independent and never collapses either
-axis.
+base codec (``formats.SPATIAL_BASE``). The channel axis mirrors fps ('all'
+by default, the verbatim source count with distinct-channels on) with one
+divergence: an unusable count degrades to 'all' instead of raising, because
+no completeness gate screens channels upstream and 'all' is the intended
+key for a channel-less stream in lookup and write alike. All modes live in
+key composition only — ``canonical_key`` is mode-independent and never
+collapses any axis.
 
 Pure Python: stdlib only, no xbmc* imports.
 """
@@ -152,6 +159,17 @@ AUDIO_DISPLAY_SHORT = {
     UNKNOWN: 'Unknown',
 }
 
+# Channel-count segments with an established layout name. Only unambiguous
+# counts are mapped (4 could be quad or 3.1, 7 could be 6.1 or 7.0 — those
+# render verbatim as '<n> ch'); nothing is invented. Keyed by the segment
+# string, since display always starts from a stored key.
+CHANNEL_DISPLAY = {
+    '1': '1.0',
+    '2': '2.0',
+    '6': '5.1',
+    '8': '7.1',
+}
+
 
 def normalize_segment(raw):
     """Case-fold + trim a raw segment, then neutralise any stray separator.
@@ -224,33 +242,69 @@ def fps_segment(fps, per_fps):
         raise ValueError("fps_segment: unparseable fps value {!r}".format(fps))
 
 
-def profile_key(hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial=True):
-    """Compose the full ``<hdr>|<fps>|<audio>`` profile key."""
+def channel_segment(channels, distinct_channels=False):
+    """The channel segment: 'all' when distinct-channels is off, else the
+    verbatim source count.
+
+    Unlike ``fps_segment`` this never raises: an unusable count (None,
+    'unknown', 0, bool) degrades to 'all' even with the toggle on, because
+    no completeness gate screens channels upstream and the all-channels key
+    IS the intended key for a channel-less stream — symmetrically in lookup
+    and write, so a degraded write never strands a value where lookup will
+    not find it. In practice the gateway reports channels and codec from the
+    same response, so a missing count implies an incomplete profile that
+    never reaches key composition anyway.
+    """
+    if not distinct_channels:
+        return 'all'
+    if isinstance(channels, bool):
+        # bool is an int subclass: True would silently become segment '1'.
+        return 'all'
+    try:
+        # OverflowError: int(float('inf')) — non-finite counts are junk
+        # too (this module is a public seam, like fps_segment).
+        count = int(channels)
+    except (TypeError, ValueError, OverflowError):
+        return 'all'
+    if count <= 0:
+        return 'all'
+    return str(count)
+
+
+def profile_key(hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial=True,
+                channels=None, distinct_channels=False):
+    """Compose the full ``<hdr>|<fps>|<audio>|<ch>`` profile key."""
     return SEPARATOR.join((
         hdr_segment(hdr_raw),
         fps_segment(fps, per_fps),
         audio_segment(audio_raw, distinct_spatial),
+        channel_segment(channels, distinct_channels),
     ))
 
 
-def all_key(hdr_raw, audio_raw, *, distinct_spatial=True):
-    """The all-rates key ``<hdr>|all|<audio>`` — the candidate whenever
+def all_key(hdr_raw, audio_raw, *, distinct_spatial=True, channels=None,
+            distinct_channels=False):
+    """The all-rates key ``<hdr>|all|<audio>|<ch>`` — the candidate whenever
     the fps axis does not exist (toggle off, or a stream with no
-    parseable rate).
+    parseable rate). The channel axis is independent and rides through.
 
-    Delegates to ``profile_key`` with the toggle off (which forces the 'all'
-    segment) so the key shape has exactly one composition point.
+    Delegates to ``profile_key`` with the fps toggle off (which forces the
+    'all' segment) so the key shape has exactly one composition point.
     """
     return profile_key(hdr_raw, None, audio_raw, per_fps=False,
-                       distinct_spatial=distinct_spatial)
+                       distinct_spatial=distinct_spatial,
+                       channels=channels,
+                       distinct_channels=distinct_channels)
 
 
 def split_key(key):
-    """Invert a profile key into ``(hdr, fps, audio)``; ValueError if not 3 parts."""
+    """Invert a profile key into ``(hdr, fps, audio, ch)``; ValueError if
+    not 4 parts. Callers see post-canonicalization keys, so the legacy
+    3-segment shape never reaches here."""
     parts = key.split(SEPARATOR)
-    if len(parts) != 3:
-        raise ValueError("split_key: expected 3 segments, got {!r}".format(key))
-    return parts[0], parts[1], parts[2]
+    if len(parts) != 4:
+        raise ValueError("split_key: expected 4 segments, got {!r}".format(key))
+    return parts[0], parts[1], parts[2], parts[3]
 
 
 def canonical_key(key):
@@ -260,17 +314,23 @@ def canonical_key(key):
     other-process reader, import) through this, so the spelling rules reach
     data written by an older codec exactly as they reach live composition.
     Segments re-run their own segment functions, so a format this code has
-    never seen round-trips verbatim. Mode-independent by design: the fps
-    segment ('all' or a truncated integer) passes through untouched and the
-    audio segment never spatial-collapses, since canonicalization must not
-    rewrite stored keys when a granularity toggle flips. An unsplittable
-    key returns unchanged. Idempotent by construction.
+    never seen round-trips verbatim. A schema-1 key (three segments, no
+    channel axis) is expanded with a trailing 'all' — the entire v1→v2
+    migration, lossless by construction. Mode-independent by design: the
+    fps and channel segments pass through untouched and the audio segment
+    never spatial-collapses, since canonicalization must not rewrite stored
+    keys when a granularity toggle flips. An unsplittable key returns
+    unchanged. Idempotent by construction.
     """
-    try:
-        hdr, fps, audio = split_key(key)
-    except ValueError:
+    parts = key.split(SEPARATOR)
+    if len(parts) == 3:
+        hdr, fps, audio = parts
+        ch = 'all'
+    elif len(parts) == 4:
+        hdr, fps, audio, ch = parts
+    else:
         return key
-    return SEPARATOR.join((hdr_segment(hdr), fps, audio_segment(audio)))
+    return SEPARATOR.join((hdr_segment(hdr), fps, audio_segment(audio), ch))
 
 
 def _display_fps(segment, video_fps=None, per_fps=False):
@@ -286,77 +346,107 @@ def _display_fps(segment, video_fps=None, per_fps=False):
     return "{} fps".format(segment)
 
 
-def describe_key(key, video_fps=None, per_fps=False):
-    """Human-readable label, e.g. 'Dolby Vision | 23.976 fps | TrueHD'.
+def _display_channels(segment, distinct_channels=False):
+    # Same shape as _display_fps: 'all' states its scope only in the mode
+    # where it is dormant, and is omitted when it is the only key consulted.
+    # A specific count always renders (it is what distinguishes a dormant
+    # row), via the layout table or verbatim as '<n> ch'.
+    if segment == 'all':
+        return 'All channels' if distinct_channels else None
+    return CHANNEL_DISPLAY.get(segment, "{} ch".format(segment))
+
+
+def describe_key(key, video_fps=None, per_fps=False, distinct_channels=False):
+    """Human-readable label, e.g. 'Dolby Vision | 23.976 fps | TrueHD | 5.1'.
 
     HDR and audio segments use the display tables, falling back to the raw
     segment when unrecognized. The 'all' fps segment renders as 'All FPS'
-    when ``per_fps`` is on and is omitted when off. A numeric segment
-    renders the exact reported rate from the entry's ``video_fps`` metadata
-    when the caller supplies a finite number, degrading to the truncated
-    segment ('<n> fps') when it is absent or malformed.
+    when ``per_fps`` is on and is omitted when off; the channel segment
+    follows the same rule under ``distinct_channels`` ('All channels' /
+    omitted), with a specific count rendering its layout name or '<n> ch'.
+    A numeric fps segment renders the exact reported rate from the entry's
+    ``video_fps`` metadata when the caller supplies a finite number,
+    degrading to the truncated segment ('<n> fps') when it is absent or
+    malformed.
     """
-    hdr, fps, audio = split_key(key)
+    hdr, fps, audio, ch = split_key(key)
     parts = [HDR_DISPLAY.get(hdr, hdr)]
     fps_name = _display_fps(fps, video_fps, per_fps)
     if fps_name is not None:
         parts.append(fps_name)
     parts.append(AUDIO_DISPLAY.get(audio, audio))
+    ch_name = _display_channels(ch, distinct_channels)
+    if ch_name is not None:
+        parts.append(ch_name)
     return " | ".join(parts)
 
 
-def describe_key_in_group(key, video_fps=None, per_fps=False):
-    """In-group row label, e.g. 'Dolby TrueHD · 23.976 fps'.
+def describe_key_in_group(key, video_fps=None, per_fps=False,
+                          distinct_channels=False):
+    """In-group row label, e.g. 'Dolby TrueHD · 23.976 fps · 5.1'.
 
     The grouped drill-down lists one HDR type at a time, so rows drop the
     redundant HDR name and lead with the codec. Same display vocabulary,
-    fps semantics, and verbatim fallbacks as ``describe_key``, and it
+    axis semantics, and verbatim fallbacks as ``describe_key``, and it
     raises ValueError on an unsplittable key the same way.
     """
-    _hdr, fps, audio = split_key(key)
-    audio_name = AUDIO_DISPLAY.get(audio, audio)
+    _hdr, fps, audio, ch = split_key(key)
+    parts = [AUDIO_DISPLAY.get(audio, audio)]
     fps_name = _display_fps(fps, video_fps, per_fps)
-    if fps_name is None:
-        return audio_name
-    return "{} · {}".format(audio_name, fps_name)
+    if fps_name is not None:
+        parts.append(fps_name)
+    ch_name = _display_channels(ch, distinct_channels)
+    if ch_name is not None:
+        parts.append(ch_name)
+    return " · ".join(parts)
+
+
+def _axis_rank(segment):
+    """Sort rank for an 'all'-or-numeric axis segment: the 'all' entry
+    first, numeric values in numeric order (string-sorting '119' before
+    '23' is the bug this avoids), non-numeric junk after them."""
+    if segment == 'all':
+        return (0, 0)
+    try:
+        return (1, int(segment))
+    except ValueError:
+        return (2, 0)
 
 
 def sort_key(key):
-    """Deterministic display ordering: HDR type, then codec, then rate.
+    """Deterministic display ordering: HDR type, codec, rate, channels.
 
     Groups the view's rows the way a user scans them: one HDR mode
     together, codecs alphabetical within it, each codec's 'all' entry
-    before its per-fps entries in numeric rate order (string-sorting '119'
-    before '23' is the bug this avoids). Total over hand-edited files: an
-    unsplittable key sorts by its raw text, a non-numeric fps segment sorts
-    after the numeric rates, and the raw key is the final tie-break.
+    before its per-fps entries in numeric rate order, and the channel axis
+    breaking ties the same way ('all' first, counts ascending). Total over
+    hand-edited files: an unsplittable key sorts by its raw text, a
+    non-numeric axis segment sorts after the numeric values, and the raw
+    key is the final tie-break.
     """
     try:
-        hdr, fps, audio = split_key(key)
+        hdr, fps, audio, ch = split_key(key)
     except ValueError:
-        return (key.lower(), '', (0, 0), key)
-    if fps == 'all':
-        fps_rank = (0, 0)
-    else:
-        try:
-            fps_rank = (1, int(fps))
-        except ValueError:
-            fps_rank = (2, 0)
+        return (key.lower(), '', (0, 0), (0, 0), key)
     return (
         HDR_DISPLAY.get(hdr, hdr).lower(),
         AUDIO_DISPLAY.get(audio, audio).lower(),
-        fps_rank,
+        _axis_rank(fps),
+        _axis_rank(ch),
         key,
     )
 
 
-def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
+def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None,
+                    channels=None):
     """Toast/log summary straight from profile facts (no key needed).
 
-    E.g. 'DV | 23.976 fps | TrueHD Atmos'; without a rate, 'DV | TrueHD'.
-    Uses the short display overlays (the toast is one narrow line), falling
-    back to the full table and then verbatim. The exact reported rate is
-    shown.
+    E.g. 'DV | 23.976 fps | TrueHD Atmos | 7.1'; without a rate or count,
+    'DV | TrueHD'. Uses the short display overlays (the toast is one narrow
+    line), falling back to the full table and then verbatim. The exact
+    reported rate is shown; the caller passes ``channels`` only when the
+    count is offset-relevant (distinct-channels on), mirroring the fps
+    axis.
     """
     parts = [HDR_DISPLAY_SHORT.get(
         hdr_segment_value,
@@ -366,4 +456,10 @@ def profile_summary(hdr_segment_value, audio_segment_value, video_fps=None):
     parts.append(AUDIO_DISPLAY_SHORT.get(
         audio_segment_value,
         AUDIO_DISPLAY.get(audio_segment_value, audio_segment_value)))
+    if channels is not None:
+        segment = channel_segment(channels, True)
+        # A degraded segment ('all' from an unusable count) renders
+        # nothing: the toast states facts, not scope.
+        if segment != 'all':
+            parts.append(_display_channels(segment, True))
     return " | ".join(parts)

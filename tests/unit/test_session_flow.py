@@ -125,13 +125,13 @@ def test_startup_apply_is_provisional_then_released_on_stable(rig):
     assert session.stream_state is StreamState.STABILIZING
     assert session.applied == ('dolbyvision|all|truehd', -125)
     assert session.pending_notification == (session.profile, -125)
-    assert session.profile.describe() == 'dolbyvision|23|truehd'
+    assert session.profile.describe() == 'dolbyvision|23|truehd|8'
 
     _settle(runtime, clock)
 
     assert session.stream_state is StreamState.STABLE
     assert applied == [(1, -125)]                      # dedupe: no re-apply
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd|8')]
     assert session.pending_notification is None
 
 
@@ -155,7 +155,7 @@ def test_late_codec_is_chased_by_the_probe_chain(rig):
     gateway.codec = 'truehd'                           # negotiation finished
     _settle(runtime, clock, 0.6)                       # probe 3 completes
 
-    assert session.profile.describe() == 'dolbyvision|23|truehd'
+    assert session.profile.describe() == 'dolbyvision|23|truehd|8'
     assert applied == [(1, -125)]
     assert session.stream_state is StreamState.STABILIZING
 
@@ -190,7 +190,7 @@ def test_in_place_reopen_supersedes_and_drops_pending(rig):
     # The live session still settles normally.
     _settle(runtime, clock)
     assert second.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd|8')]
 
 
 def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
@@ -216,7 +216,7 @@ def test_mid_play_change_applies_immediately_and_notifies_on_stable(rig):
 
     _settle(runtime, clock)
     assert session.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3')
+    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3|8')
     assert session.pending_notification is None
 
 
@@ -301,7 +301,7 @@ def test_failed_apply_rpc_is_retried_on_next_stabilization(rig):
     _settle(runtime, clock)                  # StreamStabilized retries
     assert applied == [(1, -125)]
     assert session.applied == ('dolbyvision|all|truehd', -125)
-    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd')]
+    assert _applied_toasts(notified) == [(-125, 'dolbyvision|23|truehd|8')]
 
 
 def test_av_change_storm_collapses_to_one_apply(rig):
@@ -323,7 +323,7 @@ def test_av_change_storm_collapses_to_one_apply(rig):
     _settle(runtime, clock)
     session = runtime.session_tracker.current
     assert session.stream_state is StreamState.STABLE
-    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3')
+    assert _applied_toasts(notified)[-1] == (-125, 'dolbyvision|23|eac3|8')
 
 
 def test_unchanged_av_change_is_ignored(rig):
@@ -437,7 +437,7 @@ def test_settings_save_reapply_reads_as_self_echo_not_adjustment(
 
     # The user backgrounds the video, flips per-fps ON, saves the dialog:
     # the fresh resolve now answers with the exact-level entry.
-    exact_key = 'dolbyvision|23|truehd'
+    exact_key = 'dolbyvision|23|truehd|all'
     monkeypatch.setattr(
         runtime.offsets, 'resolve',
         lambda profile: store_resolve.Resolution(
@@ -446,10 +446,10 @@ def test_settings_save_reapply_reads_as_self_echo_not_adjustment(
     runtime.dispatcher.run_pending()
 
     assert applied == [(1, -125), (1, -25)]            # applied at once
-    assert session.applied == ('dolbyvision|23|truehd', -25)
+    assert session.applied == ('dolbyvision|23|truehd|all', -25)
     assert _applied_toasts(notified) == [              # and announced
-        (-125, 'dolbyvision|23|truehd'),
-        (-25, 'dolbyvision|23|truehd')]
+        (-125, 'dolbyvision|23|truehd|8'),
+        (-25, 'dolbyvision|23|truehd|8')]
 
     # Kodi now echoes the NEW delay: ticks must classify it as self-echo
     # (baseline refresh) — storing it would loop our own apply back into
@@ -481,7 +481,7 @@ def test_user_offset_saved_notifies_live_session_only(rig):
     runtime.dispatcher.run_pending()
     manual = [(ms, key) for kind, ms, key in notified
               if kind == STRING_OFFSET_SAVED]
-    assert manual == [(-75, 'dolbyvision|23|truehd')]
+    assert manual == [(-75, 'dolbyvision|23|truehd|8')]
 
     # In-place reopen already queued ahead of the stale-stamped event: by the
     # time the event dispatches, its session is superseded -> no toast.
@@ -491,7 +491,7 @@ def test_user_offset_saved_notifies_live_session_only(rig):
     runtime.dispatcher.run_pending()
     manual = [(ms, key) for kind, ms, key in notified
               if kind == STRING_OFFSET_SAVED]
-    assert manual == [(-75, 'dolbyvision|23|truehd')]
+    assert manual == [(-75, 'dolbyvision|23|truehd|8')]
 
 
 def test_av_event_after_stop_is_ignored(rig):

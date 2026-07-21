@@ -227,7 +227,7 @@ class TestDiscovery:
         session = rig.session
         # Probe #1 completed at once: profile written, STARTING -> STABILIZING,
         # both ProfileChanged and StreamProbed posted.
-        assert session.profile.describe() == 'dolbyvision|23|truehd'
+        assert session.profile.describe() == 'dolbyvision|23|truehd|8'
         assert session.stream_state is StreamState.STABILIZING
         assert len(rig.profiles) == 1
         assert rig.profiles[0].session_id == session.session_id
@@ -257,7 +257,7 @@ class TestDiscovery:
         rig.gateway.codec = 'truehd'         # negotiation finishes
         rig.advance(0.5)                     # probe #3: resolves -> adopt
         assert len(rig.profiles) == 1
-        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd|8'
         assert rig.session.stream_state is StreamState.STABILIZING
         assert rig.errors == []
 
@@ -319,7 +319,7 @@ class TestDiscovery:
         rig.gateway.codec = 'truehd'
         rig.advance(0.5)
         assert len(rig.profiles) == 1
-        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd|8'
         assert rig.session.stream_state is StreamState.STABILIZING
         assert rig.errors == []
 
@@ -350,7 +350,7 @@ class TestDiscovery:
         # The NEW session's own chain still proceeds to adoption.
         rig.advance(0.5)
         assert len(rig.profiles) == 1
-        assert second.profile.describe() == 'dolbyvision|23|truehd'
+        assert second.profile.describe() == 'dolbyvision|23|truehd|8'
         assert rig.errors == []
 
     def test_playback_stopped_cancels_pending_probes(self, rig):
@@ -420,7 +420,7 @@ class TestChangeDetection:
         # 'adjust' seek-back must not be skipped for it.
         assert rig.stabilized[0].initial is True
         assert rig.stabilized[1].initial is False
-        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3|8'
         assert rig.errors == []
 
     def test_av_change_during_discovery_is_ignored(self, rig):
@@ -510,12 +510,12 @@ class TestVerificationRecovery:
         # fires -> verify re-adopts B (second ProfileChanged), STILL verifying;
         # the next verify settles B.
         rig.start()
-        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd|8'
         assert len(rig.profiles) == 1
 
         rig.gateway.codec = 'eac3'           # A -> B before the 1s verify
         rig.advance(1.0)
-        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3|8'
         assert len(rig.profiles) == 2        # re-adopted
         assert rig.session.stream_state is StreamState.STABILIZING  # still verifying
         assert rig.stabilized == []
@@ -547,15 +547,15 @@ class TestOrderingAndGuards:
         # Sole-writer + freshness: every adoption derives the profile from the
         # gateway's CURRENT readings, never a carried-over profile.
         rig.start()
-        assert rig.session.profile.describe() == 'dolbyvision|23|truehd'
+        assert rig.session.profile.describe() == 'dolbyvision|23|truehd|8'
 
         rig.gateway.codec = 'eac3'
         rig.av_changed()
-        assert rig.session.profile.describe() == 'dolbyvision|23|eac3'
+        assert rig.session.profile.describe() == 'dolbyvision|23|eac3|8'
 
         rig.gateway.infolabels[INFOLABEL_HDR] = 'hdr10'
         rig.av_changed()
-        assert rig.session.profile.describe() == 'hdr10|23|eac3'
+        assert rig.session.profile.describe() == 'hdr10|23|eac3|8'
         assert rig.errors == []
 
     def test_stale_verify_for_dead_session_is_dropped(self, rig):

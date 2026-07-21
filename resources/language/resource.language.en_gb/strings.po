@@ -369,16 +369,17 @@ msgid "Could not read the Kodi log file"
 msgstr ""
 
 #. Value line of a stored offset that is not applied right now (saved
-#. under a per-frame-rate or spatial-format mode that is not the one
-#. currently enabled); {0} is the value, e.g. "+125 ms"
+#. under a per-frame-rate, spatial-format, or channel-count mode that is
+#. not the one currently enabled); {0} is the value, e.g. "+125 ms"
 msgctxt "#32167"
 msgid "{0} — inactive"
 msgstr ""
 
 #. Suffix on a group row in the stored offsets view when some of the
-#. group's entries are inactive (saved under a per-frame-rate or
-#. spatial-format mode that is not the one currently enabled); {0} is how
-#. many, e.g. the full row reads "Dolby Vision — 3 entries (2 inactive)"
+#. group's entries are inactive (saved under a per-frame-rate,
+#. spatial-format, or channel-count mode that is not the one currently
+#. enabled); {0} is how many, e.g. the full row reads
+#. "Dolby Vision — 3 entries (2 inactive)"
 msgctxt "#32170"
 msgid "({0} inactive)"
 msgstr ""
@@ -405,4 +406,14 @@ msgstr ""
 #. Help text for #32175
 msgctxt "#32176"
 msgid "Learn and apply separate offsets for spatial audio formats such as Dolby Atmos and DTS:X. When this is off, a spatial format shares its base codec's offset, for example TrueHD Atmos uses the TrueHD offset, and offsets saved for spatial formats are kept but not applied."
+msgstr ""
+
+#. Setting label; its help text is #32178
+msgctxt "#32177"
+msgid "Distinct channel count offsets"
+msgstr ""
+
+#. Help text for #32177
+msgctxt "#32178"
+msgid "Learn and apply a separate offset for each channel count, for example 5.1 and stereo versions of the same format. An offset only applies in the mode it was saved in: offsets saved while this was off cover all channel counts and are not applied while it is on. Per-count offsets are kept, but not applied, while this is disabled."
 msgstr ""

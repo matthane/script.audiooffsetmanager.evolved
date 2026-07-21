@@ -341,3 +341,4 @@ class TestFailSafeIntentDefaults:
         assert settings.distinct_spatial_enabled() is True
         # The granularity opt-ins stay off, matching their defaults.
         assert settings.per_fps_offsets_enabled() is False
+        assert settings.distinct_channels_enabled() is False

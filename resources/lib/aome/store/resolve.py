@@ -3,23 +3,34 @@
 This module is the key-schema decision table. Both rules are deliberately
 trivial:
 
-Lookup — one candidate key per call, composed from both granularity modes:
+Lookup — one candidate key per call, composed from all granularity modes:
 
-    per_fps off (default):  <hdr>|all|<audio>   -> exact | miss
-    per_fps on:             <hdr>|<fps>|<audio> -> exact | miss
+    per_fps off (default):  <hdr>|all|<audio>|<ch>   -> exact | miss
+    per_fps on:             <hdr>|<fps>|<audio>|<ch> -> exact | miss
 
     distinct_spatial on (default): <audio> is the verbatim segment
     distinct_spatial off:          <audio> is the variant's base codec
 
-There is no fallback between the levels. The fps modes are symmetric:
-specific-fps entries are dormant while the toggle is off, ``all`` entries
-while it is on. The spatial modes are one-sided: a base-codec key (e.g.
-``truehd``) is a legitimate verbatim key in both modes, so only
-spatial-variant entries (``truehd_atmos``) go dormant, and only while
-distinct_spatial is off. Flipping either toggle is non-destructive. One
-seam: an fps that cannot be parsed under the toggle means the stream has no
-fps axis, so its candidate is the ``all`` key (defensive only; completeness
-gating keeps unparseable rates out of the apply path).
+    distinct_channels off (default): <ch> is the literal 'all'
+    distinct_channels on:            <ch> is the verbatim source count
+
+There is no fallback between the levels. The fps and channel modes are
+symmetric for streams that carry the axis: axis-specific entries are
+dormant while their toggle is off, ``all`` entries while it is on. One
+asymmetry between the two axes: completeness gating keeps fps-less streams
+out of the apply path, but channels has no gate, so a stream reporting no
+usable count legitimately consults (and writes) the channel-``all`` key
+even with the toggle on — a real seam, not just a defensive one, though
+every observed platform reports counts. The spatial modes are one-sided: a
+base-codec key (e.g. ``truehd``) is a legitimate verbatim key in both
+modes, so only spatial-variant entries (``truehd_atmos``) go dormant, and
+only while distinct_spatial is off. Flipping any toggle is
+non-destructive. Two degradation seams, both meaning "this stream has no
+such axis, its candidate IS the ``all`` key": an fps that cannot be parsed
+under the toggle (defensive only; completeness gating keeps unparseable
+rates out of the apply path) and an unusable channel count (handled inside
+``keys.channel_segment``, identically for lookup and write, since no
+completeness gate screens channels).
 
 A miss applies nothing (Kodi's delay stays untouched) unless the consulted
 key carries a reset marker (the user deleted it): ``reset_keys`` names it so
@@ -66,27 +77,36 @@ class Resolution(namedtuple('Resolution',
         return self.entry['delay_ms']
 
 
-def resolve(store, hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial):
+def resolve(store, hdr_raw, fps, audio_raw, channels=None, *, per_fps,
+            distinct_spatial, distinct_channels):
     """Look up the offset entry for the given stream facts; never raises.
 
     Exactly one candidate key per call: the ``all`` key with per_fps off,
     the fps-specific key with it on; the audio segment collapses to its
-    spatial base with distinct_spatial off. An unparseable fps under
-    per_fps degrades to the ``all`` key rather than turning a benign miss
-    into an exception.
+    spatial base with distinct_spatial off; the channel segment is 'all'
+    with distinct_channels off, else the source count. An unparseable fps
+    under per_fps degrades to the ``all`` key rather than turning a benign
+    miss into an exception (the channel axis degrades inside
+    ``keys.channel_segment`` and needs no handling here).
     """
     if not per_fps:
         candidate = keys.all_key(hdr_raw, audio_raw,
-                                 distinct_spatial=distinct_spatial)
+                                 distinct_spatial=distinct_spatial,
+                                 channels=channels,
+                                 distinct_channels=distinct_channels)
     else:
         try:
             candidate = keys.profile_key(hdr_raw, fps, audio_raw,
                                          per_fps=True,
-                                         distinct_spatial=distinct_spatial)
+                                         distinct_spatial=distinct_spatial,
+                                         channels=channels,
+                                         distinct_channels=distinct_channels)
         except ValueError:
             # No fps axis on this stream: the all key IS its exact key.
             candidate = keys.all_key(hdr_raw, audio_raw,
-                                     distinct_spatial=distinct_spatial)
+                                     distinct_spatial=distinct_spatial,
+                                     channels=channels,
+                                     distinct_channels=distinct_channels)
     entry = store.get(candidate)
     if entry is not None:
         return Resolution(entry, EXACT, candidate, (candidate,), ())
@@ -99,13 +119,17 @@ def _pending(consulted, store):
     return tuple(key for key in consulted if store.reset_pending(key))
 
 
-def write_key(hdr_raw, fps, audio_raw, *, per_fps, distinct_spatial):
+def write_key(hdr_raw, fps, audio_raw, channels=None, *, per_fps,
+              distinct_spatial, distinct_channels):
     """The single key a manual adjustment is stored under.
 
     Derived from the current profile facts and toggles at store time, never
     from lookup history: the ``all`` key with per_fps off, the fps-specific
     key with it on, the spatial-base audio segment with distinct_spatial
-    off.
+    off, the source-count channel segment with distinct_channels on
+    (degrading to 'all' for an unusable count, exactly as lookup does).
     """
     return keys.profile_key(hdr_raw, fps, audio_raw, per_fps=per_fps,
-                            distinct_spatial=distinct_spatial)
+                            distinct_spatial=distinct_spatial,
+                            channels=channels,
+                            distinct_channels=distinct_channels)

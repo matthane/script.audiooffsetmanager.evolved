@@ -2,8 +2,9 @@
 
 Wraps the pure store and the injected settings reads. Keys are composed at
 call time from the profile's verbatim facts plus the live granularity
-toggles (``per_fps_offsets``, ``distinct_spatial_formats``), never captured
-and never conditional on lookup history. Lookup routes through ``resolve.resolve`` (one candidate key per
+toggles (``per_fps_offsets``, ``distinct_spatial_formats``,
+``distinct_channel_counts``), never captured and never conditional on
+lookup history. Lookup routes through ``resolve.resolve`` (one candidate key per
 mode); writes route through ``resolve.write_key``, the only sanctioned
 write-key derivation. The store-entry dict shape stays inside the store
 package: consumers read values via ``Resolution.ms`` and ``stored_ms_at``.
@@ -32,9 +33,10 @@ class OffsetTable:
         """Look up the entry for the profile: a ``resolve.Resolution``."""
         return store_resolve.resolve(
             self._store, profile.hdr_type, profile.video_fps,
-            profile.audio_format,
+            profile.audio_format, profile.audio_channels,
             per_fps=self._settings.per_fps_offsets_enabled(),
-            distinct_spatial=self._settings.distinct_spatial_enabled())
+            distinct_spatial=self._settings.distinct_spatial_enabled(),
+            distinct_channels=self._settings.distinct_channels_enabled())
 
     def consume_reset(self, key):
         """Discard a pending reset marker (applier acted on it)."""
@@ -46,8 +48,10 @@ class OffsetTable:
         try:
             return store_resolve.write_key(
                 profile.hdr_type, profile.video_fps, profile.audio_format,
+                profile.audio_channels,
                 per_fps=self._settings.per_fps_offsets_enabled(),
-                distinct_spatial=self._settings.distinct_spatial_enabled())
+                distinct_spatial=self._settings.distinct_spatial_enabled(),
+                distinct_channels=self._settings.distinct_channels_enabled())
         except ValueError:
             return None
 

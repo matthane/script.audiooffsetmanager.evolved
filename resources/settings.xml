@@ -7,7 +7,7 @@
         <!-- Offset learning: the product. -->
         <category id="learning" label="32105" help="32106">
             <!-- One untitled group: the category name says "Offsets" and
-                 the five items say the rest. -->
+                 the six items say the rest. -->
             <group id="1">
                 <setting id="remember_adjustments" type="boolean" label="32108" help="32109">
                     <level>0</level>
@@ -32,6 +32,14 @@
                     <control type="toggle"/>
                 </setting>
                 <setting id="per_fps_offsets" type="boolean" label="32110" help="32111">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <!-- Default off like per-fps: the opt-in granularity pair
+                     sits together below the default-on toggles. Off keys
+                     every channel count onto the 'all' segment. -->
+                <setting id="distinct_channel_counts" type="boolean" label="32177" help="32178">
                     <level>0</level>
                     <default>false</default>
                     <control type="toggle"/>

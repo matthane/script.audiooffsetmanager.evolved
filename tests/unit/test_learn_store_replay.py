@@ -106,6 +106,10 @@ def _make_runtime(monkeypatch, tmp_path, *, per_fps=False, infolabels=None):
     monkeypatch.setattr(settings, 'apply_enabled', lambda: True)
     monkeypatch.setattr(settings, 'per_fps_offsets_enabled',
                         lambda: per_fps_holder['on'])
+    # Pinned to the real defaults: the fake xbmc settings stub's getBool
+    # is not a settings store, so intent reads are stubbed explicitly.
+    monkeypatch.setattr(settings, 'distinct_spatial_enabled', lambda: True)
+    monkeypatch.setattr(settings, 'distinct_channels_enabled', lambda: False)
     monkeypatch.setattr(settings, 'remember_adjustments_enabled', lambda: True)
     monkeypatch.setattr(settings, 'seek_back_config', lambda reason: (False, 0))
     monkeypatch.setattr(settings, 'notify_apply_enabled', lambda: False)
@@ -232,14 +236,14 @@ def test_learn_flow_writes_verbatim_entry_to_disk(build):
     _quiesce(rig)
 
     profiles = _profiles_on_disk(rig.store_path)
-    assert set(profiles) == {'dolbyvision|all|truehd'}
-    entry = profiles['dolbyvision|all|truehd']
+    assert set(profiles) == {'dolbyvision|all|truehd|all'}
+    entry = profiles['dolbyvision|all|truehd|all']
     assert entry['delay_ms'] == -115                # verbatim, 1 ms resolution
     assert entry['source'] == 'user'
     assert entry['video_fps'] == 23.976             # exact rate rode along
 
     assert len(rig.saved) == 1
-    assert rig.saved[0].key == 'dolbyvision|all|truehd'
+    assert rig.saved[0].key == 'dolbyvision|all|truehd|all'
     assert rig.saved[0].ms == -115
 
 
@@ -249,7 +253,7 @@ def test_replay_applies_seeded_offset_on_playback(build, tmp_path):
     # A store seeded (as if by a prior learn) applies on the next playback with
     # no user interaction at all: PlaybackStarted -> adopt -> EXACT hit -> one
     # set_audio_delay of the stored value.
-    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd|all': -115})
 
     # A runtime built AFTER the seed loads it at construction (single read).
     replay = build()
@@ -267,7 +271,7 @@ def test_all_entry_dormant_then_specialize_per_fps(build, tmp_path):
     # user dials -100; the write key is the fps-specific key, so the exact
     # entry is CREATED while the dormant `all` entry is untouched. A
     # replay at 60 fps then hits the exact entry (-100).
-    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -125})
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd|all': -125})
 
     # Built AFTER the seed so it loads at construction (service stopped seed).
     rig = build(per_fps=True, infolabels={INFOLABEL_FPS: '60'})
@@ -282,8 +286,8 @@ def test_all_entry_dormant_then_specialize_per_fps(build, tmp_path):
     _quiesce(rig)
 
     profiles = _profiles_on_disk(rig.store_path)
-    assert profiles['dolbyvision|60|truehd']['delay_ms'] == -100  # specialized
-    assert profiles['dolbyvision|all|truehd']['delay_ms'] == -125  # untouched
+    assert profiles['dolbyvision|60|truehd|all']['delay_ms'] == -100  # specialized
+    assert profiles['dolbyvision|all|truehd|all']['delay_ms'] == -125  # untouched
 
     # Replay at 60 fps hits the exact entry; the all entry stays dormant.
     replay = build(per_fps=True, infolabels={INFOLABEL_FPS: '60'})
@@ -302,7 +306,7 @@ def test_delete_mid_session_resets_to_baseline(build, tmp_path):
     # reset is SILENT (no UnsavedOffsetDiscarded). A fresh runtime against
     # the now-empty file then applies nothing at all (no action yet, so
     # the miss leaves Kodi's delay untouched).
-    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd|all': -115})
     rig = build()                                    # loads the seed
 
     # Kodi echoes the applied value so the watcher self-echoes (stores nothing).
@@ -317,7 +321,7 @@ def test_delete_mid_session_resets_to_baseline(build, tmp_path):
                                      discarded.append)
 
     # Mutation channel: drop the entry from under the live session.
-    assert rig.runtime.store.delete('dolbyvision|all|truehd') is True
+    assert rig.runtime.store.delete('dolbyvision|all|truehd|all') is True
 
     rig.runtime.dispatcher.post(
         events.StreamStabilized(session_id=session.session_id))
@@ -349,7 +353,7 @@ def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
     # delete (leaving its reset marker) -> StoreMutated -> applier forces
     # the promised 0 — with NO stream event in between, and the watcher's
     # observation state dropped via DelayReset (nothing re-stored).
-    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd|all': -115})
     rig = build()
     rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.115 s'
     _play(rig)
@@ -358,7 +362,7 @@ def test_delete_via_mutation_channel_resets_immediately(build, tmp_path):
     session = rig.runtime.session_tracker.current
 
     rig.runtime.dispatcher.post(events.StoreMutationRequested(
-        op='delete', key='dolbyvision|all|truehd', request_id='view-1'))
+        op='delete', key='dolbyvision|all|truehd|all', request_id='view-1'))
     rig.runtime.dispatcher.run_pending()
 
     assert rig.applied == [(1, -115), (1, 0)]     # immediate, silent
@@ -381,7 +385,7 @@ def test_dial_then_delete_does_not_resurrect_the_entry(build, tmp_path):
     # re-stores it (set() discards the fresh reset marker), resurrecting
     # the row the view just reported deleted, with an 'Offset saved'
     # toast on top.
-    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd': -115})
+    _seed(tmp_path / 'offsets.json', {'dolbyvision|all|truehd|all': -115})
     rig = build()
     rig.gateway.infolabels[INFO_AUDIO_DELAY] = '-0.115 s'
     _play(rig)
@@ -402,7 +406,7 @@ def test_dial_then_delete_does_not_resurrect_the_entry(build, tmp_path):
     # Delete the playing profile's entry through the real channel while
     # the candidate is still inside its quiescence window.
     rig.runtime.dispatcher.post(events.StoreMutationRequested(
-        op='delete', key='dolbyvision|all|truehd', request_id='view-2'))
+        op='delete', key='dolbyvision|all|truehd|all', request_id='view-2'))
     rig.runtime.dispatcher.run_pending()
 
     assert session.watch_pending is None          # dropped at the delete
@@ -416,7 +420,7 @@ def test_dial_then_delete_does_not_resurrect_the_entry(build, tmp_path):
         rig.clock.advance(1.0)
         rig.runtime.dispatcher.run_pending()
     assert rig.saved == []
-    assert rig.runtime.store.get('dolbyvision|all|truehd') is None
+    assert rig.runtime.store.get('dolbyvision|all|truehd|all') is None
 
 
 # --- Scenario 6: corrupt store at startup ------------------------------------
@@ -460,7 +464,7 @@ def test_corrupt_store_survives_startup_and_learns_fresh(build, monkeypatch,
     _quiesce(rig)
 
     profiles = _profiles_on_disk(store_path)
-    assert profiles['dolbyvision|all|truehd']['delay_ms'] == -115
+    assert profiles['dolbyvision|all|truehd|all']['delay_ms'] == -115
 
 
 # --- Scenario 7: teardown phantom stays dead ---------------------------------

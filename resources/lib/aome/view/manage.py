@@ -42,14 +42,14 @@ that leave it the only group, while the top level re-evaluates fresh each
 render; delete confirmations always show the full profile line.
 
 Display is toggle-aware but never filtered: dormancy mirrors the lookup
-rule, so the injected ``per_fps`` and ``distinct_spatial`` flags decide
-which rows are tagged. The fps rule is symmetric (each mode sleeps the
-other's entries); the spatial rule is one-sided (a base-codec key is
-legitimate in both modes, so only spatial-variant rows sleep, and only
-while the toggle is off). Dormant rows are tagged '— inactive', never
-hidden, and sink below the active rows of their HDR group. Every stored
-entry always lists, so clear-all's confirmation never under-represents what
-it deletes.
+rule, so the injected ``per_fps``, ``distinct_spatial``, and
+``distinct_channels`` flags decide which rows are tagged. The fps and
+channel rules are symmetric (each mode sleeps the other's entries); the
+spatial rule is one-sided (a base-codec key is legitimate in both modes,
+so only spatial-variant rows sleep, and only while the toggle is off).
+Dormant rows are tagged '— inactive', never hidden, and sink below the
+active rows of their HDR group. Every stored entry always lists, so
+clear-all's confirmation never under-represents what it deletes.
 
 The entry matching ``current_key()`` is the playing row, re-read every pass
 so it tracks reality while the view loops. It is tagged '· playing now' and
@@ -157,13 +157,15 @@ class ManageView:
     """Inspect + delete/clear stored offsets from the script process."""
 
     def __init__(self, read_entries, gui, send_mutation, *, per_fps=False,
-                 distinct_spatial=True, current_key=None, log_debug=None):
-        """``per_fps`` and ``distinct_spatial`` are the granularity toggles
-        at launch (they cannot change while the view is open). They drive
-        display only: 'All FPS' vs an omitted fps axis for the 'all'
-        segment, and the '— inactive' tag on whichever rows the lookup will
-        not consult now. Never filtering: this view is the store's only
-        inspection surface, so every entry always lists.
+                 distinct_spatial=True, distinct_channels=False,
+                 current_key=None, log_debug=None):
+        """``per_fps``, ``distinct_spatial``, and ``distinct_channels`` are
+        the granularity toggles at launch (they cannot change while the
+        view is open). They drive display only: 'All FPS'/'All channels'
+        vs an omitted axis for the 'all' segments, and the '— inactive'
+        tag on whichever rows the lookup will not consult now. Never
+        filtering: this view is the store's only inspection surface, so
+        every entry always lists.
 
         ``current_key`` (see the module docstring) defaults to
         "nothing playing", so a caller without the seam renders plain.
@@ -173,6 +175,7 @@ class ManageView:
         self._send_mutation = send_mutation
         self._per_fps = bool(per_fps)
         self._distinct_spatial = bool(distinct_spatial)
+        self._distinct_channels = bool(distinct_channels)
         self._current_key = current_key or (lambda: '')
         self._log = log_debug or _noop
         # The open drill-down group (an hdr segment, or _OTHER_GROUP);
@@ -375,8 +378,9 @@ class ManageView:
                              playing))
 
         def display_order(row):
-            hdr, audio, fps_rank, raw = sort_key(row.key)
-            return (not row.playing, hdr, row.dormant, audio, fps_rank, raw)
+            hdr, audio, fps_rank, ch_rank, raw = sort_key(row.key)
+            return (not row.playing, hdr, row.dormant, audio, fps_rank,
+                    ch_rank, raw)
 
         rows.sort(key=display_order)
         return rows
@@ -402,22 +406,29 @@ class ManageView:
     def _is_dormant(self, key):
         """True for an entry the lookup will not consult right now.
 
-        Dormancy mirrors the lookup rule per axis. The fps rule is
-        symmetric: with per_fps off only the 'all' key is read, so an
-        exact-rate entry is dormant; with it on, only the fps-specific key
-        is read, so an 'all' entry is dormant. The spatial rule is
-        one-sided: a base-codec key is legitimate in both modes, so only a
+        Dormancy mirrors the lookup rule per axis. The fps and channel
+        rules are symmetric: with a toggle off only the 'all' key is read,
+        so an axis-specific entry is dormant; with it on, only the
+        specific key is read, so an 'all' entry is dormant. (For channels
+        the on-side has one exotic exception the tag accepts: a stream
+        reporting no usable count still consults the 'all' key, but every
+        observed platform reports counts.) The spatial rule is one-sided:
+        a base-codec key is legitimate in both modes, so only a
         spatial-variant entry is dormant, and only while distinct_spatial
         is off (the lookup then reads the base key). The row is tagged
         rather than hidden (hiding would misstate clear-all's scope).
         Unsplittable keys are never tagged.
         """
         try:
-            _hdr, fps_segment, audio_segment = split_key(key)
+            _hdr, fps_segment, audio_segment, ch_segment = split_key(key)
         except ValueError:
             return False
         if not self._distinct_spatial and \
                 spatial_base(audio_segment) != audio_segment:
+            return True
+        # Symmetric axis: the 'all' side sleeps with the toggle on, the
+        # specific side with it off.
+        if (ch_segment == 'all') == self._distinct_channels:
             return True
         if self._per_fps:
             return fps_segment == 'all'
@@ -435,14 +446,15 @@ class ManageView:
     def _render_key(self, describe_fn, key, entry):
         """One describe function plus the verbatim fallback, written once.
 
-        A key that does not split into three segments raises; verbatim
+        A key that does not split into four segments raises; verbatim
         acceptance means an unrecognized key is shown as itself rather than
         crashing the view. The entry's ``video_fps`` metadata renders the
         exact reported rate for per-fps keys.
         """
         try:
             return describe_fn(key, video_fps=entry.get("video_fps"),
-                               per_fps=self._per_fps)
+                               per_fps=self._per_fps,
+                               distinct_channels=self._distinct_channels)
         except ValueError:
             return key
 

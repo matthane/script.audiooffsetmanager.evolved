@@ -25,9 +25,9 @@ from resources.lib.aome.app.session import SessionTracker
 from resources.lib.aome.domain.profile import StreamProfile
 from tests.fakes import FakeClock, FakeGateway, FakeOffsetTable
 
-ALL_KEY = 'dolbyvision|all|truehd'
+ALL_KEY = 'dolbyvision|all|truehd|all'
 # make_profile()'s default 23.976 fps, integer-truncated by the key schema.
-EXACT_KEY = 'dolbyvision|23|truehd'
+EXACT_KEY = 'dolbyvision|23|truehd|all'
 # The label the applier's reset paths read — bound to the production
 # constant so a renamed infolabel cannot leave these tests green-but-wrong.
 DELAY_LABEL = AdjustmentWatcher.INFOLABEL_AUDIO_DELAY
@@ -220,7 +220,7 @@ class TestApplyPath:
         assert rig.announced == []
         miss_lines = [m for m in rig.debug if 'no stored offset' in m]
         assert len(miss_lines) == 1
-        assert 'dolbyvision|60|truehd' in miss_lines[0]  # the one candidate
+        assert 'dolbyvision|60|truehd|all' in miss_lines[0]  # the one candidate
         assert ALL_KEY not in miss_lines[0]              # never consulted
 
 
@@ -645,7 +645,7 @@ class TestStoreMutatedReapply:
         session = rig.start(make_profile(), offset_ms=-125)
         rig.profile_changed()
 
-        self.store_mutated(rig, key='hdr10|all|eac3')
+        self.store_mutated(rig, key='hdr10|all|eac3|all')
 
         assert rig.gateway.applied == [(1, -0.125)]
         assert session.applied == (ALL_KEY, -125)
@@ -690,7 +690,7 @@ class TestStoreMutatedReapply:
         assert session.applied == (None, 0)
         rig.gateway.infolabels[DELAY_LABEL] = '-0.050 s'  # user dials on it
 
-        self.store_mutated(rig, key='hdr10|all|eac3')    # unrelated delete
+        self.store_mutated(rig, key='hdr10|all|eac3|all')    # unrelated delete
 
         assert rig.gateway.applied == [(1, -0.125), (1, 0.0)]  # no 3rd RPC
         assert discarded == []
@@ -891,6 +891,6 @@ class TestPublishedProfile:
         # Startup hygiene: a crashed predecessor's stale value is invisible
         # to fresh dedupe state (nothing published yet), so the explicit
         # clear must not consult it.
-        rig.gateway.window_properties[self.PROP] = 'hdr10|all|ac3'
+        rig.gateway.window_properties[self.PROP] = 'hdr10|all|ac3|all'
         rig.applier.clear_published_profile()
         assert self.PROP not in rig.gateway.window_properties

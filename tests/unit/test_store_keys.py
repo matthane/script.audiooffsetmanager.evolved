@@ -106,8 +106,8 @@ def test_pipe_in_segment_is_neutralised():
     assert keys.audio_segment('weird|name') == 'weird_name'
     key = keys.profile_key('sdr', 24, 'weird|name', per_fps=True)
     assert 'weird_name' in key
-    hdr, fps, audio = keys.split_key(key)
-    assert (hdr, fps, audio) == ('sdr', '24', 'weird_name')
+    hdr, fps, audio, ch = keys.split_key(key)
+    assert (hdr, fps, audio, ch) == ('sdr', '24', 'weird_name', 'all')
 
 
 # --- Fractional-rate pins: truncation keeps NTSC siblings distinct ----------
@@ -151,25 +151,29 @@ def test_per_fps_on_with_unparseable_raises():
 
 def test_profile_key_composition():
     assert keys.profile_key('DolbyVision', 23.976, 'TrueHD', per_fps=True) == \
-        'dolbyvision|23|truehd'
+        'dolbyvision|23|truehd|all'
 
 
 def test_all_key_composition():
-    assert keys.all_key('DolbyVision', 'TrueHD') == 'dolbyvision|all|truehd'
+    assert keys.all_key('DolbyVision', 'TrueHD') == 'dolbyvision|all|truehd|all'
 
 
 def test_split_key_inverts_composition():
-    assert keys.split_key('dolbyvision|23|truehd') == \
-        ('dolbyvision', '23', 'truehd')
-    assert keys.split_key('dolbyvision|all|truehd') == \
-        ('dolbyvision', 'all', 'truehd')
+    assert keys.split_key('dolbyvision|23|truehd|all') == \
+        ('dolbyvision', '23', 'truehd', 'all')
+    assert keys.split_key('dolbyvision|all|truehd|6') == \
+        ('dolbyvision', 'all', 'truehd', '6')
 
 
-def test_split_key_requires_three_parts():
+def test_split_key_requires_four_parts():
+    # Callers see post-canonicalization keys, so the legacy 3-segment
+    # shape never reaches split_key — it raises like any other misfit.
     with pytest.raises(ValueError):
         keys.split_key('dolbyvision|truehd')
     with pytest.raises(ValueError):
-        keys.split_key('dolbyvision|23|truehd|extra')
+        keys.split_key('dolbyvision|23|truehd')
+    with pytest.raises(ValueError):
+        keys.split_key('dolbyvision|23|truehd|all|extra')
 
 
 # --- Idempotence property ---------------------------------------------------
@@ -202,7 +206,7 @@ def test_hdr10plus_display_needs_only_the_canonical_entry():
     # the display tables.
     assert keys.hdr_segment('hdr10plus') == 'hdr10plus'
     assert 'hdr10+' not in keys.HDR_DISPLAY
-    assert keys.describe_key('hdr10plus|all|truehd') == \
+    assert keys.describe_key('hdr10plus|all|truehd|all') == \
         'HDR10+ | Dolby TrueHD'
     assert keys.profile_summary('hdr10plus', 'truehd') == \
         'HDR10+ | TrueHD'
@@ -210,30 +214,50 @@ def test_hdr10plus_display_needs_only_the_canonical_entry():
 
 def test_canonical_key_rewrites_legacy_spellings():
     # The store-boundary re-keying: entries and reset markers written by
-    # an older codec land on the keys live composition produces today.
-    assert keys.canonical_key('hdr10+|all|truehd') == 'hdr10plus|all|truehd'
-    assert keys.canonical_key('dolby vision|23|truehd_atmos') == \
-        'dolbyvision|23|truehd_atmos'
-    assert keys.canonical_key('hlghdr|all|aac') == 'hlg|all|aac'
+    # an older codec land on the keys live composition produces today
+    # (a schema-1 key additionally gains its channel axis).
+    assert keys.canonical_key('hdr10+|all|truehd|all') == \
+        'hdr10plus|all|truehd|all'
+    assert keys.canonical_key('dolby vision|23|truehd_atmos|8') == \
+        'dolbyvision|23|truehd_atmos|8'
+    assert keys.canonical_key('hlghdr|all|aac') == 'hlg|all|aac|all'
+
+
+def test_canonical_key_expands_schema1_keys_with_the_channel_axis():
+    # THE v1→v2 migration: a three-segment key gains a trailing 'all',
+    # losslessly and idempotently, at the same boundary every stored key
+    # already crosses. No other segment is touched.
+    assert keys.canonical_key('dolbyvision|23|truehd') == \
+        'dolbyvision|23|truehd|all'
+    assert keys.canonical_key('sdr|all|aac') == 'sdr|all|aac|all'
+    expanded = keys.canonical_key('hdr10+|all|truehd')
+    assert expanded == 'hdr10plus|all|truehd|all'
+    assert keys.canonical_key(expanded) == expanded
+    # Legacy scribbles expand too (the fps segment still passes through
+    # unrewritten).
+    assert keys.canonical_key('sdr|weird-fps|aac') == 'sdr|weird-fps|aac|all'
 
 
 def test_canonical_key_is_idempotent_and_open_vocabulary():
     # A canonical key round-trips unchanged, and so does a format this
     # code has never seen — future Kodi formats need no code change.
-    assert keys.canonical_key('hdr10plus|all|truehd') == \
-        'hdr10plus|all|truehd'
-    assert keys.canonical_key('x-future-hdr|48|x-future-codec') == \
-        'x-future-hdr|48|x-future-codec'
-    spaced = keys.canonical_key('some new format|all|aac')
+    assert keys.canonical_key('hdr10plus|all|truehd|all') == \
+        'hdr10plus|all|truehd|all'
+    assert keys.canonical_key('x-future-hdr|48|x-future-codec|12') == \
+        'x-future-hdr|48|x-future-codec|12'
+    spaced = keys.canonical_key('some new format|all|aac|all')
     assert keys.canonical_key(spaced) == spaced
 
 
 def test_canonical_key_leaves_scribbles_alone():
-    # Unsplittable keys (hand-edited files) pass through verbatim; the
-    # fps segment is already composed and is never rewritten.
+    # Keys that split to neither shape (hand-edited files) pass through
+    # verbatim; the fps and channel segments are already composed and are
+    # never rewritten.
     assert keys.canonical_key('not-a-key') == 'not-a-key'
-    assert keys.canonical_key('dv|23|truehd|extra') == 'dv|23|truehd|extra'
-    assert keys.canonical_key('sdr|weird-fps|aac') == 'sdr|weird-fps|aac'
+    assert keys.canonical_key('dv|23|truehd|all|extra') == \
+        'dv|23|truehd|all|extra'
+    assert keys.canonical_key('sdr|weird-fps|aac|weird-ch') == \
+        'sdr|weird-fps|aac|weird-ch'
 
 
 @pytest.mark.parametrize('segment, commercial', [
@@ -276,25 +300,26 @@ def test_commercial_names_cover_kodis_codec_vocabulary(segment, commercial):
 
 
 def test_describe_key_known():
-    assert keys.describe_key('dolbyvision|all|truehd') == \
+    assert keys.describe_key('dolbyvision|all|truehd|all') == \
         'Dolby Vision | Dolby TrueHD'
-    assert keys.describe_key('hdr10plus|23|aac') == 'HDR10+ | 23 fps | AAC'
+    assert keys.describe_key('hdr10plus|23|aac|all') == \
+        'HDR10+ | 23 fps | AAC'
 
 
 def test_describe_key_unknown_segments_render_verbatim():
-    assert keys.describe_key('x-future-hdr|48|x-future-codec') == \
+    assert keys.describe_key('x-future-hdr|48|x-future-codec|all') == \
         'x-future-hdr | 48 fps | x-future-codec'
 
 
 def test_describe_key_shows_exact_rate_from_video_fps_metadata():
     # '23 fps' is key identity, not a rate a user
     # recognises — the entry's video_fps metadata renders the EXACT rate.
-    assert keys.describe_key('dolbyvision|23|eac3', video_fps=23.976) == \
+    assert keys.describe_key('dolbyvision|23|eac3|all', video_fps=23.976) == \
         'Dolby Vision | 23.976 fps | Dolby Digital Plus'
-    assert keys.describe_key('hdr10|59|ac3', video_fps=59.94) == \
+    assert keys.describe_key('hdr10|59|ac3|all', video_fps=59.94) == \
         'HDR10 | 59.94 fps | Dolby Digital'
     # Whole rates render clean (no trailing '.0').
-    assert keys.describe_key('hdr10|24|ac3', video_fps=24.0) == \
+    assert keys.describe_key('hdr10|24|ac3|all', video_fps=24.0) == \
         'HDR10 | 24 fps | Dolby Digital'
 
 
@@ -304,21 +329,23 @@ def test_describe_key_all_segment_is_toggle_aware():
     # rate, in the other mode — and the view's dormancy tag carries the
     # not-in-effect part. OFF: 'all' is the only key consulted, so the
     # fps axis carries no information and is omitted (the default).
-    assert keys.describe_key('dolbyvision|all|truehd', per_fps=True) == \
+    assert keys.describe_key('dolbyvision|all|truehd|all', per_fps=True) == \
         'Dolby Vision | All FPS | Dolby TrueHD'
-    assert keys.describe_key('dolbyvision|all|truehd', per_fps=False) == \
+    assert keys.describe_key('dolbyvision|all|truehd|all', per_fps=False) == \
         'Dolby Vision | Dolby TrueHD'
     # A numeric segment is unaffected by the toggle.
-    assert keys.describe_key('hdr10|23|ac3', video_fps=23.976,
-                             per_fps=True) == 'HDR10 | 23.976 fps | Dolby Digital'
+    assert keys.describe_key('hdr10|23|ac3|all', video_fps=23.976,
+                             per_fps=True) == \
+        'HDR10 | 23.976 fps | Dolby Digital'
 
 
 def test_describe_key_all_key_ignores_video_fps_metadata():
     # 'all' is the identity: the entry's rate is just the last store
     # instant's, not what the key matches.
-    assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976) == \
+    assert keys.describe_key('dolbyvision|all|truehd|all',
+                             video_fps=23.976) == \
         'Dolby Vision | Dolby TrueHD'
-    assert keys.describe_key('dolbyvision|all|truehd', video_fps=23.976,
+    assert keys.describe_key('dolbyvision|all|truehd|all', video_fps=23.976,
                              per_fps=True) == \
         'Dolby Vision | All FPS | Dolby TrueHD'
 
@@ -326,33 +353,58 @@ def test_describe_key_all_key_ignores_video_fps_metadata():
 def test_describe_key_degrades_to_segment_without_usable_metadata():
     # Absent or malformed (hand-edited file) metadata falls back to the
     # truncated segment rather than crashing or rendering garbage.
-    assert keys.describe_key('hdr10plus|23|aac') == 'HDR10+ | 23 fps | AAC'
+    assert keys.describe_key('hdr10plus|23|aac|all') == 'HDR10+ | 23 fps | AAC'
     for bad in ('23.976', True, float('nan'), float('inf'), None):
-        assert keys.describe_key('hdr10plus|23|aac', video_fps=bad) == \
+        assert keys.describe_key('hdr10plus|23|aac|all', video_fps=bad) == \
             'HDR10+ | 23 fps | AAC'
+
+
+def test_describe_key_channel_segment_is_toggle_aware():
+    # Same rule as the fps axis: a specific count always renders (its
+    # layout name, or '<n> ch' verbatim for an unmapped count); the 'all'
+    # segment renders its scope only in the mode where it is dormant.
+    assert keys.describe_key('dolbyvision|all|truehd|6') == \
+        'Dolby Vision | Dolby TrueHD | 5.1'
+    assert keys.describe_key('dolbyvision|all|truehd|8',
+                             distinct_channels=True) == \
+        'Dolby Vision | Dolby TrueHD | 7.1'
+    assert keys.describe_key('sdr|all|aac|4') == 'SDR | AAC | 4 ch'
+    assert keys.describe_key('dolbyvision|all|truehd|all',
+                             distinct_channels=True) == \
+        'Dolby Vision | Dolby TrueHD | All channels'
+    # Both axes compose.
+    assert keys.describe_key('dolbyvision|23|truehd|2', video_fps=23.976,
+                             per_fps=True) == \
+        'Dolby Vision | 23.976 fps | Dolby TrueHD | 2.0'
 
 
 def test_describe_key_in_group_drops_hdr_and_leads_with_codec():
     # The drill-down row: one HDR group is open, so its name is redundant —
     # the codec leads (the stable-width part) and the rate follows. With
     # the toggle off the 'all' axis is omitted too: just the codec.
-    assert keys.describe_key_in_group('dolbyvision|all|truehd') == \
+    assert keys.describe_key_in_group('dolbyvision|all|truehd|all') == \
         'Dolby TrueHD'
     assert keys.describe_key_in_group(
-        'dolbyvision|23|truehd', video_fps=23.976, per_fps=True) == \
+        'dolbyvision|23|truehd|all', video_fps=23.976, per_fps=True) == \
         'Dolby TrueHD · 23.976 fps'
 
 
 def test_describe_key_in_group_matches_describe_key_semantics():
-    # Same fps display rules as describe_key: toggle-aware 'all', exact
+    # Same axis display rules as describe_key: toggle-aware 'all', exact
     # rate from metadata, segment degradation without it — one vocabulary.
-    assert keys.describe_key_in_group('dolbyvision|all|truehd',
+    assert keys.describe_key_in_group('dolbyvision|all|truehd|all',
                                       per_fps=True) == \
         'Dolby TrueHD · All FPS'
-    assert keys.describe_key_in_group('hdr10|59|ac3') == \
+    assert keys.describe_key_in_group('hdr10|59|ac3|all') == \
         'Dolby Digital · 59 fps'
+    assert keys.describe_key_in_group('hdr10|59|ac3|6', video_fps=59.94,
+                                      per_fps=True) == \
+        'Dolby Digital · 59.94 fps · 5.1'
+    assert keys.describe_key_in_group('dolbyvision|all|truehd|all',
+                                      distinct_channels=True) == \
+        'Dolby TrueHD · All channels'
     # Verbatim fallback for an unlisted codec, like every display surface.
-    assert keys.describe_key_in_group('sdr|all|x-future-codec') == \
+    assert keys.describe_key_in_group('sdr|all|x-future-codec|all') == \
         'x-future-codec'
 
 
@@ -365,26 +417,43 @@ def test_describe_key_in_group_raises_on_unsplittable_key():
 
 def test_sort_key_groups_hdr_then_codec_then_numeric_rate():
     ordered = sorted([
-        'hdr10|all|ac3',
-        'dolbyvision|24|truehd',
-        'dolbyvision|119|eac3',
-        'dolbyvision|23|eac3',
-        'dolbyvision|all|eac3',
+        'hdr10|all|ac3|all',
+        'dolbyvision|24|truehd|all',
+        'dolbyvision|119|eac3|all',
+        'dolbyvision|23|eac3|all',
+        'dolbyvision|all|eac3|all',
     ], key=keys.sort_key)
     assert ordered == [
-        'dolbyvision|all|eac3',      # 'all' before per-fps rates
-        'dolbyvision|23|eac3',       # numeric: 23 < 119 (not lexicographic)
-        'dolbyvision|119|eac3',
-        'dolbyvision|24|truehd',     # codec groups within the HDR mode
-        'hdr10|all|ac3',
+        'dolbyvision|all|eac3|all',   # 'all' before per-fps rates
+        'dolbyvision|23|eac3|all',    # numeric: 23 < 119 (not lexicographic)
+        'dolbyvision|119|eac3|all',
+        'dolbyvision|24|truehd|all',  # codec groups within the HDR mode
+        'hdr10|all|ac3|all',
+    ]
+
+
+def test_sort_key_channel_axis_breaks_ties_like_fps():
+    # Within one codec+rate: 'all' first, then counts ascending
+    # numerically ('12' after '6', not before).
+    ordered = sorted([
+        'sdr|all|aac|12',
+        'sdr|all|aac|6',
+        'sdr|all|aac|all',
+        'sdr|all|aac|2',
+    ], key=keys.sort_key)
+    assert ordered == [
+        'sdr|all|aac|all',
+        'sdr|all|aac|2',
+        'sdr|all|aac|6',
+        'sdr|all|aac|12',
     ]
 
 
 def test_sort_key_is_total_over_hand_edited_keys():
-    # Unsplittable keys and non-numeric fps segments must sort somewhere
+    # Unsplittable keys and non-numeric axis segments must sort somewhere
     # deterministic without raising (verbatim-acceptance doctrine: a
     # scribbled file renders, never crashes).
-    scribbles = ['not-a-key', 'hdr10|abc|ac3', 'dolbyvision|23|eac3']
+    scribbles = ['not-a-key', 'hdr10|abc|ac3|all', 'dolbyvision|23|eac3|xyz']
     ordered = sorted(scribbles * 2, key=keys.sort_key)
     assert ordered == sorted(scribbles * 2, key=keys.sort_key)  # stable
     assert len(ordered) == 6
@@ -407,7 +476,7 @@ def test_profile_summary_uses_short_names_with_full_table_fallback():
     assert keys.profile_summary('dolbyvision', 'eac3_ddp_atmos', 23.976) == \
         'DV | 23.976 fps | DD+ Atmos'
     assert keys.profile_summary('dolbyvision', 'ac3') == 'DV | AC3'
-    assert keys.describe_key('dolbyvision|all|eac3_ddp_atmos') == \
+    assert keys.describe_key('dolbyvision|all|eac3_ddp_atmos|all') == \
         'Dolby Vision | Dolby Digital Plus Atmos'
     # A segment with no short form falls back to the FULL display name...
     assert keys.profile_summary('hdr10', 'dtshd_ma') == 'HDR10 | DTS-HD MA'
@@ -449,15 +518,78 @@ def test_audio_absence_is_unknown_in_both_spatial_modes():
 def test_profile_key_composes_the_spatial_mode():
     assert keys.profile_key('dolbyvision', 23.976, 'truehd_atmos',
                             per_fps=True, distinct_spatial=False) \
-        == 'dolbyvision|23|truehd'
+        == 'dolbyvision|23|truehd|all'
     assert keys.all_key('dolbyvision', 'truehd_atmos',
-                        distinct_spatial=False) == 'dolbyvision|all|truehd'
+                        distinct_spatial=False) == 'dolbyvision|all|truehd|all'
 
 
 def test_canonical_key_never_spatial_collapses():
     # Boundary canonicalization is mode-independent: collapsing here would
     # destructively rewrite stored variant keys while the toggle is off.
-    assert keys.canonical_key('dolbyvision|all|truehd_atmos') \
-        == 'dolbyvision|all|truehd_atmos'
-    assert keys.canonical_key('sdr|23|dtshd_ma_x_imax') \
-        == 'sdr|23|dtshd_ma_x_imax'
+    assert keys.canonical_key('dolbyvision|all|truehd_atmos|all') \
+        == 'dolbyvision|all|truehd_atmos|all'
+    assert keys.canonical_key('sdr|23|dtshd_ma_x_imax|all') \
+        == 'sdr|23|dtshd_ma_x_imax|all'
+
+
+# --- Channel-mode pins: the channel axis's granularity flag ------------------
+
+def test_channel_segment_off_is_all_and_ignores_value():
+    assert keys.channel_segment(6, False) == 'all'
+    assert keys.channel_segment(None, False) == 'all'
+    assert keys.channel_segment('unknown', False) == 'all'
+    # The default serves mode-independent callers, like the other axes.
+    assert keys.channel_segment(6) == 'all'
+
+
+def test_channel_segment_on_is_the_verbatim_count():
+    assert keys.channel_segment(6, True) == '6'
+    assert keys.channel_segment(8, True) == '8'
+    assert keys.channel_segment(2, True) == '2'
+    # Open vocabulary: any positive count keys, mapped display or not.
+    assert keys.channel_segment(22, True) == '22'
+    assert keys.channel_segment('6', True) == '6'
+
+
+def test_channel_segment_degrades_to_all_never_raises():
+    # Unlike fps there is no completeness gate upstream, so an unusable
+    # count degrades to 'all' — the intended key for a channel-less
+    # stream, identical in lookup and write. Non-finite floats are junk
+    # like any other (OverflowError from int(inf) must not escape).
+    for bad in (None, 'unknown', '', 'abc', 0, -2, True, False,
+                float('nan'), float('inf'), float('-inf')):
+        assert keys.channel_segment(bad, True) == 'all'
+
+
+def test_profile_key_composes_the_channel_mode():
+    assert keys.profile_key('dolbyvision', 23.976, 'truehd_atmos',
+                            per_fps=True, channels=8,
+                            distinct_channels=True) \
+        == 'dolbyvision|23|truehd_atmos|8'
+    assert keys.all_key('dolbyvision', 'truehd', channels=6,
+                        distinct_channels=True) == 'dolbyvision|all|truehd|6'
+    # Off: the count is ignored, like fps off.
+    assert keys.all_key('dolbyvision', 'truehd', channels=6,
+                        distinct_channels=False) == \
+        'dolbyvision|all|truehd|all'
+
+
+def test_canonical_key_never_collapses_the_channel_axis():
+    # Same rule as spatial: a mode-dependent rewrite here would
+    # destructively rewrite stored count keys while the toggle is off.
+    assert keys.canonical_key('dolbyvision|all|truehd|6') == \
+        'dolbyvision|all|truehd|6'
+    assert keys.canonical_key('sdr|23|aac|2') == 'sdr|23|aac|2'
+
+
+def test_profile_summary_channel_axis_is_offset_relevance_gated():
+    # The caller passes channels only when the count is offset-relevant
+    # (distinct-channels on), mirroring how fps rides the summary.
+    assert keys.profile_summary('dolbyvision', 'truehd_atmos', 23.976, 8) == \
+        'DV | 23.976 fps | TrueHD Atmos | 7.1'
+    assert keys.profile_summary('hdr10', 'aac', None, 4) == \
+        'HDR10 | AAC | 4 ch'
+    assert keys.profile_summary('hdr10', 'aac', None, None) == 'HDR10 | AAC'
+    # An unusable count renders nothing rather than 'All channels'.
+    assert keys.profile_summary('hdr10', 'aac', None, 'unknown') == \
+        'HDR10 | AAC'

@@ -52,7 +52,8 @@ delete could quiesce and re-store the very entry the user deleted.
 
 Adoption (StreamDetector) and store (here) are serialized on one thread, and
 the write key is derived from ``session.profile`` plus the live granularity
-toggles (per-fps, distinct-spatial) at store instant, so a store can never
+toggles (per-fps, distinct-spatial, distinct-channels) at store instant, so
+a store can never
 interleave with a concurrent profile re-adoption.
 
 Pure app layer: Kodi I/O via the injected gateway, eligibility via the

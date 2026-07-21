@@ -24,10 +24,12 @@ Design points:
 * **Canonical keys.** Every key crossing the store boundary (file load, the
   other-process reader, a restored backup) is re-expressed through
   ``keys.canonical_key``, so entries and reset markers written by an older
-  key codec keep resolving after the spelling rules evolve. On a spelling
-  collision the canonically-spelled entry wins (it is the fresher teaching),
-  and a marker whose canonical key holds an entry is superseded, like
-  ``set``.
+  key codec keep resolving after the spelling rules evolve. This is also
+  the whole schema migration: a version-1 key (three segments, no channel
+  axis) expands to its four-segment spelling here, on load and import
+  alike, with no separate migration code. On a spelling collision the
+  canonically-spelled entry wins (it is the fresher teaching), and a marker
+  whose canonical key holds an entry is superseded, like ``set``.
 * **Deletion leaves a reset marker.** ``delete``/``clear`` (and an import
   that drops keys) record the removed key(s) in a ``resets`` section: the
   user expects 0 the next time that profile plays, but Kodi's own per-file
@@ -50,7 +52,12 @@ from datetime import datetime, timezone
 from resources.lib.aome.store import keys
 
 _PREFIX = "AOMe_OffsetStore:"
-_SCHEMA_VERSION = 1
+# 2: keys grew the channel axis (4 segments). Older files (version 1,
+# 3-segment keys) load fine — canonical_key expands them with a trailing
+# 'all', which is the whole migration — and the first persist rewrites the
+# file as version 2, at which point a downgraded build goes read-only on it
+# (the guard below).
+_SCHEMA_VERSION = 2
 
 
 def _noop(_message):

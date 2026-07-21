@@ -21,11 +21,12 @@ Every gather posts ``StreamProbed`` platform facts (log-only).
 
 "Same stream" is judged on the offset-relevant identity
 (``policies.stream_identity`` with the live granularity toggles), not
-raw dataclass equality: incidental fields (player_id, audio_channels, and,
-per the toggles, the fps rate or a spatial-variant distinction) can wiggle
-between gathers without the stream changing for offset purposes. An identity-equal gather silently
-refreshes ``session.profile`` with no events and no state change; comparing
-raw equality would strand verification in a perpetual re-adopt loop.
+raw dataclass equality: incidental fields (player_id and, per the toggles,
+the fps rate, a spatial-variant distinction, or the channel count) can
+wiggle between gathers without the stream changing for offset purposes. An
+identity-equal gather silently refreshes ``session.profile`` with no
+events and no state change; comparing raw equality would strand
+verification in a perpetual re-adopt loop.
 
 Verbatim acceptance: the audio and HDR axes carry what Kodi reported,
 normalized by ``aome.store.keys`` (case-fold/trim, absence to 'unknown', and
@@ -319,18 +320,20 @@ class StreamDetector:
     def _same_stream(self, profile, adopted):
         """Offset-relevant identity at the granularity in force now.
 
-        Both granularity toggles are read at compare instant: with per-fps
+        All granularity toggles are read at compare instant: with per-fps
         off, an fps wiggle is an incidental-field refresh; with
         distinct-spatial off, a switch between a codec and its spatial
-        variant is too. On, each axis joins the identity like the lookup
-        key.
+        variant is too; with distinct-channels off, so is a channel-count
+        wiggle. On, each axis joins the identity like the lookup key.
         """
         if adopted is None:
             return False
         per_fps = self._settings.per_fps_offsets_enabled()
         distinct = self._settings.distinct_spatial_enabled()
-        return (policies.stream_identity(profile, per_fps, distinct)
-                == policies.stream_identity(adopted, per_fps, distinct))
+        channels = self._settings.distinct_channels_enabled()
+        return (policies.stream_identity(profile, per_fps, distinct, channels)
+                == policies.stream_identity(adopted, per_fps, distinct,
+                                            channels))
 
     def _adopt(self, session, profile):
         """Write the session's profile and (re-)earn stability for it."""

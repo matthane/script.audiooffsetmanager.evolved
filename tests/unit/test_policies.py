@@ -13,13 +13,14 @@ from resources.lib.aome.domain.profile import StreamProfile
 NNBSP = " "
 
 
-def make_profile(hdr_type="hdr10", audio_format="truehd", video_fps=23.976):
+def make_profile(hdr_type="hdr10", audio_format="truehd", video_fps=23.976,
+                 audio_channels=6):
     return StreamProfile(
         hdr_type=hdr_type,
         audio_format=audio_format,
         video_fps=video_fps,
         player_id=1,
-        audio_channels=6,
+        audio_channels=audio_channels,
     )
 
 
@@ -180,3 +181,52 @@ def test_identity_spatial_collapse_leaves_strangers_alone():
     b = make_profile(audio_format="x-future-codec")
     assert (policies.stream_identity(a, False, False)
             == policies.stream_identity(b, False, False))
+
+
+def test_identity_ignores_channels_by_default():
+    # The count is an incidental field until the channel toggle opts in:
+    # a wiggle between gathers is not a stream change.
+    a = make_profile(audio_channels=8)
+    b = make_profile(audio_channels=6)
+    assert (policies.stream_identity(a, False)
+            == policies.stream_identity(b, False))
+    assert (policies.stream_identity(a, False, True, False)
+            == policies.stream_identity(b, False, True, False))
+
+
+def test_identity_includes_the_count_when_channels_toggle_on():
+    a = make_profile(audio_channels=8)
+    b = make_profile(audio_channels=6)
+    same = make_profile(audio_channels=8)
+    assert (policies.stream_identity(a, False, True, True)
+            != policies.stream_identity(b, False, True, True))
+    assert (policies.stream_identity(a, False, True, True)
+            == policies.stream_identity(same, False, True, True))
+
+
+def test_identity_normalizes_unusable_counts_together():
+    # Two profiles with unusable counts resolve to the same 'all' key, so
+    # they must share an identity — None joins for both.
+    a = make_profile(audio_channels='unknown')
+    b = make_profile(audio_channels=0)
+    assert (policies.stream_identity(a, False, True, True)
+            == policies.stream_identity(b, False, True, True))
+    c = make_profile(audio_channels=8)
+    assert (policies.stream_identity(a, False, True, True)
+            != policies.stream_identity(c, False, True, True))
+
+
+def test_identity_all_three_axes_compose():
+    a = make_profile(video_fps=23.976, audio_format="truehd_atmos",
+                     audio_channels=8)
+    b = make_profile(video_fps=23.976, audio_format="truehd",
+                     audio_channels=8)
+    # Spatial off + channels on: variant and base share the identity when
+    # the counts agree...
+    assert (policies.stream_identity(a, True, False, True)
+            == policies.stream_identity(b, True, False, True))
+    # ...and split when they differ.
+    c = make_profile(video_fps=23.976, audio_format="truehd",
+                     audio_channels=6)
+    assert (policies.stream_identity(a, True, False, True)
+            != policies.stream_identity(c, True, False, True))

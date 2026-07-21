@@ -147,6 +147,13 @@ class Settings:
         start collapsing."""
         return self.get_bool('distinct_spatial_formats', True)
 
+    def distinct_channels_enabled(self):
+        """The ONE channel-granularity knob: OFF = the all-channels key
+        world. Defaults OFF like per_fps: collapsed is the shipped
+        behavior, so an unreadable setting must not silently start keying
+        by count."""
+        return self.get_bool('distinct_channel_counts', False)
+
     def apply_enabled(self):
         """The apply toggle: gates the applier only, never the watcher.
 

@@ -18,7 +18,7 @@ from resources.lib.aome.store.offset_store import OffsetStore
 FAKE_TS = 1752613391.0
 EXPECTED_STAMP = "2025-07-15T21:03:11Z"
 
-KEY = "dolbyvision|23|truehd"
+KEY = "dolbyvision|23|truehd|all"
 
 
 def make_store(tmp_path, name="offsets.json", clock=None):
@@ -142,7 +142,7 @@ def test_delete_existing_persists(tmp_path):
 def test_delete_missing_does_not_write(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)
     store.load()
-    store.set("other|23|ac3", 50)
+    store.set("other|23|ac3|all", 50)
     before = open(path, "rb").read()
 
     assert store.delete(KEY) is False
@@ -157,7 +157,7 @@ def test_clear_returns_count_and_persists_empty(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
-    store.set("other|24|ac3", 50)
+    store.set("other|24|ac3|all", 50)
     assert store.clear() == 2
     assert len(store) == 0
 
@@ -167,10 +167,10 @@ def test_clear_returns_count_and_persists_empty(tmp_path):
     # Clear-all leaves a reset marker per removed key: the "expect 0
     # next time" contract holds for clear too.
     on_disk = json.loads(open(path, "r", encoding="utf-8").read())
-    assert on_disk == {"version": 1, "profiles": {},
-                       "resets": sorted([KEY, "other|24|ac3"])}
+    assert on_disk == {"version": 2, "profiles": {},
+                       "resets": sorted([KEY, "other|24|ac3|all"])}
     assert reopened.reset_pending(KEY)
-    assert reopened.reset_pending("other|24|ac3")
+    assert reopened.reset_pending("other|24|ac3|all")
 
 
 def test_clear_on_empty_writes_nothing(tmp_path):
@@ -199,7 +199,7 @@ def test_corruption_quarantines_and_recovers(tmp_path):
     # A subsequent set recreates a valid file.
     assert store.set(KEY, 175) is True
     on_disk = json.loads(open(path, "r", encoding="utf-8").read())
-    assert on_disk["version"] == 1
+    assert on_disk["version"] == 2
     assert on_disk["profiles"][KEY]["delay_ms"] == 175
 
 
@@ -249,7 +249,7 @@ def test_missing_file_is_clean(tmp_path):
 
 def test_future_version_is_read_only_and_untouched(tmp_path):
     store, path, _debug, warning = make_store(tmp_path)
-    original = '{"version": 2, "profiles": {"k": {"delay_ms": 5}}}'
+    original = '{"version": 3, "profiles": {"k": {"delay_ms": 5}}}'
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(original)
 
@@ -275,21 +275,21 @@ def test_lenient_entry_drop(tmp_path):
     payload = {
         "version": 1,
         "profiles": {
-            "good|23|truehd": {"delay_ms": 175, "updated": EXPECTED_STAMP,
+            "good|23|truehd|all": {"delay_ms": 175, "updated": EXPECTED_STAMP,
                                "source": "user"},
-            "bad|24|ac3": {"delay_ms": "abc"},       # non-int delay -> dropped
-            "notdict|25|eac3": "oops",               # not a dict -> dropped
-            "boolish|29|dca": {"delay_ms": True},    # bool delay -> dropped
+            "bad|24|ac3|all": {"delay_ms": "abc"},       # non-int delay -> dropped
+            "notdict|25|eac3|all": "oops",               # not a dict -> dropped
+            "boolish|29|dca|all": {"delay_ms": True},    # bool delay -> dropped
         },
     }
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(payload))
 
     store.load()
-    assert store.get("good|23|truehd")["delay_ms"] == 175
-    assert store.get("bad|24|ac3") is None
-    assert store.get("notdict|25|eac3") is None
-    assert store.get("boolish|29|dca") is None
+    assert store.get("good|23|truehd|all")["delay_ms"] == 175
+    assert store.get("bad|24|ac3|all") is None
+    assert store.get("notdict|25|eac3|all") is None
+    assert store.get("boolish|29|dca|all") is None
     assert len(store) == 1
     # Per-entry damage is not whole-file corruption.
     assert store.pop_corruption() is False
@@ -424,7 +424,7 @@ def test_nonfinite_video_fps_is_rejected(tmp_path):
 def test_read_only_property_reflects_future_version(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write('{"version": 2, "profiles": {}}')
+        handle.write('{"version": 3, "profiles": {}}')
     store.load()
     assert store.read_only is True
 
@@ -532,7 +532,7 @@ def test_read_profiles_never_quarantines_a_corrupt_file(tmp_path):
 def test_read_profiles_refuses_future_schema_untouched(tmp_path):
     from resources.lib.aome.store.offset_store import StoreUnreadable
     path = tmp_path / "offsets.json"
-    blob = json.dumps({"version": 2, "profiles": {KEY: {"delay_ms": 5}}})
+    blob = json.dumps({"version": 3, "profiles": {KEY: {"delay_ms": 5}}})
     path.write_text(blob, encoding="utf-8")
 
     with pytest.raises(StoreUnreadable) as excinfo:
@@ -644,10 +644,10 @@ def test_read_profiles_never_shows_reset_markers(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
-    store.set("other|24|ac3", 50)
+    store.set("other|24|ac3|all", 50)
     store.delete(KEY)
     entries = read_profiles(path)
-    assert set(entries) == {"other|24|ac3"}
+    assert set(entries) == {"other|24|ac3|all"}
 
 
 # --- read_import: the backup restore-source reader -----------------------------
@@ -709,18 +709,18 @@ def test_replace_all_replaces_everything_and_persists(tmp_path):
     store, path, _d, _w = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
-    store.set("hdr10|all|ac3", 50)
+    store.set("hdr10|all|ac3|all", 50)
 
-    imported = {"hlg|all|eac3": {"delay_ms": -75, "updated": "x",
+    imported = {"hlg|all|eac3|all": {"delay_ms": -75, "updated": "x",
                                  "source": "user"}}
     assert store.replace_all(imported) is True
     assert store.get(KEY) is None
-    assert store.get("hlg|all|eac3")["delay_ms"] == -75
+    assert store.get("hlg|all|eac3|all")["delay_ms"] == -75
     assert len(store) == 1
 
     reopened, _p, _d2, _w2 = make_store(tmp_path)
     reopened.load()
-    assert set(reopened.entries()) == {"hlg|all|eac3"}
+    assert set(reopened.entries()) == {"hlg|all|eac3|all"}
 
 
 def test_replace_all_marks_dropped_keys_for_reset(tmp_path):
@@ -729,11 +729,11 @@ def test_replace_all_marks_dropped_keys_for_reset(tmp_path):
     store, _path, _d, _w = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
-    store.set("hdr10|all|ac3", 50)
+    store.set("hdr10|all|ac3|all", 50)
 
-    store.replace_all({"hdr10|all|ac3": {"delay_ms": 60}})
+    store.replace_all({"hdr10|all|ac3|all": {"delay_ms": 60}})
     assert store.reset_pending(KEY) is True
-    assert store.reset_pending("hdr10|all|ac3") is False
+    assert store.reset_pending("hdr10|all|ac3|all") is False
 
     reopened, _p, _d2, _w2 = make_store(tmp_path)
     reopened.load()
@@ -746,13 +746,13 @@ def test_replace_all_supersedes_pending_markers_it_covers(tmp_path):
     store, _path, _d, _w = make_store(tmp_path)
     store.load()
     store.set(KEY, 100)
-    store.set("hdr10|all|ac3", 50)
+    store.set("hdr10|all|ac3|all", 50)
     store.delete(KEY)                       # marker for KEY
-    store.delete("hdr10|all|ac3")           # marker for hdr10
+    store.delete("hdr10|all|ac3|all")           # marker for hdr10
 
     store.replace_all({KEY: {"delay_ms": 25}})
     assert store.reset_pending(KEY) is False
-    assert store.reset_pending("hdr10|all|ac3") is True
+    assert store.reset_pending("hdr10|all|ac3|all") is True
 
 
 def test_replace_all_filters_malformed_entries(tmp_path):
@@ -797,9 +797,9 @@ def test_replace_all_reports_persist_failure_with_memory_standing(
     store.set(KEY, 100)
     monkeypatch.setattr(store, "_persist", lambda: False)
 
-    assert store.replace_all({"hlg|all|eac3": {"delay_ms": -75}}) is False
+    assert store.replace_all({"hlg|all|eac3|all": {"delay_ms": -75}}) is False
     # In-memory replacement stands, consistent with set/delete/clear.
-    assert store.get("hlg|all|eac3")["delay_ms"] == -75
+    assert store.get("hlg|all|eac3|all")["delay_ms"] == -75
     assert store.get(KEY) is None
     assert store.reset_pending(KEY) is True
 
@@ -812,13 +812,13 @@ def test_read_import_document_carries_validated_reset_markers(tmp_path):
     path.write_text(json.dumps({
         "version": 1,
         "profiles": {KEY: {"delay_ms": 175}},
-        "resets": ["sdr|all|aac", "", 7, None],
+        "resets": ["sdr|all|aac|all", "", 7, None],
     }), encoding="utf-8")
 
     entries, resets = read_import_document(str(path))
     assert set(entries) == {KEY}
     # Same rules as load(): non-string/empty markers dropped, keys kept.
-    assert resets == {"sdr|all|aac"}
+    assert resets == {"sdr|all|aac|all"}
 
 
 def test_read_import_document_without_resets_section_is_empty(tmp_path):
@@ -837,15 +837,15 @@ def test_replace_all_carries_backup_reset_markers(tmp_path):
     store.load()
     store.set(KEY, 100)
 
-    store.replace_all({"hdr10|all|ac3": {"delay_ms": 60}},
-                      resets=["sdr|all|aac", "hdr10|all|ac3"])
-    assert store.reset_pending("sdr|all|aac") is True     # carried
-    assert store.reset_pending("hdr10|all|ac3") is False  # superseded
+    store.replace_all({"hdr10|all|ac3|all": {"delay_ms": 60}},
+                      resets=["sdr|all|aac|all", "hdr10|all|ac3|all"])
+    assert store.reset_pending("sdr|all|aac|all") is True     # carried
+    assert store.reset_pending("hdr10|all|ac3|all") is False  # superseded
     assert store.reset_pending(KEY) is True               # dropped live key
 
     reopened, _p, _d2, _w2 = make_store(tmp_path)
     reopened.load()
-    assert reopened.reset_pending("sdr|all|aac") is True
+    assert reopened.reset_pending("sdr|all|aac|all") is True
 
 
 def test_discard_import_removes_file_and_tolerates_absence(tmp_path):
@@ -881,8 +881,8 @@ def test_load_rekeys_legacy_spellings(tmp_path):
         "dolby vision|23|truehd_atmos": {"delay_ms": 50},
     })
     store.load()
-    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 40
-    assert store.get("dolbyvision|23|truehd_atmos")["delay_ms"] == 50
+    assert store.get("hdr10plus|all|truehd|all")["delay_ms"] == 40
+    assert store.get("dolbyvision|23|truehd_atmos|all")["delay_ms"] == 50
     assert store.get("hdr10+|all|truehd") is None
     assert store.get("dolby vision|23|truehd_atmos") is None
     assert any("re-keying" in line for line in debug)
@@ -892,9 +892,9 @@ def test_load_keeps_unknown_formats_verbatim(tmp_path):
     # Open vocabulary survives the boundary: a format this code has never
     # seen loads under exactly the key it was stored with.
     store, path, _debug, _warning = make_store(tmp_path)
-    _write_document(path, {"x-future-hdr|48|x-future-codec": {"delay_ms": 7}})
+    _write_document(path, {"x-future-hdr|48|x-future-codec|all": {"delay_ms": 7}})
     store.load()
-    assert store.get("x-future-hdr|48|x-future-codec")["delay_ms"] == 7
+    assert store.get("x-future-hdr|48|x-future-codec|all")["delay_ms"] == 7
 
 
 def test_load_prefers_the_canonical_entry_on_collision(tmp_path):
@@ -903,11 +903,11 @@ def test_load_prefers_the_canonical_entry_on_collision(tmp_path):
     # file order.
     store, path, debug, _warning = make_store(tmp_path)
     _write_document(path, {
-        "hdr10plus|all|truehd": {"delay_ms": 60},
+        "hdr10plus|all|truehd|all": {"delay_ms": 60},
         "hdr10+|all|truehd": {"delay_ms": 40},
     })
     store.load()
-    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 60
+    assert store.get("hdr10plus|all|truehd|all")["delay_ms"] == 60
     assert len(store) == 1
     assert any("legacy-spelled duplicate" in line for line in debug)
 
@@ -916,7 +916,7 @@ def test_load_canonicalizes_reset_markers(tmp_path):
     store, path, _debug, _warning = make_store(tmp_path)
     _write_document(path, {}, resets=["hdr10+|all|ac3"])
     store.load()
-    assert store.reset_pending("hdr10plus|all|ac3") is True
+    assert store.reset_pending("hdr10plus|all|ac3|all") is True
     assert store.reset_pending("hdr10+|all|ac3") is False
 
 
@@ -924,11 +924,11 @@ def test_load_entry_supersedes_a_rekeyed_marker(tmp_path):
     # A pre-rekey delete marker meets a post-rekey re-teach: the entry is
     # the newer intent, exactly as set() supersedes markers at runtime.
     store, path, _debug, _warning = make_store(tmp_path)
-    _write_document(path, {"hdr10plus|all|truehd": {"delay_ms": 25}},
+    _write_document(path, {"hdr10plus|all|truehd|all": {"delay_ms": 25}},
                     resets=["hdr10+|all|truehd"])
     store.load()
-    assert store.get("hdr10plus|all|truehd")["delay_ms"] == 25
-    assert store.reset_pending("hdr10plus|all|truehd") is False
+    assert store.get("hdr10plus|all|truehd|all")["delay_ms"] == 25
+    assert store.reset_pending("hdr10plus|all|truehd|all") is False
 
 
 def test_replace_all_canonicalizes_imported_keys_and_markers(tmp_path):
@@ -940,9 +940,9 @@ def test_replace_all_canonicalizes_imported_keys_and_markers(tmp_path):
         {"hdr10+|all|aac": {"delay_ms": 5}},
         resets=["dolby vision|all|ac3"],
     ) is True
-    assert store.get("hdr10plus|all|aac")["delay_ms"] == 5
+    assert store.get("hdr10plus|all|aac|all")["delay_ms"] == 5
     assert store.get("hdr10+|all|aac") is None
-    assert store.reset_pending("dolbyvision|all|ac3") is True
+    assert store.reset_pending("dolbyvision|all|ac3|all") is True
 
 
 def test_read_profiles_presents_canonical_keys(tmp_path):
@@ -950,4 +950,94 @@ def test_read_profiles_presents_canonical_keys(tmp_path):
     path = str(tmp_path / "offsets.json")
     _write_document(path, {"dolby vision|all|truehd": {"delay_ms": 50}})
     entries = read_profiles(path)
-    assert set(entries) == {"dolbyvision|all|truehd"}
+    assert set(entries) == {"dolbyvision|all|truehd|all"}
+
+
+# --- v1 -> v2 schema migration --------------------------------------------------
+# The channel axis grew the key to four segments. Migration IS boundary
+# canonicalization: a version-1 file's 3-segment keys expand with a trailing
+# 'all' on load/read/import, and the first persist rewrites the file as
+# version 2. A downgraded build then goes read-only on it (future-schema
+# guard), never misparsing 4-segment keys.
+
+def test_v1_file_loads_with_expanded_keys(tmp_path):
+    store, path, _debug, _warning = make_store(tmp_path)
+    _write_document(path, {
+        "dolbyvision|23|truehd": {"delay_ms": 40, "video_fps": 23.976},
+        "sdr|all|aac": {"delay_ms": -20},
+    }, resets=["hdr10|all|ac3"])
+    store.load()
+    assert store.get("dolbyvision|23|truehd|all")["delay_ms"] == 40
+    assert store.get("sdr|all|aac|all")["delay_ms"] == -20
+    assert store.get("dolbyvision|23|truehd") is None
+    assert store.reset_pending("hdr10|all|ac3|all") is True
+    assert store.reset_pending("hdr10|all|ac3") is False
+    # Entry metadata rides through the expansion untouched.
+    assert store.get("dolbyvision|23|truehd|all")["video_fps"] == 23.976
+
+
+def test_first_persist_after_v1_load_writes_v2(tmp_path):
+    # load() itself never writes (the file stays v1 on disk until a real
+    # mutation); the first persist upgrades version and key shape together.
+    store, path, _debug, _warning = make_store(tmp_path)
+    _write_document(path, {"dolbyvision|23|truehd": {"delay_ms": 40}})
+    store.load()
+    assert json.loads(open(path, encoding="utf-8").read())["version"] == 1
+
+    assert store.set("sdr|all|aac|all", 10) is True
+    on_disk = json.loads(open(path, encoding="utf-8").read())
+    assert on_disk["version"] == 2
+    assert set(on_disk["profiles"]) == {"dolbyvision|23|truehd|all",
+                                        "sdr|all|aac|all"}
+
+
+def test_v1_and_v2_spellings_of_one_key_collide_canonically(tmp_path):
+    # A hand-merged file holding both shapes of one key: the 4-segment
+    # (canonical) entry wins, exactly like a legacy HDR spelling collision.
+    store, path, debug, _warning = make_store(tmp_path)
+    _write_document(path, {
+        "sdr|all|aac|all": {"delay_ms": 60},
+        "sdr|all|aac": {"delay_ms": 40},
+    })
+    store.load()
+    assert store.get("sdr|all|aac|all")["delay_ms"] == 60
+    assert len(store) == 1
+    assert any("legacy-spelled duplicate" in line for line in debug)
+
+
+def test_v1_backup_imports_with_expanded_keys(tmp_path):
+    # Restore of a pre-channel-axis backup: read_import_document expands,
+    # replace_all re-filters — either path lands on 4-segment keys.
+    from resources.lib.aome.store.offset_store import read_import_document
+    backup = str(tmp_path / "backup.json")
+    _write_document(backup, {"hdr10|all|ac3": {"delay_ms": 30}},
+                    resets=["sdr|all|flac"])
+    entries, resets = read_import_document(backup)
+    assert set(entries) == {"hdr10|all|ac3|all"}
+    assert resets == {"sdr|all|flac|all"}
+
+    store, _path, _debug, _warning = make_store(tmp_path)
+    store.load()
+    assert store.replace_all(entries, resets=resets) is True
+    assert store.get("hdr10|all|ac3|all")["delay_ms"] == 30
+    assert store.reset_pending("sdr|all|flac|all") is True
+
+
+def test_v2_file_loads_and_v3_goes_read_only(tmp_path):
+    # The version gate brackets exactly the current schema: v2 (current)
+    # loads writable, v3 (future) is sacred.
+    store, path, _debug, _warning = make_store(tmp_path)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"version": 2, "profiles":
+                   {"sdr|all|aac|6": {"delay_ms": 15}}}, handle)
+    store.load()
+    assert store.read_only is False
+    assert store.get("sdr|all|aac|6")["delay_ms"] == 15
+
+    future, fpath, _d, _w = make_store(tmp_path / "future")
+    import os as _os
+    _os.makedirs(str(tmp_path / "future"), exist_ok=True)
+    with open(fpath, "w", encoding="utf-8") as handle:
+        json.dump({"version": 3, "profiles": {}}, handle)
+    future.load()
+    assert future.read_only is True

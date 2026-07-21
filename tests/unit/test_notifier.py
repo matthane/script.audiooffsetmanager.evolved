@@ -49,6 +49,7 @@ class FakeSettings:
         self.duration = duration_ms
         self.per_fps = False
         self.distinct_spatial = True
+        self.distinct_channels = False
 
     def notify_apply_enabled(self):
         return self.apply_enabled
@@ -64,6 +65,9 @@ class FakeSettings:
 
     def distinct_spatial_enabled(self):
         return self.distinct_spatial
+
+    def distinct_channels_enabled(self):
+        return self.distinct_channels
 
 
 class Rig:
@@ -922,6 +926,67 @@ class TestSpatialGranularity:
                                       provisional=True))
 
         session.profile = make_profile(audio_format='truehd_atmos')
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert rig.toasts == []                        # stale toast dropped
+        assert session.pending_notification is None
+
+
+class TestChannelGranularity:
+
+    def test_toast_omits_the_count_by_default(self, rig):
+        # With distinct-channels off the value lives under the all-channels
+        # key: '7.1' would mislead about what was saved (the fps rule).
+        profile = make_profile()                       # audio_channels=8
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        message, _duration = rig.toasts[0]
+        assert message == "DV | TrueHD"
+
+    def test_toast_names_the_layout_when_distinct_on(self, rig):
+        rig.settings.distinct_channels = True
+        profile = make_profile()                       # audio_channels=8
+        session = rig.start(profile)
+
+        rig.post(events.UserOffsetSaved(session_id=session.session_id,
+                                        profile=profile, ms=-100))
+
+        message, _duration = rig.toasts[0]
+        assert message == "DV | TrueHD | 7.1"
+
+    def test_held_toast_survives_count_wiggle_when_distinct_off(self, rig):
+        # A count wiggle maps to the same key with the toggle off — the
+        # held toast must use the same identity notion and still release.
+        session = rig.start(make_profile())
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+        assert session.pending_notification is not None
+
+        session.profile = StreamProfile(
+            hdr_type='dolbyvision', audio_format='truehd',
+            video_fps=23.976, player_id=1, audio_channels=6)
+        rig.mark_stable(session)
+        rig.post(events.StreamStabilized(session_id=session.session_id))
+
+        assert len(rig.toasts) == 1                    # toast NOT dropped
+
+    def test_held_toast_drops_on_count_change_when_distinct_on(self, rig):
+        # With distinct on the count IS offset-relevant: the held toast
+        # describes a stale stream and must drop.
+        rig.settings.distinct_channels = True
+        session = rig.start(make_profile())
+        rig.post(events.OffsetApplied(session_id=session.session_id,
+                                      profile=session.profile, ms=-125,
+                                      provisional=True))
+
+        session.profile = StreamProfile(
+            hdr_type='dolbyvision', audio_format='truehd',
+            video_fps=23.976, player_id=1, audio_channels=6)
         rig.mark_stable(session)
         rig.post(events.StreamStabilized(session_id=session.session_id))
 

@@ -53,8 +53,8 @@ AUDIO_DELAY = AdjustmentWatcher.INFOLABEL_AUDIO_DELAY
 QUIESCENCE_STEPS = int(round(QUIET / ACTIVE))
 
 # The write keys for the default rig (per_fps False -> the all level).
-KEY_A = 'dolbyvision|all|truehd'
-KEY_B = 'hdr10|all|eac3'
+KEY_A = 'dolbyvision|all|truehd|all'
+KEY_B = 'hdr10|all|eac3|all'
 
 
 def make_profile(hdr_type='dolbyvision', audio_format='truehd',
@@ -297,8 +297,8 @@ class TestQuiescence:
         rig.offset_table.per_fps = True                # toggle flips mid-wait
         rig.hold_to_quiescence()
 
-        assert rig.offset_table.stored == [('dolbyvision|23|truehd', -50)]
-        assert rig.saved[0].key == 'dolbyvision|23|truehd'
+        assert rig.offset_table.stored == [('dolbyvision|23|truehd|all', -50)]
+        assert rig.saved[0].key == 'dolbyvision|23|truehd|all'
 
     def test_write_key_follows_the_live_distinct_spatial_toggle(self, rig):
         # Spatial twin of the per-fps freshness rule: the toggle flips
@@ -310,8 +310,21 @@ class TestQuiescence:
         rig.offset_table.distinct_spatial = False  # toggle flips mid-wait
         rig.hold_to_quiescence()
 
-        assert rig.offset_table.stored == [('dolbyvision|all|truehd', -50)]
-        assert rig.saved[0].key == 'dolbyvision|all|truehd'
+        assert rig.offset_table.stored == [('dolbyvision|all|truehd|all', -50)]
+        assert rig.saved[0].key == 'dolbyvision|all|truehd|all'
+
+    def test_write_key_follows_the_live_distinct_channels_toggle(self, rig):
+        # Channel twin of the same freshness rule: the toggle flips
+        # mid-observation, so the store lands under the count key.
+        profile = make_profile()                   # audio_channels=8
+        rig.begin(profile, baseline_delay='0.000 s')
+
+        rig.observe_foreign('-0.050 s')            # pending under the all key
+        rig.offset_table.distinct_channels = True  # toggle flips mid-wait
+        rig.hold_to_quiescence()
+
+        assert rig.offset_table.stored == [('dolbyvision|all|truehd|8', -50)]
+        assert rig.saved[0].key == 'dolbyvision|all|truehd|8'
 
     def test_our_own_apply_during_pending_is_self_echo(self, rig):
         # A foreign value is pending; then session.applied catches up to that
@@ -405,16 +418,16 @@ class TestQuiescence:
         # while playing 60fps — the write lands on the SPECIFIC key,
         # leaving the all entry untouched (the §3.2 worked flow).
         rig.offset_table.per_fps = True
-        rig.offset_table.offsets['dolbyvision|all|truehd'] = -125
+        rig.offset_table.offsets['dolbyvision|all|truehd|all'] = -125
         profile = make_profile(video_fps=60.0)
         rig.begin(profile, baseline_delay='-0.125 s',
-                  applied=('dolbyvision|all|truehd', -125))
+                  applied=('dolbyvision|all|truehd|all', -125))
 
         rig.observe_foreign('-0.100 s')
         rig.hold_to_quiescence()
 
-        assert rig.offset_table.stored == [('dolbyvision|60|truehd', -100)]
-        assert rig.offset_table.offsets['dolbyvision|all|truehd'] == -125
+        assert rig.offset_table.stored == [('dolbyvision|60|truehd|all', -100)]
+        assert rig.offset_table.offsets['dolbyvision|all|truehd|all'] == -125
 
 
 # ============================================================================

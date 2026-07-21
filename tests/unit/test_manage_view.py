@@ -71,16 +71,18 @@ def _value(delay):
 
 
 # Three profiles whose display labels sort DV < HDR10 < HLG.
-DV = "dolbyvision|all|truehd"
-HDR10 = "hdr10|all|ac3"
-HLG = "hlg|all|eac3"
+DV = "dolbyvision|all|truehd|all"
+HDR10 = "hdr10|all|ac3|all"
+HLG = "hlg|all|eac3|all"
 
 
-def _build(entries, acks=None, gui=None, per_fps=False, distinct_spatial=True):
+def _build(entries, acks=None, gui=None, per_fps=False, distinct_spatial=True,
+           distinct_channels=False):
     service = FakeService(entries, acks=acks)
     gui = gui or FakeGui()
     view = ManageView(service.read, gui, service.send, per_fps=per_fps,
-                      distinct_spatial=distinct_spatial)
+                      distinct_spatial=distinct_spatial,
+                      distinct_channels=distinct_channels)
     return view, gui, service
 
 
@@ -114,8 +116,8 @@ def test_rows_render_verbatim_signed_milliseconds():
     # index; flat rendering is pinned on the store shape that shows it).
     entries = {
         DV: _entry(-115, updated="2026-07-15T12:00:00Z"),
-        "dolbyvision|all|ac3": _entry(9999, updated="2026-07-14T09:30:00Z"),
-        "dolbyvision|all|eac3": _entry(-2500, updated="2026-07-13T00:00:00Z"),
+        "dolbyvision|all|ac3|all": _entry(9999, updated="2026-07-14T09:30:00Z"),
+        "dolbyvision|all|eac3|all": _entry(-2500, updated="2026-07-13T00:00:00Z"),
     }
     view, gui, _ = _build(entries)  # no select answers -> exhausted -> -1 -> exit
     view.run()
@@ -154,8 +156,8 @@ def test_per_fps_rows_show_the_exact_reported_rate():
     # rate is the entry's video_fps metadata; entries without it (hand-
     # edited) degrade to the segment.
     entries = {
-        "dolbyvision|23|eac3": dict(_entry(-25), video_fps=23.976),
-        "dolbyvision|59|ac3": _entry(75),          # no metadata -> segment
+        "dolbyvision|23|eac3|all": dict(_entry(-25), video_fps=23.976),
+        "dolbyvision|59|ac3|all": _entry(75),          # no metadata -> segment
     }
     view, gui, _ = _build(entries, per_fps=True)
     view.run()
@@ -173,8 +175,8 @@ def test_toggle_off_tags_per_fps_rows_inactive_and_never_hides():
     # its scope), and the 'all' row omits the fps axis entirely — it is
     # the only semantics that mode has, so a label would say nothing.
     entries = {
-        "dolbyvision|all|eac3": _entry(-25),
-        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|eac3|all": _entry(-25),
+        "dolbyvision|23|eac3|all": dict(_entry(125), video_fps=23.976),
     }
     view, gui, _ = _build(entries, per_fps=False)
     view.run()
@@ -197,8 +199,8 @@ def test_toggle_on_tags_all_rows_inactive_and_never_hides():
     # entry stays plain, untagged, and lists FIRST — dormant rows sink
     # below the active rows of their group.
     entries = {
-        "dolbyvision|all|eac3": _entry(-25),
-        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|eac3|all": _entry(-25),
+        "dolbyvision|23|eac3|all": dict(_entry(125), video_fps=23.976),
     }
     view, gui, _ = _build(entries, per_fps=True)
     view.run()
@@ -218,11 +220,11 @@ def test_rows_group_by_codec_then_numeric_rate():
     # rows (the 'all' keys, toggle off) already sort first, so the
     # strata are invisible; the next test pins the sink itself.
     entries = {
-        "dolbyvision|119|eac3": dict(_entry(1), video_fps=119.88),
-        "dolbyvision|23|eac3": dict(_entry(2), video_fps=23.976),
-        "dolbyvision|all|eac3": _entry(3),
-        "dolbyvision|24|truehd": dict(_entry(4), video_fps=24.0),
-        "dolbyvision|all|ac3": _entry(5),
+        "dolbyvision|119|eac3|all": dict(_entry(1), video_fps=119.88),
+        "dolbyvision|23|eac3|all": dict(_entry(2), video_fps=23.976),
+        "dolbyvision|all|eac3|all": _entry(3),
+        "dolbyvision|24|truehd|all": dict(_entry(4), video_fps=24.0),
+        "dolbyvision|all|ac3|all": _entry(5),
     }
     view, gui, _ = _build(entries)
     view.run()
@@ -246,8 +248,8 @@ def test_dormant_rows_sink_below_active_rows():
     # sink puts the active row on top. Same store, toggle on: the roles
     # and the order both flip.
     entries = {
-        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
-        "dolbyvision|all|truehd": _entry(-25),
+        "dolbyvision|23|eac3|all": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|truehd|all": _entry(-25),
     }
     view, gui, _ = _build(entries, per_fps=False)
     view.run()
@@ -289,7 +291,7 @@ def test_cancel_exits_without_channel_traffic():
 
 
 def test_delete_flow_sends_exact_key_and_re_reads():
-    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3|all": _entry(200)}
     gui = FakeGui()
     gui.select_answers = [1, -1]     # delete the TrueHD row, then cancel
     gui.yesno_answers = [True]
@@ -349,7 +351,7 @@ def test_declined_delete_sends_nothing_and_loops():
 
 
 def test_clear_flow_sends_clear_none_and_exits_quietly():
-    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3|all": _entry(200)}
     gui = FakeGui()
     gui.select_answers = [2]         # the clear-all row (index == len(rows))
     gui.yesno_answers = [True]
@@ -413,8 +415,8 @@ def test_ack_failure_reports_detail():
 def test_constructor_exposes_no_store_writer_seam():
     params = list(inspect.signature(ManageView.__init__).parameters)
     assert params == ["self", "read_entries", "gui", "send_mutation",
-                      "per_fps", "distinct_spatial", "current_key",
-                      "log_debug"]
+                      "per_fps", "distinct_spatial", "distinct_channels",
+                      "current_key", "log_debug"]
     # No parameter is a store writer / value setter — the view cannot write.
     for name in params:
         assert "write" not in name
@@ -425,7 +427,7 @@ def test_constructor_exposes_no_store_writer_seam():
 def test_only_delete_and_clear_ops_are_ever_emitted():
     # Walk a full scenario (delete then clear) and pin that nothing but the
     # whitelisted ops — and never a 'set' value write — reaches the channel.
-    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(200)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3|all": _entry(200)}
     gui = FakeGui()
     gui.select_answers = [0, 1]      # delete a row, then clear-all (index 1 after)
     gui.yesno_answers = [True, True]
@@ -505,15 +507,15 @@ def _grouped_entries():
     # Four real HDR groups plus one hand-scribbled unsplittable key (the
     # 'Other' bucket) -> multi-group store, renders the index.
     return {
-        "dolbyvision|all|truehd": _entry(1),
-        "dolbyvision|23|truehd": dict(_entry(2), video_fps=23.976),
-        "dolbyvision|all|eac3": _entry(3),
-        "hdr10|all|ac3": _entry(4),
-        "hdr10|59|ac3": dict(_entry(5), video_fps=59.94),
-        "hdr10|all|dtshd_ma": _entry(6),
-        "hlg|all|aac": _entry(7),
-        "hlg|all|opus": _entry(8),
-        "sdr|all|flac": _entry(9),
+        "dolbyvision|all|truehd|all": _entry(1),
+        "dolbyvision|23|truehd|all": dict(_entry(2), video_fps=23.976),
+        "dolbyvision|all|eac3|all": _entry(3),
+        "hdr10|all|ac3|all": _entry(4),
+        "hdr10|59|ac3|all": dict(_entry(5), video_fps=59.94),
+        "hdr10|all|dtshd_ma|all": _entry(6),
+        "hlg|all|aac|all": _entry(7),
+        "hlg|all|opus|all": _entry(8),
+        "sdr|all|flac|all": _entry(9),
         "scribbled-key": _entry(10),
     }
 
@@ -546,7 +548,7 @@ def test_single_group_renders_flat_and_second_group_flips_to_index():
     # Flat vs grouped is a function of the GROUP count
     # only. A single-group store — however large — stays flat (its index
     # would be one row of pure overhead)...
-    single = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 10)}
+    single = {"hdr10|{0}|ac3|all".format(i): _entry(i) for i in range(1, 10)}
     view, gui, _ = _build(single, per_fps=True)
     view.run()
     assert len(gui.selects[0][1]) == 10          # 9 rows + clear-all
@@ -555,7 +557,7 @@ def test_single_group_renders_flat_and_second_group_flips_to_index():
 
     # ...and a second HDR type — however small the store — flips to the
     # index.
-    two_groups = {"hdr10|all|ac3": _entry(1), DV: _entry(2)}
+    two_groups = {"hdr10|all|ac3|all": _entry(1), DV: _entry(2)}
     view, gui, _ = _build(two_groups, gui=_grouped_gui())
     view.run()
     assert gui.selects[0][1] == ["[B]Dolby Vision[/B] — 1 entry",
@@ -625,7 +627,7 @@ def test_group_delete_confirms_with_full_profile_line_and_stays_in_group():
     assert "Dolby Vision | All FPS | Dolby Digital Plus" in message
     assert _value(3) + " — inactive" in message
     assert "[COLOR" not in message
-    assert service.calls == [("delete", "dolbyvision|all|eac3")]
+    assert service.calls == [("delete", "dolbyvision|all|eac3|all")]
     # After the delete the (re-read) group re-rendered with 2 rows (+ the
     # group-clear row).
     assert len(gui.selects) == 4
@@ -640,7 +642,7 @@ def test_deleting_a_groups_last_entry_returns_to_index_without_it():
     view, gui, service = _build(_grouped_entries(), gui=gui)
     view.run()
 
-    assert service.calls == [("delete", "sdr|all|flac")]
+    assert service.calls == [("delete", "sdr|all|flac|all")]
     # The emptied group falls back to the index (9 entries: still
     # grouped), its row gone, everything else intact.
     final_options = gui.selects[-1][1]
@@ -681,7 +683,7 @@ def test_reread_per_pass_reflects_external_mutations():
         state["calls"] += 1
         if state["calls"] == 1:
             # A DV entry raced away while the user was choosing a group.
-            service.entries.pop("dolbyvision|all|eac3")
+            service.entries.pop("dolbyvision|all|eac3|all")
         return original_select(heading, options)
 
     gui.select = select_with_racing_delete
@@ -731,8 +733,8 @@ def test_deletes_never_flip_the_mode_until_a_group_empties():
     # list appears only when the store is down to a single group — a
     # transition the user just caused (they emptied a category) and can
     # see.
-    entries = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 9)}
-    entries["dolbyvision|all|truehd"] = _entry(9)
+    entries = {"hdr10|{0}|ac3|all".format(i): _entry(i) for i in range(1, 9)}
+    entries["dolbyvision|all|truehd|all"] = _entry(9)
     gui = _grouped_gui()
     # open HDR10, delete one, back — then open DV, delete its only entry,
     # exit from the flat list that (comprehensibly) remains.
@@ -787,7 +789,7 @@ def test_group_delete_failed_ack_reports_under_main_heading_and_stays():
         gui=gui, per_fps=True)
     view.run()
 
-    assert service.calls == [("delete", "dolbyvision|23|truehd")]
+    assert service.calls == [("delete", "dolbyvision|23|truehd|all")]
     heading, message = gui.oks[0]
     assert heading == "#32115"
     assert "#32128" in message and "read_only" in message
@@ -811,12 +813,12 @@ def test_group_delete_ack_timeout_reports_service_missing_and_stays():
 
 
 def test_blank_hdr_segment_key_joins_the_other_bucket():
-    # '|all|truehd' splits fine (three parts, blank hdr), so it would
+    # '|all|truehd|all' splits fine (four parts, blank hdr), so it would
     # otherwise form a NAMELESS group sorted first, with '' as the
     # drill-down heading. It belongs in 'Other' with the unsplittable
     # keys: no blank row, no blank heading, still fully deletable.
-    entries = {"hdr10|{0}|ac3".format(i): _entry(i) for i in range(1, 9)}
-    entries["|all|truehd"] = _entry(9)
+    entries = {"hdr10|{0}|ac3|all".format(i): _entry(i) for i in range(1, 9)}
+    entries["|all|truehd|all"] = _entry(9)
     entries["scribbled-key"] = _entry(10)
     gui = _grouped_gui()
     gui.select_answers = [1, -1, -1]     # open Other, back, exit
@@ -875,9 +877,9 @@ def test_group_clear_deletes_every_group_key_and_lands_on_index():
     # exact-rate row leads, the dormant 'all' rows follow) — and nothing
     # but deletes on the wire (no batch op exists).
     assert service.calls == [
-        ("delete", "dolbyvision|23|truehd"),
-        ("delete", "dolbyvision|all|eac3"),
-        ("delete", "dolbyvision|all|truehd"),
+        ("delete", "dolbyvision|23|truehd|all"),
+        ("delete", "dolbyvision|all|eac3|all"),
+        ("delete", "dolbyvision|all|truehd|all"),
     ]
     # The emptied group falls back to the index: DV gone, others intact,
     # no error/education dialog.
@@ -893,9 +895,9 @@ def test_group_clear_of_the_entire_store_exits_quietly():
     # rest away): clearing it then mirrors clear-all's quiet exit — no
     # first-run education dialog right after a deliberate wipe.
     entries = {
-        "dolbyvision|all|truehd": _entry(1),
-        "dolbyvision|all|eac3": _entry(2),
-        "hdr10|all|ac3": _entry(3),
+        "dolbyvision|all|truehd|all": _entry(1),
+        "dolbyvision|all|eac3|all": _entry(2),
+        "hdr10|all|ac3|all": _entry(3),
     }
     service = FakeService(entries)
     gui = _grouped_gui()
@@ -907,7 +909,7 @@ def test_group_clear_of_the_entire_store_exits_quietly():
         choice = original_select(heading, options)
         # After the index selection, the other group races away.
         if len(gui.selects) == 1:
-            service.entries.pop("hdr10|all|ac3")
+            service.entries.pop("hdr10|all|ac3|all")
         return choice
 
     gui.select = select_then_shrink
@@ -915,8 +917,8 @@ def test_group_clear_of_the_entire_store_exits_quietly():
     view.run()
 
     assert service.calls == [
-        ("delete", "dolbyvision|all|eac3"),
-        ("delete", "dolbyvision|all|truehd"),
+        ("delete", "dolbyvision|all|eac3|all"),
+        ("delete", "dolbyvision|all|truehd|all"),
     ]
     assert service.entries == {}
     # Quiet exit: no education dialog, no further renders.
@@ -1021,8 +1023,8 @@ def _build_playing(entries, current, gui=None, per_fps=False):
 def test_playing_row_tags_bolds_and_floats_first():
     entries = {
         DV: _entry(-115),
-        "dolbyvision|all|ac3": _entry(9999),
-        "dolbyvision|all|eac3": _entry(-2500),
+        "dolbyvision|all|ac3|all": _entry(9999),
+        "dolbyvision|all|eac3|all": _entry(-2500),
     }
     view, gui, _ = _build_playing(entries, DV)
     view.run()
@@ -1039,7 +1041,7 @@ def test_playing_row_tags_bolds_and_floats_first():
 
 def test_playing_group_leads_the_index_and_bolds_whole():
     gui = _grouped_gui()
-    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|ac3",
+    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|ac3|all",
                                   gui=gui)
     view.run()
 
@@ -1061,7 +1063,7 @@ def test_playing_group_leads_the_index_and_bolds_whole():
 def test_playing_row_heads_its_groups_drilldown():
     gui = _grouped_gui()
     gui.select_answers = [0, -1, -1]     # open the hoisted HDR10, back, exit
-    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|dtshd_ma",
+    view, gui, _ = _build_playing(_grouped_entries(), "hdr10|all|dtshd_ma|all",
                                   gui=gui)
     view.run()
 
@@ -1080,7 +1082,7 @@ def test_published_key_without_a_matching_row_renders_plain():
     # and the heading stays static (field feedback: the heading is not an
     # indicator surface).
     entries = {DV: _entry(-115)}
-    view, gui, _ = _build_playing(entries, "hdr10|all|ac3")
+    view, gui, _ = _build_playing(entries, "hdr10|all|ac3|all")
     view.run()
 
     assert gui.selects[0][0] == "#32115"
@@ -1089,7 +1091,7 @@ def test_published_key_without_a_matching_row_renders_plain():
 
 
 def test_empty_store_with_playback_keeps_the_static_heading():
-    view, gui, _ = _build_playing({}, "hdr10|all|ac3")
+    view, gui, _ = _build_playing({}, "hdr10|all|ac3|all")
     view.run()
 
     assert gui.oks == [("#32115", "#32122")]
@@ -1100,7 +1102,7 @@ def test_playing_state_is_reread_every_pass_and_stays_plain_in_dialogs():
     # back in its sorted place, unbolded and untagged. The declined
     # confirmation in between reuses the _Row strings plain — markup never
     # reaches dialog text, but the playing tag rides along.
-    entries = {DV: _entry(-115), "dolbyvision|all|ac3": _entry(9999)}
+    entries = {DV: _entry(-115), "dolbyvision|all|ac3|all": _entry(9999)}
     published = iter([DV, ""])
     gui = FakeGui()
     gui.select_answers = [0, -1]         # pick the playing row, then exit
@@ -1124,10 +1126,10 @@ def test_dormant_rows_never_read_as_playing():
     # entry for the same stream stays dormant even when the store also
     # holds the published key. No dim+bold collision can exist.
     entries = {
-        "dolbyvision|all|eac3": _entry(-25),
-        "dolbyvision|23|eac3": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|eac3|all": _entry(-25),
+        "dolbyvision|23|eac3|all": dict(_entry(125), video_fps=23.976),
     }
-    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3",
+    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3|all",
                                   per_fps=False)
     view.run()
 
@@ -1146,8 +1148,8 @@ def test_mid_flip_race_renders_dormant_not_playing():
     # service may not have republished the new mode's key yet. The row
     # build enforces the invariant — dormant wins, no dim+bold hybrid —
     # and the next pass self-corrects.
-    entries = {"dolbyvision|all|eac3": _entry(-25)}
-    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3",
+    entries = {"dolbyvision|all|eac3|all": _entry(-25)}
+    view, gui, _ = _build_playing(entries, "dolbyvision|all|eac3|all",
                                   per_fps=True)
     view.run()
 
@@ -1166,8 +1168,8 @@ def test_distinct_off_tags_spatial_variant_rows_inactive_and_never_hides():
     # variant entry is stored-but-dormant: tagged and dimmed, never hidden.
     # The base entry stays plain and lists first (dormant rows sink).
     entries = {
-        "dolbyvision|all|truehd": _entry(-25),
-        "dolbyvision|all|truehd_atmos": _entry(125),
+        "dolbyvision|all|truehd|all": _entry(-25),
+        "dolbyvision|all|truehd_atmos|all": _entry(125),
     }
     view, gui, _ = _build(entries, distinct_spatial=False)
     view.run()
@@ -1184,8 +1186,8 @@ def test_distinct_on_leaves_every_row_active():
     # The spatial rule is ONE-SIDED: with the toggle on, both the variant
     # and the base key are legitimate verbatim keys — nothing sleeps.
     entries = {
-        "dolbyvision|all|truehd": _entry(-25),
-        "dolbyvision|all|truehd_atmos": _entry(125),
+        "dolbyvision|all|truehd|all": _entry(-25),
+        "dolbyvision|all|truehd_atmos|all": _entry(125),
     }
     view, gui, _ = _build(entries, distinct_spatial=True)
     view.run()
@@ -1198,7 +1200,7 @@ def test_distinct_on_leaves_every_row_active():
 def test_base_codec_rows_are_never_spatially_dormant():
     # A base-codec entry serves plain streams in both modes; the collapse
     # must not gray it out just because variants exist somewhere.
-    entries = {"dolbyvision|all|truehd": _entry(-25)}
+    entries = {"dolbyvision|all|truehd|all": _entry(-25)}
     for distinct in (False, True):
         view, gui, _ = _build(entries, distinct_spatial=distinct)
         view.run()
@@ -1212,9 +1214,9 @@ def test_spatial_dormancy_composes_with_per_fps_dormancy():
     # variant row on the spatial axis alone; the exact-rate base row stays
     # active.
     entries = {
-        "dolbyvision|23|truehd": dict(_entry(-25), video_fps=23.976),
-        "dolbyvision|23|truehd_atmos": dict(_entry(125), video_fps=23.976),
-        "dolbyvision|all|truehd_atmos": _entry(50),
+        "dolbyvision|23|truehd|all": dict(_entry(-25), video_fps=23.976),
+        "dolbyvision|23|truehd_atmos|all": dict(_entry(125), video_fps=23.976),
+        "dolbyvision|all|truehd_atmos|all": _entry(50),
     }
     view, gui, _ = _build(entries, per_fps=True, distinct_spatial=False)
     view.run()
@@ -1227,4 +1229,75 @@ def test_spatial_dormancy_composes_with_per_fps_dormancy():
         "[COLOR gray]" + _value(50) + " — inactive[/COLOR]")
     assert options[2] == (
         "[COLOR gray]Dolby Vision | 23.976 fps | Dolby TrueHD Atmos[/COLOR]",
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
+
+
+def test_channels_off_tags_count_rows_inactive_and_never_hides():
+    # Symmetric like fps: with the toggle off only the 'all' key is read,
+    # so a count-specific entry is stored-but-dormant — tagged and dimmed,
+    # never hidden, its layout name still shown (it distinguishes the row).
+    entries = {
+        "dolbyvision|all|truehd|all": _entry(-25),
+        "dolbyvision|all|truehd|8": _entry(125),
+    }
+    view, gui, _ = _build(entries, distinct_channels=False)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | Dolby TrueHD", _value(-25))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | Dolby TrueHD | 7.1[/COLOR]",
+        "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
+    assert len(options) == 3               # both entries + clear-all
+
+
+def test_channels_on_tags_all_rows_inactive():
+    # The mirror direction: with the toggle on the 'all' entry sleeps and
+    # states its scope as 'All channels'; the count row is plain.
+    entries = {
+        "dolbyvision|all|truehd|all": _entry(-25),
+        "dolbyvision|all|truehd|8": _entry(125),
+    }
+    view, gui, _ = _build(entries, distinct_channels=True)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | Dolby TrueHD | 7.1", _value(125))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | Dolby TrueHD | All channels[/COLOR]",
+        "[COLOR gray]" + _value(-25) + " — inactive[/COLOR]")
+
+
+def test_unmapped_count_renders_verbatim_ch():
+    # No layout whitelist: an unmapped count renders '<n> ch' and keys,
+    # dims, and deletes like any other row.
+    entries = {"sdr|all|aac|4": _entry(10)}
+    view, gui, _ = _build(entries, distinct_channels=True)
+    view.run()
+    assert gui.selects[0][1][0] == ("SDR | AAC | 4 ch", _value(10))
+
+
+def test_channel_dormancy_composes_with_the_other_axes():
+    # Three axes judge independently; a row dormant on ANY axis dims.
+    # per_fps on + spatial off + channels on: the fully-specific base-codec
+    # row is the only active one.
+    entries = {
+        "dolbyvision|23|truehd|8": dict(_entry(-25), video_fps=23.976),
+        "dolbyvision|23|truehd|all": dict(_entry(50), video_fps=23.976),
+        "dolbyvision|23|truehd_atmos|8": dict(_entry(125), video_fps=23.976),
+    }
+    view, gui, _ = _build(entries, per_fps=True, distinct_spatial=False,
+                          distinct_channels=True)
+    view.run()
+
+    options = gui.selects[0][1]
+    assert options[0] == ("Dolby Vision | 23.976 fps | Dolby TrueHD | 7.1",
+                          _value(-25))
+    assert options[1] == (
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby TrueHD | "
+        "All channels[/COLOR]",
+        "[COLOR gray]" + _value(50) + " — inactive[/COLOR]")
+    assert options[2] == (
+        "[COLOR gray]Dolby Vision | 23.976 fps | Dolby TrueHD Atmos | "
+        "7.1[/COLOR]",
         "[COLOR gray]" + _value(125) + " — inactive[/COLOR]")
